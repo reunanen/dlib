@@ -182,20 +182,30 @@ namespace dlib
 
             auto d = dest.host();
             auto s = src.host();
-            for (long n = 0; n < dest.num_samples(); ++n)
-            {
-                const auto sn = src.num_samples()==1 ? 0:n;
-                for (long k = 0; k < dest.k(); ++k)
-                {
-                    const auto sk = src.k()==1 ? 0:k;
-                    for (long r = 0; r < dest.nr(); ++r)
-                    {
-                        const auto sr = src.nr()==1 ? 0:r;
-                        for (long c = 0; c < dest.nc(); ++c)
-                        {
-                            const auto sc = src.nc()==1 ? 0:c;
 
-                            const auto s_idx = ((sn*src.k() + sk)*src.nr() + sr)*src.nc() + sc;
+            const auto src_num_samples = src.num_samples();
+            const auto src_nr = src.nr();
+            const auto src_nc = src.nc();
+            const auto src_k = src.k();
+            const auto dest_num_samples = dest.num_samples();
+            const auto dest_nr = dest.nr();
+            const auto dest_nc = dest.nc();
+            const auto dest_k = dest.k();
+
+            for (long n = 0; n < dest_num_samples; ++n)
+            {
+                const auto sn = src_num_samples==1 ? 0:n;
+                for (long k = 0; k < dest_k; ++k)
+                {
+                    const auto sk = src_k==1 ? 0:k;
+                    for (long r = 0; r < dest_nr; ++r)
+                    {
+                        const auto sr = src_nr==1 ? 0:r;
+                        for (long c = 0; c < dest_nc; ++c)
+                        {
+                            const auto sc = src_nc==1 ? 0:c;
+
+                            const auto s_idx = ((sn*src_k + sk)*src_nr + sr)*src_nc + sc;
                             *d = beta*(*d) + alpha*s[s_idx];
                             ++d;
                         }
@@ -471,13 +481,19 @@ namespace dlib
             auto s = src.host();
             const auto a = A.host();
             const auto b = B.host();
-            for (long n = 0; n < dest.num_samples(); ++n)
+
+            const auto dest_num_samples = dest.num_samples();
+            const auto dest_k = dest.k();
+            const auto dest_nr = dest.nr();
+            const auto dest_nc = dest.nc();
+
+            for (long n = 0; n < dest_num_samples; ++n)
             {
-                for (long k = 0; k < dest.k(); ++k)
+                for (long k = 0; k < dest_k; ++k)
                 {
-                    for (long r = 0; r < dest.nr(); ++r)
+                    for (long r = 0; r < dest_nr; ++r)
                     {
-                        for (long c = 0; c < dest.nc(); ++c)
+                        for (long c = 0; c < dest_nc; ++c)
                         {
                             *d++ = a[k]*(*s++) + b[k];
                         }
@@ -1670,21 +1686,25 @@ namespace dlib
             size_t cnt = 0;
             const long max_r = data.nr() + padding_y-(filter_nr-1);
             const long max_c = data.nc() + padding_x-(filter_nc-1);
+            const auto output_size = output.size();
+            const auto data_nr = data.nr();
+            const auto data_nc = data.nc();
+            const auto data_k = data.k();
             for (long r = -padding_y; r < max_r; r+=stride_y)
             {
                 for (long c = -padding_x; c < max_c; c+=stride_x)
                 {
-                    for (long k = 0; k < data.k(); ++k)
+                    for (long k = 0; k < data_k; ++k)
                     {
                         for (long y = 0; y < filter_nr; ++y)
                         {
                             for (long x = 0; x < filter_nc; ++x)
                             {
-                                DLIB_ASSERT(cnt < output.size());
+                                DLIB_ASSERT(cnt < output_size);
                                 long xx = c+x;
                                 long yy = r+y;
                                 if (boundary.contains(xx,yy))
-                                    *t = d[(k*data.nr() + yy)*data.nc() + xx];
+                                    *t = d[(k*data_nr + yy)*data_nc + xx];
                                 else
                                     *t = 0;
                                 ++t;
