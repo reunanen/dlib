@@ -85,7 +85,8 @@ namespace dlib
         )  
         { 
             type temp = lhs(r,0)*rhs(0,c);
-            for (long i = 1; i < lhs.nc(); ++i)
+            const long lhs_nc = lhs.nc();
+            for (long i = 1; i < lhs_nc; ++i)
             {
                 temp += lhs(r,i)*rhs(i,c);
             }
