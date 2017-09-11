@@ -35,7 +35,7 @@ template <long num_filters, typename SUBNET> using con5d = con<num_filters,5,5,2
 template <long num_filters, typename SUBNET> using con5  = con<num_filters,5,5,1,1,SUBNET>;
 template <typename SUBNET> using downsampler  = relu<bn_con<con5d<32, relu<bn_con<con5d<32, relu<bn_con<con5d<16,SUBNET>>>>>>>>>;
 template <typename SUBNET> using rcon5  = relu<bn_con<con5<55,SUBNET>>>;
-using net_type = loss_mmod<con<1,9,9,1,1,rcon5<rcon5<rcon5<downsampler<input_rgb_image_pyramid<pyramid_down<6>>>>>>>>;
+using net_type = loss_mmod<con<1,9,9,1,1,rcon5<rcon5<rcon5<downsampler<input_rgb_image>>>>>>;
 
 
 // ----------------------------------------------------------------------------------------
@@ -238,7 +238,7 @@ int main(int argc, char** argv) try
     // won't even be visited by the sliding window.  So you need to set the window size to
     // be big enough relative to the stride of your network.  In our case, the windows are
     // at least 30 pixels in length, so being moved by 8 pixel steps is fine. 
-    mmod_options options(boxes_train, 70, 30);
+    mmod_options options(use_image_pyramid::no, boxes_train);
 
 
     // This setting is very important and dataset specific.  The vehicle detection dataset
