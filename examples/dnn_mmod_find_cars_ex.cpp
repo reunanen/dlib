@@ -39,7 +39,7 @@ template <long num_filters, typename SUBNET> using con5d = con<num_filters,5,5,2
 template <long num_filters, typename SUBNET> using con5  = con<num_filters,5,5,1,1,SUBNET>;
 template <typename SUBNET> using downsampler  = relu<affine<con5d<32, relu<affine<con5d<32, relu<affine<con5d<16,SUBNET>>>>>>>>>;
 template <typename SUBNET> using rcon5  = relu<affine<con5<55,SUBNET>>>;
-using net_type = loss_mmod<con<1,9,9,1,1,rcon5<rcon5<rcon5<downsampler<input_rgb_image_pyramid<pyramid_down<6>>>>>>>>;
+using net_type = loss_mmod<con<1,9,9,1,1,rcon5<rcon5<rcon5<downsampler<input_rgb_image>>>>>>;
 
 // ----------------------------------------------------------------------------------------
 
@@ -101,19 +101,6 @@ int main() try
 
 
 
-    // Create a tiled pyramid image and display it on the screen. 
-    std::vector<rectangle> rects;
-    matrix<rgb_pixel> tiled_img;
-    // Get the type of pyramid the CNN used
-    using pyramid_type = std::remove_reference<decltype(input_layer(net))>::type::pyramid_type;
-    // And tell create_tiled_pyramid to create the pyramid using that pyramid type.
-    create_tiled_pyramid<pyramid_type>(img, tiled_img, rects, 
-                                       input_layer(net).get_pyramid_padding(), 
-                                       input_layer(net).get_pyramid_outer_padding());
-    image_window winpyr(tiled_img, "Tiled pyramid");
-
-
-
     // This CNN detector represents a sliding window detector with 3 sliding windows.  Each
     // of the 3 windows has a different aspect ratio, allowing it to find vehicles which
     // are either tall and skinny, squarish, or short and wide.  The aspect ratio of a
@@ -137,80 +124,6 @@ int main() try
     // Display the network's output as a color image.   
     image_window win_output(jet(network_output, upper, lower), "Output tensor from the network");
 
-
-    // Also, overlay network_output on top of the tiled image pyramid and display it.
-    for (long r = 0; r < tiled_img.nr(); ++r)
-    {
-        for (long c = 0; c < tiled_img.nc(); ++c)
-        {
-            dpoint tmp(c,r);
-            tmp = input_tensor_to_output_tensor(net, tmp);
-            tmp = point(network_output_scale*tmp);
-            if (get_rect(network_output).contains(tmp))
-            {
-                float val = network_output(tmp.y(),tmp.x());
-                // alpha blend the network output pixel with the RGB image to make our
-                // overlay.
-                rgb_alpha_pixel p;
-                assign_pixel(p , colormap_jet(val,lower,upper));
-                p.alpha = 120;
-                assign_pixel(tiled_img(r,c), p);
-            }
-        }
-    }
-    // If you look at this image you can see that the vehicles have bright red blobs on
-    // them.  That's the CNN saying "there is a car here!".  You will also notice there is
-    // a certain scale at which it finds cars.  They have to be not too big or too small,
-    // which is why we have an image pyramid.  The pyramid allows us to find cars of all
-    // scales.
-    image_window win_pyr_overlay(tiled_img, "Detection scores on image pyramid");
-
-
-
-
-    // Finally, we can collapse the pyramid back into the original image.  The CNN doesn't
-    // actually do this step, since it's enough to threshold the tiled pyramid image to get
-    // the detections.  However, it makes a nice visualization and clearly indicates that
-    // the detector is firing for all the cars.
-    matrix<float> collapsed(img.nr(), img.nc());
-    resizable_tensor input_tensor;
-    input_layer(net).to_tensor(&img, &img+1, input_tensor);
-    for (long r = 0; r < collapsed.nr(); ++r)
-    {
-        for (long c = 0; c < collapsed.nc(); ++c)
-        {
-            // Loop over a bunch of scale values and look up what part of network_output
-            // corresponds to the point(c,r) in the original image, then take the max
-            // detection score over all the scales and save it at pixel point(c,r).
-            float max_score = -1e30;
-            for (double scale = 1; scale > 0.2; scale *= 5.0/6.0)
-            {
-                // Map from input image coordinates to tiled pyramid coordinates.
-                dpoint tmp = center(input_layer(net).image_space_to_tensor_space(input_tensor,scale, drectangle(dpoint(c,r))));
-                // Now map from pyramid coordinates to network_output coordinates.
-                tmp = point(network_output_scale*input_tensor_to_output_tensor(net, tmp));
-
-                if (get_rect(network_output).contains(tmp))
-                {
-                    float val = network_output(tmp.y(),tmp.x());
-                    if (val > max_score)
-                        max_score = val;
-                }
-            }
-
-            collapsed(r,c) = max_score;
-
-            // Also blend the scores into the original input image so we can view it as
-            // an overlay on the cars.
-            rgb_alpha_pixel p;
-            assign_pixel(p , colormap_jet(max_score,lower,upper));
-            p.alpha = 120;
-            assign_pixel(img(r,c), p);
-        }
-    }
-
-    image_window win_collapsed(jet(collapsed, upper, lower), "Collapsed output tensor from the network");
-    image_window win_img_and_sal(img, "Collapsed detection scores on raw image");
 
 
     cout << "Hit enter to end program" << endl;
