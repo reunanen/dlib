@@ -215,6 +215,8 @@ namespace dlib
         std::vector<mmod_rect> rects;
         for (unsigned long i = 0; i < data.images.size(); ++i)
         {
+            std::cout << "\rReading image " << (i + 1) << " / " << data.images.size();
+
             double min_rect_size = std::numeric_limits<double>::infinity();
             rects.clear();
             for (unsigned long j = 0; j < data.images[i].boxes.size(); ++j)
@@ -263,6 +265,8 @@ namespace dlib
                 object_locations.push_back(std::move(rects));
             }
         }
+
+        std::cout << std::endl;
     }
 
 // ----------------------------------------------------------------------------------------
