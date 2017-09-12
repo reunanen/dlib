@@ -102,6 +102,25 @@ int main(int argc, char** argv) try
     load_image_dataset(images_train, boxes_train, data_directory+"/training.xml");
     load_image_dataset(images_test,  boxes_test,  data_directory+"/testing.xml");
 
+    const auto force_rects_to_be_inside_images =
+        [](const std::vector<matrix<rgb_pixel>>& images, std::vector<std::vector<mmod_rect>>& boxes)
+        {
+            DLIB_CASSERT(images.size() == boxes.size());
+            for (size_t i = 0, end = images.size(); i < end; ++i) {
+                const long image_width = images[i].nc();
+                const long image_height = images[i].nr();
+                for (auto& box : boxes[i]) {
+                    box.rect.set_left(std::max(0l, box.rect.left()));
+                    box.rect.set_top(std::max(0l, box.rect.top()));
+                    box.rect.set_right(std::min(image_width - 1, box.rect.right()));
+                    box.rect.set_bottom(std::min(image_height - 1, box.rect.bottom()));
+                }
+            }
+        };
+    
+    force_rects_to_be_inside_images(images_train, boxes_train);
+    force_rects_to_be_inside_images(images_test,  boxes_test);
+
     // When I was creating the dlib vehicle detection dataset I had to label all the cars
     // in each image.  MMOD requires all cars to be labeled, since any unlabeled part of an
     // image is implicitly assumed to be not a car, and the algorithm will use it as
@@ -307,24 +326,40 @@ int main(int argc, char** argv) try
 
     std::vector<matrix<rgb_pixel>> mini_batch_samples;
     std::vector<std::vector<mmod_rect>> mini_batch_labels; 
-    random_cropper cropper;
-    cropper.set_seed(1);
-    cropper.set_chip_dims(350, 350);
-    cropper.set_min_object_size(0.20); 
-    cropper.set_max_rotation_degrees(2);
     dlib::rand rnd;
 
     // Log the training parameters to the console
-    cout << trainer << cropper << endl;
+    cout << trainer << endl;
 
     int cnt = 1;
     // Run the trainer until the learning rate gets small.  
     while(trainer.get_learning_rate() >= 1e-4)
     {
+        const auto generate_mini_batch = [&mini_batch_samples, &mini_batch_labels, &rnd]
+        (const std::vector<matrix<rgb_pixel>>& images, const std::vector<std::vector<mmod_rect>>& boxes)
+        {
+            mini_batch_samples.clear();
+            mini_batch_labels.clear();
+
+            constexpr int mini_batch_size = 3;
+
+            int i = 0;
+            while (i < mini_batch_size) {
+                int index = rnd.get_random_32bit_number() % images.size();
+                // Make sure each mini-batch consists of equally sized images.
+                if (mini_batch_samples.empty() || images[index].size() == mini_batch_samples[0].size()) {
+                    mini_batch_samples.push_back(images[index]);
+                    mini_batch_labels.push_back(boxes[index]);
+                    ++i;
+                }
+            }
+        };
+
         // Every 30 mini-batches we do a testing mini-batch.  
         if (cnt%30 != 0 || images_test.size() == 0)
         {
-            cropper(87, images_train, boxes_train, mini_batch_samples, mini_batch_labels);
+            generate_mini_batch(images_train, boxes_train);
+
             // We can also randomly jitter the colors and that often helps a detector
             // generalize better to new images.
             for (auto&& img : mini_batch_samples)
@@ -345,7 +380,8 @@ int main(int argc, char** argv) try
         }
         else
         {
-            cropper(87, images_test, boxes_test, mini_batch_samples, mini_batch_labels);
+            generate_mini_batch(images_test, boxes_test);
+
             // We can also randomly jitter the colors and that often helps a detector
             // generalize better to new images.
             for (auto&& img : mini_batch_samples)
@@ -368,7 +404,7 @@ int main(int argc, char** argv) try
     // invariably be running multiple rounds of training and should be logging the output
     // to a file.  This print statement will include many of the training parameters in
     // your log.
-    cout << trainer << cropper << endl;
+    cout << trainer << endl;
 
     cout << "\nsync_filename: " << sync_filename << endl;
     cout << "num training images: "<< images_train.size() << endl;
