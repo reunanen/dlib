@@ -24,12 +24,17 @@ namespace dlib
             return roc_point.true_positive_rate - roc_point.false_positive_rate;
         };
 
-        const auto optimal_point = std::max_element(roc_curve.begin(), roc_curve.end(),
+        const auto point1 = std::max_element(roc_curve.begin(), roc_curve.end(),
             [youden_index](const roc_point& lhs, const roc_point& rhs) {
                 return youden_index(lhs) < youden_index(rhs);
             });
 
-        return optimal_point->detection_threshold;
+        const auto point2 = point1 + 1;
+        if (point2 == roc_curve.end()) {
+            return point1->detection_threshold;
+        }
+        DLIB_CASSERT(point1->detection_threshold >= point2->detection_threshold);
+        return (point1->detection_threshold + point2->detection_threshold) / 2.0;
     }
 
     double find_optimal_threshold(
