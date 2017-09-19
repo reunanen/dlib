@@ -10,6 +10,7 @@
 #include <random>
 #include <numeric>
 #include "../dnn.h"
+#include "../dnn/find_optimal_threshold.h"
 
 #include "tester.h"
 
@@ -2875,6 +2876,91 @@ namespace
 
 // ----------------------------------------------------------------------------------------
 
+    void test_find_optimal_threshold()
+    {
+        print_spinner();
+
+        { // Good detection
+            const std::vector<std::vector<mmod_rect>> truth1 = { { mmod_rect(rectangle(10, 10, 20, 20)) } };
+            const std::vector<std::vector<mmod_rect>> detections1 = { { mmod_rect(rectangle(10, 10, 20, 20), 1.0) } };
+            const double threshold1 = find_optimal_threshold(truth1, detections1);
+            DLIB_TEST_MSG(threshold1 < 1.0, "threshold1 must be less than 1.0");
+
+            const std::vector<std::vector<mmod_rect>> truth2 = { { mmod_rect(rectangle(10, 10, 20, 20)) } };
+            const std::vector<std::vector<mmod_rect>> detections2 = { { mmod_rect(rectangle(10, 10, 20, 20), -1.0) } };
+            const double threshold2 = find_optimal_threshold(truth2, detections2);
+            DLIB_TEST_MSG(threshold2 < -1.0, "threshold2 must be less than -1.0");
+        }
+
+        { // Bad detection
+            const std::vector<std::vector<mmod_rect>> truth3 = { { mmod_rect(rectangle(10, 10, 20, 20)) } };
+            const std::vector<std::vector<mmod_rect>> detections3 = { { mmod_rect(rectangle(30, 30, 40, 40), 1.0) } };
+            const double threshold3 = find_optimal_threshold(truth3, detections3);
+            DLIB_TEST_MSG(threshold3 > 1.0, "threshold3 must be greater than 1.0");
+
+            const std::vector<std::vector<mmod_rect>> truth4 = { { mmod_rect(rectangle(10, 10, 20, 20)) } };
+            const std::vector<std::vector<mmod_rect>> detections4 = { { mmod_rect(rectangle(30, 30, 40, 40), -1.0) } };
+            const double threshold4 = find_optimal_threshold(truth4, detections4);
+            DLIB_TEST_MSG(threshold4 > -1.0, "threshold4 must be greater than -1.0");
+        }
+
+        { // Intermediate detection
+            const std::vector<std::vector<mmod_rect>> truth5 = { {
+                    mmod_rect(rectangle(10, 10, 20, 20)),
+                } };
+            const std::vector<std::vector<mmod_rect>> detections5 = { {
+                    mmod_rect(rectangle(10, 10, 20, 20), 1.0),
+                    mmod_rect(rectangle(30, 30, 40, 40), 0.9)
+                } };
+            const double threshold5 = find_optimal_threshold(truth5, detections5);
+            DLIB_TEST_MSG(threshold5 > 0.9, "threshold5 must be greater than 0.9");
+            DLIB_TEST_MSG(threshold5 < 1.0, "threshold5 must be less than 1.0");
+        }
+
+        { // Ignored rects in the input
+            std::vector<std::vector<mmod_rect>> truth6 = { {
+                    mmod_rect(rectangle(10, 10, 20, 20)),
+                    mmod_rect(rectangle(30, 30, 40, 40)),
+                    mmod_rect(rectangle(50, 50, 60, 60)), // to be ignored
+                    mmod_rect(rectangle(70, 70, 80, 80)), // to be ignored
+                    mmod_rect(rectangle(90, 90, 100, 100)),
+                } };
+            truth6[0][2].ignore = true;
+            truth6[0][3].ignore = true;
+            const std::vector<std::vector<mmod_rect>> detections6 = { {
+                    mmod_rect(rectangle(10, 10, 20, 20), 1.0), // hit
+                    mmod_rect(rectangle(30, 30, 40, 40), 0.9), // hit
+                    mmod_rect(rectangle(50, 50, 60, 60), 0.8), // ignored
+                    mmod_rect(rectangle(70, 70, 80, 80), 0.7), // ignored
+                    mmod_rect(rectangle(90, 90, 100, 100), 0.6), // hit
+                    mmod_rect(rectangle(110, 120, 130, 130), 0.5), // false positive
+                } };
+            const double threshold6 = find_optimal_threshold(truth6, detections6);
+            DLIB_TEST_MSG(threshold6 > 0.5, "threshold6 must be greater than 0.5");
+            DLIB_TEST_MSG(threshold6 < 0.6, "threshold6 must be less than 0.6");
+
+            // Corresponding test without the ignored rects
+            const std::vector<std::vector<mmod_rect>> truth7 = { {
+                    mmod_rect(rectangle(10, 10, 20, 20)),
+                    mmod_rect(rectangle(30, 30, 40, 40)),
+                    mmod_rect(rectangle(90, 90, 100, 100)),
+                } };
+            const std::vector<std::vector<mmod_rect>> detections7 = { {
+                    mmod_rect(rectangle(10, 10, 20, 20), 1.0), // hit
+                    mmod_rect(rectangle(30, 30, 40, 40), 0.9), // hit
+                    mmod_rect(rectangle(50, 50, 60, 60), 0.8), // false positive
+                    mmod_rect(rectangle(70, 70, 80, 80), 0.7), // false positive
+                    mmod_rect(rectangle(90, 90, 100, 100), 0.6), // hit
+                    mmod_rect(rectangle(110, 120, 130, 130), 0.5), // false positive
+                } };
+            const double threshold7 = find_optimal_threshold(truth7, detections7);
+            DLIB_TEST_MSG(threshold7 > 0.8, "threshold7 must be greater than 0.8");
+            DLIB_TEST_MSG(threshold7 < 0.9, "threshold7 must be less than 0.9");
+        }
+    }
+
+// ----------------------------------------------------------------------------------------
+
     class dnn_tester : public tester
     {
     public:
@@ -2957,6 +3043,7 @@ namespace
             test_loss_multiclass_per_pixel_with_noise_and_pixels_to_ignore();
             test_loss_multiclass_per_pixel_weighted();
             test_serialization();
+            test_find_optimal_threshold();
         }
 
         void perform_test()
