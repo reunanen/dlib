@@ -57,6 +57,7 @@ namespace dlib
             for (const mmod_rect& detection : detections[i])
             {
                 bool found_corresponding_truth = false;
+                bool found_corresponding_ignore = false;
                 for (const mmod_rect& candidate_truth : truth[i])
                 {
                     const double truth_match_iou = box_intersection_over_union(detection.rect, candidate_truth.rect);
@@ -66,15 +67,22 @@ namespace dlib
                     };
                     if (accept_with_correct_label() || truth_match_iou >= truth_match_iou_threshold_for_incorrect_label)
                     {
-                        found_corresponding_truth = true;
-                        break;
+                        if (candidate_truth.ignore)
+                        {
+                            found_corresponding_ignore = true;
+                        }
+                        else
+                        {
+                            found_corresponding_truth = true;
+                            break;
+                        }
                     }
                 }
                 if (found_corresponding_truth)
                 {
                     true_detections.push_back(detection.detection_confidence);
                 }
-                else
+                else if (!found_corresponding_ignore)
                 {
                     false_detections.push_back(detection.detection_confidence);
                 }
@@ -84,7 +92,10 @@ namespace dlib
             }
         }
 
-        DLIB_CASSERT(!(true_detections.empty() && false_detections.empty()));
+        if (true_detections.empty() && false_detections.empty())
+        {            
+            return 0.0; // TODO: what should we do here?
+        }
 
         constexpr double epsilon = 1e-6;
         if (true_detections.empty())
