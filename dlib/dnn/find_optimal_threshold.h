@@ -52,13 +52,21 @@ namespace dlib
         double minimum_detection_confidence = std::numeric_limits<double>::max();
         double maximum_detection_confidence = -std::numeric_limits<double>::max();
 
-        for (size_t i = 0, end = truth.size(); i < end; ++i)
+        for (size_t i = 0, sample_count = truth.size(); i < sample_count; ++i)
         {
-            for (const mmod_rect& detection : detections[i])
+            const std::vector<mmod_rect>& truth_i = truth[i];
+            const std::vector<mmod_rect>& detections_i = detections[i];
+
+            const int detections_i_size = static_cast<int>(detections_i.size());
+
+#pragma omp parallel for
+            for (int j = 0; j < detections_i_size; ++j)
             {
+                const mmod_rect& detection = detections_i[j];
+
                 bool found_corresponding_truth = false;
                 bool found_corresponding_ignore = false;
-                for (const mmod_rect& candidate_truth : truth[i])
+                for (const mmod_rect& candidate_truth : truth_i)
                 {
                     const double truth_match_iou = box_intersection_over_union(detection.rect, candidate_truth.rect);
                     const auto accept_with_correct_label = [&]()
@@ -78,17 +86,21 @@ namespace dlib
                         }
                     }
                 }
-                if (found_corresponding_truth)
-                {
-                    true_detections.push_back(detection.detection_confidence);
-                }
-                else if (!found_corresponding_ignore)
-                {
-                    false_detections.push_back(detection.detection_confidence);
-                }
 
-                minimum_detection_confidence = std::min(minimum_detection_confidence, detection.detection_confidence);
-                maximum_detection_confidence = std::max(maximum_detection_confidence, detection.detection_confidence);
+#pragma omp critical
+                {
+                    if (found_corresponding_truth)
+                    {
+                        true_detections.push_back(detection.detection_confidence);
+                    }
+                    else if (!found_corresponding_ignore)
+                    {
+                        false_detections.push_back(detection.detection_confidence);
+                    }
+
+                    minimum_detection_confidence = std::min(minimum_detection_confidence, detection.detection_confidence);
+                    maximum_detection_confidence = std::max(maximum_detection_confidence, detection.detection_confidence);
+                }
             }
         }
 
