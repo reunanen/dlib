@@ -416,6 +416,8 @@ namespace dlib
         test_box_overlap overlaps_nms = test_box_overlap(0.4);
         test_box_overlap overlaps_ignore;
 
+        bool warn_about_truth_rects_ignored_due_to_nms = true;
+
         use_image_pyramid assume_image_pyramid = use_image_pyramid::yes;
 
         mmod_options (
@@ -898,11 +900,15 @@ namespace dlib
                             // added for it in the code above.
                             loss -= 1-out_data[idx];
                             g[idx] = 0;
-                            std::cout << "Warning, ignoring object.  We encountered a truth rectangle located at " << (*truth)[i].rect;
-                            std::cout << " that is suppressed by non-max-suppression ";
-                            std::cout << "because it is overlapped by another truth rectangle located at " << best_matching_truth_box 
-                                      << " (IoU:"<< box_intersection_over_union(best_matching_truth_box,(*truth)[i]) <<", Percent covered:" 
-                                      << box_percent_covered(best_matching_truth_box,(*truth)[i]) << ")." << std::endl;
+
+                            if (options.warn_about_truth_rects_ignored_due_to_nms)
+                            {
+                                std::cout << "Warning, ignoring object.  We encountered a truth rectangle located at " << (*truth)[i].rect;
+                                std::cout << " that is suppressed by non-max-suppression ";
+                                std::cout << "because it is overlapped by another truth rectangle located at " << best_matching_truth_box 
+                                          << " (IoU:"<< box_intersection_over_union(best_matching_truth_box,(*truth)[i]) <<", Percent covered:" 
+                                          << box_percent_covered(best_matching_truth_box,(*truth)[i]) << ")." << std::endl;
+                            }
                         }
                     }
                 }

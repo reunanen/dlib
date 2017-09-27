@@ -427,6 +427,10 @@ namespace dlib
         // don't care if the detector gets them or not.  
         test_box_overlap overlaps_ignore;
 
+        // Print warnings to stdout about truth rects that are suppressed by
+        // non-max-suppression because they are overlapped by other truth rectangles?
+        bool warn_about_truth_rects_ignored_due_to_nms = true;
+
         // Usually the detector would be scale-invariant, and used with an image pyramid.
         // However, sometimes scale-invariance may not be desired.
         use_image_pyramid assume_image_pyramid = use_image_pyramid::yes;
