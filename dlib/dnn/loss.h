@@ -379,26 +379,30 @@ namespace dlib
             unsigned long width = 0;
             unsigned long height = 0;
             std::string label;
+            double gain_factor = 1.0;
 
             friend inline void serialize(const detector_window_details& item, std::ostream& out)
             {
-                int version = 2;
+                int version = 3;
                 serialize(version, out);
                 serialize(item.width, out);
                 serialize(item.height, out);
                 serialize(item.label, out);
+                serialize(item.gain_factor, out);
             }
 
             friend inline void deserialize(detector_window_details& item, std::istream& in)
             {
                 int version = 0;
                 deserialize(version, in);
-                if (version != 1 && version != 2)
+                if (version != 1 && version != 2 && version != 3)
                     throw serialization_error("Unexpected version found while deserializing dlib::mmod_options::detector_window_details");
                 deserialize(item.width, in);
                 deserialize(item.height, in);
-                if (version == 2)
+                if (version >= 2)
                     deserialize(item.label, in);
+                if (version >= 3)
+                    deserialize(item.gain_factor, in);
             }
 
         };
@@ -736,7 +740,8 @@ namespace dlib
             const tensor& input_tensor,
             const SUB_TYPE& sub,
             label_iterator iter,
-            double adjust_threshold = 0
+            double adjust_threshold = 0,
+            std::vector<double> gain_factors = std::vector<double>()
         ) const
         {
             const tensor& output_tensor = sub.get_output();
@@ -748,7 +753,7 @@ namespace dlib
             output_label_type final_dets;
             for (long i = 0; i < output_tensor.num_samples(); ++i)
             {
-                tensor_to_dets(input_tensor, output_tensor, i, dets_accum, adjust_threshold, sub);
+                tensor_to_dets(input_tensor, output_tensor, i, dets_accum, adjust_threshold, sub, gain_factors);
 
                 // Do non-max suppression
                 final_dets.clear();
@@ -801,7 +806,7 @@ namespace dlib
             std::vector<intermediate_detection> dets;
             for (long i = 0; i < output_tensor.num_samples(); ++i)
             {
-                tensor_to_dets(input_tensor, output_tensor, i, dets, -options.loss_per_false_alarm, sub);
+                tensor_to_dets(input_tensor, output_tensor, i, dets, -options.loss_per_false_alarm, sub, std::vector<double>());
 
                 const unsigned long max_num_dets = 50 + truth->size()*5;
 
@@ -1020,21 +1025,26 @@ namespace dlib
             long i,
             std::vector<intermediate_detection>& dets_accum,
             double adjust_threshold,
-            const net_type& net 
+            const net_type& net,
+            std::vector<double> gain_factors
         ) const
         {
             DLIB_CASSERT(net.sample_expansion_factor() == 1,net.sample_expansion_factor());
             DLIB_CASSERT(output_tensor.k() == (long)options.detector_windows.size());
+            DLIB_CASSERT(gain_factors.empty() || gain_factors.size() == options.detector_windows.size());
             const float* out_data = output_tensor.host() + output_tensor.k()*output_tensor.nr()*output_tensor.nc()*i;
             // scan the final layer and output the positive scoring locations
             dets_accum.clear();
             for (long k = 0; k < output_tensor.k(); ++k)
             {
+                const double gain_factor = gain_factors.empty() ? options.detector_windows[k].gain_factor : gain_factors[k];
+                DLIB_CASSERT(gain_factor > 0.0);
+                const double gain_offset = std::log(gain_factor);
                 for (long r = 0; r < output_tensor.nr(); ++r)
                 {
                     for (long c = 0; c < output_tensor.nc(); ++c)
                     {
-                        double score = out_data[(k*output_tensor.nr() + r)*output_tensor.nc() + c];
+                        double score = out_data[(k*output_tensor.nr() + r)*output_tensor.nc() + c] + gain_offset;
                         if (score > adjust_threshold)
                         {
                             dpoint p = output_tensor_to_input_tensor(net, point(c,r));
