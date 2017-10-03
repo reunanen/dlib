@@ -125,6 +125,8 @@ if (NOT USING_OLD_VISUAL_STUDIO_COMPILER)
    add_example(dnn_mmod_train_find_cars_ex)
    add_gui_example(dnn_semantic_segmentation_ex)
    add_example(dnn_semantic_segmentation_train_ex)
+   add_gui_example(dnn_semantic_segmentation_anno_ex)
+   add_example(dnn_semantic_segmentation_anno_train_ex)
    if (NOT MSVC)
       # Don't try to compile this program using Visual Studio since it causes the
       # compiler to run out of RAM and to crash.  Maybe someday Visual Studio
