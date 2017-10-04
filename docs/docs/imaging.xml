@@ -51,7 +51,9 @@
             <h2>Object Detection</h2>
             If you want to create object detectors then try the 
             <a href="#scan_fhog_pyramid">scan_fhog_pyramid</a> tool first.  It is quite
-            easy to use and train and will, in many cases, give excellent results.
+            easy to use and train and will, in many cases, give excellent results.  If that
+            doesn't give good results then try the more powerful 
+            <a href="ml.html#loss_mmod_">convolutional neural network</a> based detector.
          </p>
 
    </body>
@@ -456,7 +458,7 @@
                 you take an image of a human face as input and are expected to identify the
                 locations of important facial landmarks such as the corners of the mouth
                 and eyes, tip of the nose, and so forth.  For example, here is the output
-                of dlib's <a href="http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2">68-face-landmark shape_predictor</a> on an image from the HELEN dataset: <br/><br/>
+                of dlib's <a href="face_landmark_detection_ex.cpp.html">68-face-landmark shape_predictor</a> on an image from the HELEN dataset: <br/><br/>
 
                 <img src='face_landmarking_example.png'/>
                 <br/><br/>
@@ -1713,6 +1715,9 @@
               sub-windows, storing each into its own image.  It also allows the user to
               specify the scale and rotation for the chip.
          </description>
+         <examples>
+            <example>face_landmark_detection_ex.cpp.html</example>
+         </examples>
       </component>
 
    <!-- ************************************************************************* -->
@@ -2267,6 +2272,14 @@
                    <a href="ml.html#structural_object_detection_trainer">structural_object_detection_trainer</a>
                    to learn the parameters of an object_detector.  See the example programs for an introduction.
                 </p>
+
+               <p>
+                  Also note that dlib contains more powerful <a
+                  href="ml.html#loss_mmod_">CNN based object detection
+                  tooling</a>, which will usually run slower but produce much
+                  more general and accurate detectors.
+               </p>
+   
          </description>
          <examples>
             <example>fhog_object_detector_ex.cpp.html</example>

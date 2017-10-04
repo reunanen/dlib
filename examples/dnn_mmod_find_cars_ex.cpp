@@ -8,9 +8,9 @@
     
     The model used by this example was trained by the dnn_mmod_train_find_cars_ex.cpp 
     example.  Also, since this is a CNN, you really should use a GPU to get the
-    best execution speed.  For instance, when run on a NVIDIA 1080ti, this
-    detector runs at 39fps when run on the provided test image.  That's about an 
-    order of magnitude faster than when run on the CPU.
+    best execution speed.  For instance, when run on a NVIDIA 1080ti, this detector 
+    runs at 98fps when run on the provided test image.  That's more than an order 
+    of magnitude faster than when run on the CPU.
 
     Users who are just learning about dlib's deep learning API should read
     the dnn_introduction_ex.cpp and dnn_introduction2_ex.cpp examples to learn
@@ -49,8 +49,8 @@ int main() try
     shape_predictor sp;
     // You can get this file from http://dlib.net/files/mmod_rear_end_vehicle_detector.dat.bz2
     // This network was produced by the dnn_mmod_train_find_cars_ex.cpp example program.
-    // As you can see, it also includes a shape_predictor.  To see a generic example of how
-    // to train those refer to train_shape_predictor_ex.cpp.
+    // As you can see, the file also includes a separately trained shape_predictor.  To see
+    // a generic example of how to train those refer to train_shape_predictor_ex.cpp.
     deserialize("mmod_rear_end_vehicle_detector.dat") >> net >> sp;
 
     matrix<rgb_pixel> img;
@@ -224,7 +224,7 @@ catch(image_load_error& e)
 catch(serialization_error& e)
 {
     cout << e.what() << endl;
-    cout << "The model file can be obtained from: http://dlib.net/files/mmod_rear_end_vehicle_detector.dat.bz2   Don't forget to unzip the file." << endl;
+    cout << "The correct model file can be obtained from: http://dlib.net/files/mmod_rear_end_vehicle_detector.dat.bz2" << endl;
 }
 catch(std::exception& e)
 {
