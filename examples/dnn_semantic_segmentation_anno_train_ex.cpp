@@ -43,6 +43,14 @@ rectangle make_random_cropping_rect(
     return move_rect(rect, offset);
 }
 
+rectangle make_cropping_rect_around_defect(
+    int dim,
+    point center
+)
+{
+    return centered_rect(center, dim, dim);
+}
+
 // ----------------------------------------------------------------------------------------
 
 void randomly_crop_image (
@@ -54,7 +62,31 @@ void randomly_crop_image (
 {
     const int dim = 227;
 
-    const auto rect = make_random_cropping_rect(dim, input_image, rnd);
+    const bool crop_around_defect = rnd.get_random_32bit_number() % 2 == 0;
+    
+    rectangle rect;
+
+    if (crop_around_defect) {
+        std::vector<point> nonzero;
+        for (long r = 0, nr = label_image.nr(); r < nr; ++r) {
+            for (long c = 0, nc = label_image.nc(); c < nc; ++c) {
+                const auto label = label_image(r, c);
+                if (label > 0 && label != loss_multiclass_log_per_pixel_::label_to_ignore) {
+                    nonzero.push_back(point(c, r));
+                }
+            }
+        }
+        if (!nonzero.empty()) {
+            const point& center = nonzero[rnd.get_random_64bit_number() % nonzero.size()];
+            rect = make_cropping_rect_around_defect(dim, center);
+        }
+        else {
+            rect = make_random_cropping_rect(dim, input_image, rnd);
+        }
+    }
+    else {
+        rect = make_random_cropping_rect(dim, input_image, rnd);
+    }
 
     const chip_details chip_details(rect, chip_dims(dim, dim));
 
