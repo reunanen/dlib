@@ -805,6 +805,10 @@ namespace dlib
 
             const float* out_data = output_tensor.host();
 
+            const auto raw_output_to_loss_value = [](const float& out) {
+                return std::max(0.f, std::min(1.f, out));
+            };
+
             std::vector<size_t> truth_idxs;  truth_idxs.reserve(truth->size());
             std::vector<intermediate_detection> dets;
             for (long i = 0; i < output_tensor.num_samples(); ++i)
@@ -830,7 +834,7 @@ namespace dlib
                             continue;
                         }
                         const size_t idx = (k*output_tensor.nr() + p.y())*output_tensor.nc() + p.x();
-                        loss -= out_data[idx];
+                        loss -= raw_output_to_loss_value(out_data[idx]);
                         // compute gradient
                         g[idx] = -scale;
                         truth_idxs.push_back(idx);
@@ -899,7 +903,7 @@ namespace dlib
                             // We are ignoring this box so we shouldn't have counted it in the
                             // loss in the first place.  So we subtract out the loss values we
                             // added for it in the code above.
-                            loss -= 1-out_data[idx];
+                            loss -= raw_output_to_loss_value(1-out_data[idx]);
                             g[idx] = 0;
 
                             if (options.warn_about_truth_rects_ignored_due_to_nms)
@@ -959,7 +963,7 @@ namespace dlib
 
                 for (auto&& x : final_dets)
                 {
-                    loss += out_data[x.tensor_offset];
+                    loss += raw_output_to_loss_value(out_data[x.tensor_offset]);
                     g[x.tensor_offset] += scale;
                 }
 
