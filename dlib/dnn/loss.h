@@ -1169,6 +1169,10 @@ namespace dlib
 
             const float* out_data = output_tensor.host();
 
+            const auto get_limited_out_data = [&out_data, this](size_t idx) {
+                return std::min(static_cast<double>(out_data[idx]), options.loss_per_missed_target);
+            };
+
             std::vector<intermediate_detection> dets;
             for (long i = 0; i < output_tensor.num_samples(); ++i)
             {
@@ -1252,9 +1256,18 @@ namespace dlib
                             continue;
                         }
                         const size_t idx = (k*output_tensor.nr() + p.y())*output_tensor.nc() + p.x();
-                        loss -= out_data[idx];
-                        // compute gradient
-                        g[idx] = -scale;
+                        const double limited_out_data = get_limited_out_data(idx);
+                        loss -= limited_out_data;
+
+                        if (limited_out_data < options.loss_per_missed_target)
+                        {
+                            // compute gradient
+                            g[idx] = -scale;
+                        }
+                        else
+                        {
+                            // We are already very confident about it, so let's not touch the gradient.
+                        }
                         truth_idxs.push_back(idx);
                     }
                     else
@@ -1321,7 +1334,7 @@ namespace dlib
                             // We are ignoring this box so we shouldn't have counted it in the
                             // loss in the first place.  So we subtract out the loss values we
                             // added for it in the code above.
-                            loss -= options.loss_per_missed_target-out_data[idx];
+                            loss -= options.loss_per_missed_target-get_limited_out_data(idx);
                             g[idx] = 0;
                             std::cout << "Warning, ignoring object.  We encountered a truth rectangle located at " << (*truth)[i].rect;
                             std::cout << " that is suppressed by non-max-suppression ";
