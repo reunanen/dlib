@@ -36,6 +36,7 @@ rectangle make_random_cropping_rect(
     dlib::rand& rnd
 )
 {
+    DLIB_CASSERT(img.nc() > dim && img.nr() > dim);
     rectangle rect(dim, dim);
     // randomly shift the box around
     point offset(rnd.get_random_32bit_number()%(img.nc()-rect.width()),
@@ -45,10 +46,25 @@ rectangle make_random_cropping_rect(
 
 rectangle make_cropping_rect_around_defect(
     int dim,
-    point center
+    const matrix<rgb_pixel>& img,
+    point defect_point,
+    dlib::rand& rnd
 )
 {
-    return centered_rect(center, dim, dim);
+    rectangle rect(dim, dim);
+
+    long min_x = std::max(defect_point.x() - dim / 2, 0L);
+    long max_x = std::min(min_x + dim, img.nc());
+    long min_y = std::max(defect_point.y() - dim / 2, 0L);
+    long max_y = std::min(min_y + dim, img.nr());
+
+    DLIB_CASSERT(max_x > min_x);
+    DLIB_CASSERT(max_y > min_y);
+
+    point offset(min_x + rnd.get_random_32bit_number() % (max_x - min_x),
+                 min_y + rnd.get_random_32bit_number() % (max_y - min_y));
+
+    return move_rect(rect, offset);
 }
 
 // ----------------------------------------------------------------------------------------
@@ -77,8 +93,8 @@ void randomly_crop_image (
             }
         }
         if (!nonzero.empty()) {
-            const point& center = nonzero[rnd.get_random_64bit_number() % nonzero.size()];
-            rect = make_cropping_rect_around_defect(dim, center);
+            const point& defect_point = nonzero[rnd.get_random_64bit_number() % nonzero.size()];
+            rect = make_cropping_rect_around_defect(dim, input_image, defect_point, rnd);
         }
         else {
             rect = make_random_cropping_rect(dim, input_image, rnd);
@@ -285,7 +301,7 @@ int main(int argc, char** argv) try
 
     for (size_t i = 0, end = full_image_futures.size(); i < end; ++i) {
         std::cout << "\rReading image " << (i + 1) << " of " << end << "...";
-        full_images.push_back(full_image_futures[i].get());
+        full_images[i] = full_image_futures[i].get();
     }
 
     cout << endl << "Now training..." << endl;
@@ -304,7 +320,8 @@ int main(int argc, char** argv) try
         training_sample temp;
         while(data.is_enabled())
         {
-            const training_sample& training_sample = full_images[rnd.get_random_32bit_number() % full_images.size()];
+            const size_t index = rnd.get_random_32bit_number() % full_images.size();
+            const training_sample& training_sample = full_images[index];
             randomly_crop_image(training_sample.first, training_sample.second, temp, rnd);
             data.enqueue(temp);
         }
