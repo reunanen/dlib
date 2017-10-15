@@ -1827,11 +1827,14 @@ namespace dlib
             size_t cnt = 0;
             const long max_r = data.nr() + padding_y-(filter_nr-1);
             const long max_c = data.nc() + padding_x-(filter_nc-1);
+            const long data_nr = data.nr();
+            const long data_nc = data.nc();
+            const long data_k = data.k();
             for (long r = -padding_y; r < max_r; r+=stride_y)
             {
                 for (long c = -padding_x; c < max_c; c+=stride_x)
                 {
-                    for (long k = 0; k < data.k(); ++k)
+                    for (long k = 0; k < data_k; ++k)
                     {
                         for (long y = 0; y < filter_nr; ++y)
                         {
@@ -1841,7 +1844,7 @@ namespace dlib
                                 long xx = c+x;
                                 long yy = r+y;
                                 if (boundary.contains(xx,yy))
-                                    *t = d[(k*data.nr() + yy)*data.nc() + xx];
+                                    *t = d[(k*data_nr + yy)*data_nc + xx];
                                 else
                                     *t = 0;
                                 ++t;
@@ -1874,11 +1877,14 @@ namespace dlib
             // now fill in the Toeplitz output matrix for the n-th sample in data.  
             const long max_r = data.nr() + padding_y-(filter_nr-1);
             const long max_c = data.nc() + padding_x-(filter_nc-1);
+            const long data_nr = data.nr();
+            const long data_nc = data.nc();
+            const long data_k = data.k();
             for (long r = -padding_y; r < max_r; r+=stride_y)
             {
                 for (long c = -padding_x; c < max_c; c+=stride_x)
                 {
-                    for (long k = 0; k < data.k(); ++k)
+                    for (long k = 0; k < data_k; ++k)
                     {
                         for (long y = 0; y < filter_nr; ++y)
                         {
@@ -1887,7 +1893,7 @@ namespace dlib
                                 long xx = c+x;
                                 long yy = r+y;
                                 if (boundary.contains(xx,yy))
-                                    d[(k*data.nr() + yy)*data.nc() + xx] += *t;
+                                    d[(k*data_nr + yy)*data_nc + xx] += *t;
                                 ++t;
                             }
                         }
