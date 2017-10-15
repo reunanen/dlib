@@ -141,10 +141,10 @@ int main(int argc, char** argv) try
                 }
                 const matrix<uint16_t>& index_label_tile = net(input_tile);
                 index_label_image_to_rgb_label_image(index_label_tile, rgb_label_tile);
-                const long offset_y = ((top + bottom) / 2 > center_row) ? top : top - input_tile.nr() + rgb_label_tile.nr();
-                const long offset_x = ((left + right) / 2 > center_col) ? left : left - input_tile.nc() + rgb_label_tile.nc();
+                const long offset_y = ((top + bottom) / 2 > center_row) ? top : top + input_tile.nr() - rgb_label_tile.nr();
+                const long offset_x = ((left + right) / 2 > center_col) ? left : left + input_tile.nc() - rgb_label_tile.nc();
                 for (long tile_y = 0; tile_y < rgb_label_tile.nr(); ++tile_y) {
-                    for (long tile_x = left; tile_x < rgb_label_tile.nc(); ++tile_x) {
+                    for (long tile_x = 0; tile_x < rgb_label_tile.nc(); ++tile_x) {
                         rgb_label_image(tile_y + offset_y, tile_x + offset_x) = rgb_label_tile(tile_y, tile_x);
                     }
                 }
@@ -153,6 +153,8 @@ int main(int argc, char** argv) try
 
         save_png(rgb_label_image, file.full_name() + "_result.png");
     }
+
+    std::cout << "\nAll " << files.size() << " images processed!" << std::endl;
 }
 catch(std::exception& e)
 {
