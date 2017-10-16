@@ -46,25 +46,10 @@ rectangle make_random_cropping_rect(
 
 rectangle make_cropping_rect_around_defect(
     int dim,
-    const matrix<rgb_pixel>& img,
-    point defect_point,
-    dlib::rand& rnd
+    point center
 )
 {
-    rectangle rect(dim, dim);
-
-    long min_x = std::max(defect_point.x() - dim / 2, 0L);
-    long max_x = std::min(min_x + dim, img.nc());
-    long min_y = std::max(defect_point.y() - dim / 2, 0L);
-    long max_y = std::min(min_y + dim, img.nr());
-
-    DLIB_CASSERT(max_x > min_x);
-    DLIB_CASSERT(max_y > min_y);
-
-    point offset(min_x + rnd.get_random_32bit_number() % (max_x - min_x),
-                 min_y + rnd.get_random_32bit_number() % (max_y - min_y));
-
-    return move_rect(rect, offset);
+    return centered_rect(center, dim, dim);
 }
 
 // ----------------------------------------------------------------------------------------
@@ -93,8 +78,8 @@ void randomly_crop_image (
             }
         }
         if (!nonzero.empty()) {
-            const point& defect_point = nonzero[rnd.get_random_64bit_number() % nonzero.size()];
-            rect = make_cropping_rect_around_defect(dim, input_image, defect_point, rnd);
+            const point& center = nonzero[rnd.get_random_64bit_number() % nonzero.size()];
+            rect = make_cropping_rect_around_defect(dim, center);
         }
         else {
             rect = make_random_cropping_rect(dim, input_image, rnd);
