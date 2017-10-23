@@ -21,28 +21,21 @@
 #include <dlib/image_transforms.h>
 #include <dlib/dir_nav.h>
 #include <iterator>
+#include <unordered_map>
 #include <thread>
 
 using namespace std;
 using namespace dlib;
 
-typedef std::pair<matrix<rgb_pixel>, matrix<uint16_t>> training_sample;
+struct training_sample
+{
+    matrix<rgb_pixel> input_image;
+    matrix<uint16_t> label_image;
+    std::unordered_map<uint16_t, std::deque<point>> labeled_points_by_class;
+};
 
 // ----------------------------------------------------------------------------------------
 
-rectangle make_random_cropping_rect(
-    int dim,
-    const matrix<rgb_pixel>& img,
-    dlib::rand& rnd
-)
-{
-    DLIB_CASSERT(img.nc() > dim && img.nr() > dim);
-    rectangle rect(dim, dim);
-    // randomly shift the box around
-    point offset(rnd.get_random_32bit_number()%(img.nc()-rect.width()),
-                 rnd.get_random_32bit_number()%(img.nr()-rect.height()));
-    return move_rect(rect, offset);
-}
 
 rectangle make_cropping_rect_around_defect(
     int dim,
@@ -55,57 +48,47 @@ rectangle make_cropping_rect_around_defect(
 // ----------------------------------------------------------------------------------------
 
 void randomly_crop_image (
-    const matrix<rgb_pixel>& input_image,
-    const matrix<uint16_t>& label_image,
+    const training_sample& full_sample,
     training_sample& crop,
     dlib::rand& rnd
 )
 {
     const int dim = 227;
 
-    const bool crop_around_defect = rnd.get_random_32bit_number() % 2 == 0;
-    
-    rectangle rect;
+    DLIB_CASSERT(!full_sample.labeled_points_by_class.empty());
 
-    if (crop_around_defect) {
-        std::vector<point> nonzero;
-        for (long r = 0, nr = label_image.nr(); r < nr; ++r) {
-            for (long c = 0, nc = label_image.nc(); c < nc; ++c) {
-                const auto label = label_image(r, c);
-                if (label > 0 && label != loss_multiclass_log_per_pixel_::label_to_ignore) {
-                    nonzero.push_back(point(c, r));
-                }
-            }
-        }
-        if (!nonzero.empty()) {
-            const point& center = nonzero[rnd.get_random_64bit_number() % nonzero.size()];
-            rect = make_cropping_rect_around_defect(dim, center);
-        }
-        else {
-            rect = make_random_cropping_rect(dim, input_image, rnd);
-        }
+    const size_t class_index = rnd.get_random_32bit_number() % full_sample.labeled_points_by_class.size();
+
+    auto i = full_sample.labeled_points_by_class.begin();
+
+    for (size_t j = 0; j < class_index; ++i, ++j) {
+        DLIB_CASSERT(i != full_sample.labeled_points_by_class.end());
     }
-    else {
-        rect = make_random_cropping_rect(dim, input_image, rnd);
-    }
+    DLIB_CASSERT(i != full_sample.labeled_points_by_class.end());
+    DLIB_CASSERT(!i->second.empty());
+
+    const size_t point_index = rnd.get_random_64bit_number() % i->second.size();
+
+    const rectangle rect = centered_rect(i->second[point_index], dim, dim);
 
     const chip_details chip_details(rect, chip_dims(dim, dim));
 
     // Crop the input image.
-    extract_image_chip(input_image, chip_details, crop.first, interpolate_bilinear());
+    extract_image_chip(full_sample.input_image, chip_details, crop.input_image, interpolate_bilinear());
 
     // Crop the labels correspondingly. However, note that here bilinear
     // interpolation would make absolutely no sense.
-    extract_image_chip(label_image, chip_details, crop.second, interpolate_nearest_neighbor());
+    // TODO: mark all invalid areas as ignore.
+    extract_image_chip(full_sample.label_image, chip_details, crop.label_image, interpolate_nearest_neighbor());
 
     // Also randomly flip the input image and the labels.
     if (rnd.get_random_double() > 0.5) {
-        crop.first = flipud(crop.first);
-        crop.second = flipud(crop.second);
+        crop.input_image = flipud(crop.input_image);
+        crop.label_image = flipud(crop.label_image);
     }
 
     // And then randomly adjust the colors.
-    //apply_random_color_offset(crop.first, rnd);
+    //apply_random_color_offset(crop.input_image, rnd);
 }
 
 // ----------------------------------------------------------------------------------------
@@ -167,16 +150,21 @@ inline uint16_t rgb_label_to_index_label(const dlib::rgb_pixel& rgb_label)
     return find_anno_class(rgb_label).index;
 }
 
-void rgb_label_image_to_index_label_image(const dlib::matrix<dlib::rgb_pixel>& rgb_label_image, dlib::matrix<uint16_t>& index_label_image)
+void decode_rgb_label_image(const dlib::matrix<dlib::rgb_pixel>& rgb_label_image, training_sample& training_sample)
 {
     const long nr = rgb_label_image.nr();
     const long nc = rgb_label_image.nc();
 
-    index_label_image.set_size(nr, nc);
+    training_sample.label_image.set_size(nr, nc);
+    training_sample.labeled_points_by_class.clear();
 
     for (long r = 0; r < nr; ++r) {
         for (long c = 0; c < nc; ++c) {
-            index_label_image(r, c) = rgb_label_to_index_label(rgb_label_image(r, c));
+            const uint16_t label = rgb_label_to_index_label(rgb_label_image(r, c));
+            if (label != dlib::loss_multiclass_log_per_pixel_::label_to_ignore) {
+                training_sample.labeled_points_by_class[label].push_back(point(c, r));
+            }
+            training_sample.label_image(r, c) = label;
         }
     }
 }
@@ -188,24 +176,23 @@ double calculate_accuracy(anet_type& anet, const std::vector<image_info>& datase
     int num_right = 0;
     int num_wrong = 0;
 
-    matrix<rgb_pixel> input_image;
+    training_sample training_sample;
     matrix<rgb_pixel> rgb_label_image;
-    matrix<uint16_t> index_label_image;
 
     for (const auto& image_info : dataset) {
-        load_image(input_image, image_info.image_filename);
+        load_image(training_sample.input_image, image_info.image_filename);
         load_image(rgb_label_image, image_info.label_filename);
 
-        matrix<uint16_t> net_output = anet(input_image);
+        matrix<uint16_t> net_output = anet(training_sample.input_image);
 
-        rgb_label_image_to_index_label_image(rgb_label_image, index_label_image);
+        decode_rgb_label_image(rgb_label_image, training_sample);
 
-        const long nr = index_label_image.nr();
-        const long nc = index_label_image.nc();
+        const long nr = training_sample.label_image.nr();
+        const long nc = training_sample.label_image.nc();
 
         for (long r = 0; r < nr; ++r) {
             for (long c = 0; c < nc; ++c) {
-                const uint16_t truth = index_label_image(r, c);
+                const uint16_t truth = training_sample.label_image(r, c);
                 if (truth != dlib::loss_multiclass_log_per_pixel_::label_to_ignore) {
                     const uint16_t prediction = net_output(r, c);
                     if (prediction == truth) {
@@ -268,25 +255,28 @@ int main(int argc, char** argv) try
 
     const auto read_training_sample = [](const image_info& image_info)
     {
-        matrix<rgb_pixel> input_image;
+        training_sample training_sample;
         matrix<rgb_pixel> rgb_label_image;
-        matrix<uint16_t> index_label_image;
 
-        load_image(input_image, image_info.image_filename);
+        load_image(training_sample.input_image, image_info.image_filename);
         load_image(rgb_label_image, image_info.label_filename);
-        rgb_label_image_to_index_label_image(rgb_label_image, index_label_image);
-        return std::make_pair(input_image, index_label_image);
+        decode_rgb_label_image(rgb_label_image, training_sample);
+        
+        return training_sample;
     };
 
     for (const image_info& image_info : listing) {
         full_image_futures.push_back(std::async(read_training_sample, image_info));
     }
 
-    std::vector<training_sample> full_images(listing.size());
+    std::deque<training_sample> full_images;
 
     for (size_t i = 0, end = full_image_futures.size(); i < end; ++i) {
         std::cout << "\rReading image " << (i + 1) << " of " << end << "...";
-        full_images[i] = full_image_futures[i].get();
+        const training_sample training_sample = full_image_futures[i].get();
+        if (!training_sample.labeled_points_by_class.empty()) {
+            full_images.push_back(std::move(training_sample));
+        }
     }
 
     cout << endl << "Now training..." << endl;
@@ -307,7 +297,7 @@ int main(int argc, char** argv) try
         {
             const size_t index = rnd.get_random_32bit_number() % full_images.size();
             const training_sample& training_sample = full_images[index];
-            randomly_crop_image(training_sample.first, training_sample.second, temp, rnd);
+            randomly_crop_image(training_sample, temp, rnd);
             data.enqueue(temp);
         }
     };
@@ -329,8 +319,8 @@ int main(int argc, char** argv) try
         {
             data.dequeue(temp);
 
-            samples.push_back(std::move(temp.first));
-            labels.push_back(std::move(temp.second));
+            samples.push_back(std::move(temp.input_image));
+            labels.push_back(std::move(temp.label_image));
         }
 
         trainer.train_one_step(samples, labels);

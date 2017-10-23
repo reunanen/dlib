@@ -42,8 +42,9 @@ namespace {
     constexpr int class_count = 2;
 
     const std::vector<AnnoClass> classes = {
-        AnnoClass(0, dlib::rgb_pixel(0, 0, 0), ""), // background
+        AnnoClass(0, dlib::rgb_pixel(0, 63, 0), "clean"),
         AnnoClass(1, dlib::rgb_pixel(127, 0, 0), "defect"),
+        AnnoClass(dlib::loss_multiclass_log_per_pixel_::label_to_ignore, dlib::rgb_pixel(0, 0, 0), "ignore"),
     };
 }
 
