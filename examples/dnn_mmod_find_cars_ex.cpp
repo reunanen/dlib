@@ -62,15 +62,7 @@ int main() try
     // Run the detector on the image and show us the output.
     for (auto&& d : net(img))
     {
-        // We use a shape_predictor to refine the exact shape and location of the detection
-        // box.  This shape_predictor is trained to simply output the 4 corner points of
-        // the box.  So all we do is make a rectangle that tightly contains those 4 points
-        // and that rectangle is our refined detection position.
-        auto fd = sp(img,d);
-        rectangle rect;
-        for (unsigned long j = 0; j < fd.num_parts(); ++j)
-            rect += fd.part(j);
-        win.add_overlay(rect, rgb_pixel(255,0,0));
+        win.add_overlay(d.rect, rgb_pixel(255,0,0));
     }
 
 
