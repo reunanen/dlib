@@ -934,13 +934,15 @@ namespace dlib
         void to_label (
             const tensor& input_tensor,
             const SUB_TYPE& sub,
-            label_iterator iter
+            label_iterator iter,
+            std::vector<double> gain_factors = std::vector<double>()
         ) const;
         /*!
             This function has the same interface as EXAMPLE_LOSS_LAYER_::to_label() except
             it has the additional calling requirements that:
                 - sub.get_output().num_samples() == input_tensor.num_samples()
                 - sub.sample_expansion_factor() == 1
+                - gain_factors.empty() || gain_factors.size() == sub.get_output().k()
             and the output label is the predicted class for each classified element.  The number
             of possible output classes is sub.get_output().k().
         !*/

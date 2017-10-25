@@ -1819,7 +1819,8 @@ namespace dlib
         static void to_label (
             const tensor& input_tensor,
             const SUB_TYPE& sub,
-            label_iterator iter
+            label_iterator iter,
+            std::vector<double> gain_factors = std::vector<double>()
         )
         {
             DLIB_CASSERT(sub.sample_expansion_factor() == 1);
@@ -1829,17 +1830,26 @@ namespace dlib
             DLIB_CASSERT(output_tensor.k() >= 1); // Note that output_tensor.k() should match the number of labels.
             DLIB_CASSERT(output_tensor.k() < std::numeric_limits<uint16_t>::max());
             DLIB_CASSERT(input_tensor.num_samples() == output_tensor.num_samples());
+            DLIB_CASSERT(gain_factors.empty() || gain_factors.size() == output_tensor.k());
+
+            std::vector<double> gain_offsets(gain_factors.size());
+            for (size_t i = 0, end = gain_factors.size(); i < end; ++i) {
+                const double gain_factor = gain_factors[i];
+                DLIB_CASSERT(gain_factor > 0.0);
+                gain_offsets[i] = std::log(gain_factor);
+            }
 
             const float* const out_data = output_tensor.host();
 
             // The index of the largest output for each element is the label.
             const auto find_label = [&](long sample, long r, long c) 
             {
-                uint16_t label = 0;
-                float max_value = out_data[tensor_index(output_tensor, sample, 0, r, c)];
-                for (long k = 1; k < output_tensor.k(); ++k) 
+                uint16_t label = label_to_ignore;
+                float max_value = -std::numeric_limits<float>::infinity();
+                for (long k = 0; k < output_tensor.k(); ++k) 
                 {
-                    const float value = out_data[tensor_index(output_tensor, sample, k, r, c)];
+                    const double gain_offset = gain_offsets.empty() ? 0.0 : gain_offsets[k];
+                    const float value = out_data[tensor_index(output_tensor, sample, k, r, c)] + gain_offset;
                     if (value > max_value) 
                     {
                         label = static_cast<uint16_t>(k);
