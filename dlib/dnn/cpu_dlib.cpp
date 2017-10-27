@@ -184,20 +184,31 @@ namespace dlib
 
             auto d = dest.host();
             auto s = src.host();
+
+            const long dest_num_samples = dest.num_samples();
+            const long dest_k = dest.k();
+            const long dest_nr = dest.nr();
+            const long dest_nc = dest.nc();
+
+            const long src_num_samples = src.num_samples();
+            const long src_k = src.k();
+            const long src_nr = src.nr();
+            const long src_nc = src.nc();
+
             for (long n = 0; n < dest.num_samples(); ++n)
             {
-                const auto sn = src.num_samples()==1 ? 0:n;
-                for (long k = 0; k < dest.k(); ++k)
+                const auto sn = src_num_samples==1 ? 0:n;
+                for (long k = 0; k < dest_k; ++k)
                 {
-                    const auto sk = src.k()==1 ? 0:k;
-                    for (long r = 0; r < dest.nr(); ++r)
+                    const auto sk = src_k==1 ? 0:k;
+                    for (long r = 0; r < dest_nr; ++r)
                     {
-                        const auto sr = src.nr()==1 ? 0:r;
-                        for (long c = 0; c < dest.nc(); ++c)
+                        const auto sr = src_nr==1 ? 0:r;
+                        for (long c = 0; c < dest_nc; ++c)
                         {
-                            const auto sc = src.nc()==1 ? 0:c;
+                            const auto sc = src_nc==1 ? 0:c;
 
-                            const auto s_idx = ((sn*src.k() + sk)*src.nr() + sr)*src.nc() + sc;
+                            const auto s_idx = ((sn*src_k + sk)*src_nr + sr)*src_nc + sc;
                             *d = beta*(*d) + alpha*s[s_idx];
                             ++d;
                         }
