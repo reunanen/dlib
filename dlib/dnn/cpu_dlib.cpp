@@ -238,35 +238,50 @@ namespace dlib
                 return;
             }
 
+            const long dest_num_samples = dest.num_samples();
+            const long dest_k = dest.k();
+            const long dest_nr = dest.nr();
+            const long dest_nc = dest.nc();
+
+            const long src1_num_samples = src1.num_samples();
+            const long src1_k = src1.k();
+            const long src1_nr = src1.nr();
+            const long src1_nc = src1.nc();
+
+            const long src2_num_samples = src2.num_samples();
+            const long src2_k = src2.k();
+            const long src2_nr = src2.nr();
+            const long src2_nc = src2.nc();
+
             // Otherwise, do the more complex version with bounds checking.
-            for (long n = 0; n < dest.num_samples(); ++n)
+            for (long n = 0; n < dest_num_samples; ++n)
             {
-                for (long k = 0; k < dest.k(); ++k)
+                for (long k = 0; k < dest_k; ++k)
                 {
-                    for (long r = 0; r < dest.nr(); ++r)
+                    for (long r = 0; r < dest_nr; ++r)
                     {
-                        for (long c = 0; c < dest.nc(); ++c)
+                        for (long c = 0; c < dest_nc; ++c)
                         {
                             float v1 = 0;
                             float v2 = 0;
 
                             // if this index is inside src1
-                            if (n < src1.num_samples() && 
-                                k < src1.k() && 
-                                r < src1.nr() && 
-                                c < src1.nc() )
+                            if (n < src1_num_samples && 
+                                k < src1_k && 
+                                r < src1_nr && 
+                                c < src1_nc )
                             {
-                                const auto s_idx = ((n*src1.k() + k)*src1.nr() + r)*src1.nc() + c;
+                                const auto s_idx = ((n*src1_k + k)*src1_nr + r)*src1_nc + c;
                                 v1 = s1[s_idx];
                             }
 
                             // if this index is inside src2
-                            if (n < src2.num_samples() && 
-                                k < src2.k() && 
-                                r < src2.nr() && 
-                                c < src2.nc() )
+                            if (n < src2_num_samples && 
+                                k < src2_k && 
+                                r < src2_nr && 
+                                c < src2_nc )
                             {
-                                const auto s_idx = ((n*src2.k() + k)*src2.nr() + r)*src2.nc() + c;
+                                const auto s_idx = ((n*src2_k + k)*src2_nr + r)*src2_nc + c;
                                 v2 = s2[s_idx];
                             }
 
