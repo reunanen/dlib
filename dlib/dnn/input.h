@@ -304,6 +304,99 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
+    class input_grayscale_image
+    {
+    public:
+        typedef matrix<uint8_t> input_type;
+
+        input_grayscale_image(
+        ) : average(127.5f)
+        {}
+
+        input_grayscale_image (
+            float average_
+        ) : average(average_)
+        {}
+
+        float get_average()   const { return average; }
+
+        template <typename forward_iterator>
+        void to_tensor (
+            forward_iterator ibegin,
+            forward_iterator iend,
+            resizable_tensor& data
+        ) const
+        {
+            DLIB_CASSERT(std::distance(ibegin,iend) > 0);
+            const auto nr = ibegin->nr();
+            const auto nc = ibegin->nc();
+            // make sure all the input matrices have the same dimensions
+            for (auto i = ibegin; i != iend; ++i)
+            {
+                DLIB_CASSERT(i->nr()==nr && i->nc()==nc,
+                    "\t input_grayscale_image::to_tensor()"
+                    << "\n\t All matrices given to to_tensor() must have the same dimensions."
+                    << "\n\t nr: " << nr
+                    << "\n\t nc: " << nc
+                    << "\n\t i->nr(): " << i->nr()
+                    << "\n\t i->nc(): " << i->nc()
+                );
+            }
+
+            
+            // initialize data to the right size to contain the stuff in the iterator range.
+            data.set_size(std::distance(ibegin,iend), 1, nr, nc);
+
+
+            const size_t offset = nr*nc;
+            auto ptr = data.host();
+            for (auto i = ibegin; i != iend; ++i)
+            {
+                for (long r = 0; r < nr; ++r)
+                {
+                    for (long c = 0; c < nc; ++c)
+                    {
+                        const uint8_t temp = (*i)(r,c);
+                        *ptr++ = (temp-average)/256.0;
+                    }
+                }
+            }
+
+        }
+
+        friend void serialize(const input_grayscale_image& item, std::ostream& out)
+        {
+            serialize("input_grayscale_image", out);
+            serialize(item.average, out);
+        }
+
+        friend void deserialize(input_grayscale_image& item, std::istream& in)
+        {
+            std::string version;
+            deserialize(version, in);
+            if (version != "input_grayscale_image")
+                throw serialization_error("Unexpected version found while deserializing dlib::input_grayscale_image.");
+            deserialize(item.average, in);
+        }
+
+        friend std::ostream& operator<<(std::ostream& out, const input_grayscale_image& item)
+        {
+            out << "input_grayscale_image("<<item.average<<")";
+            return out;
+        }
+
+        friend void to_xml(const input_grayscale_image& item, std::ostream& out)
+        {
+            out << "<input_grayscale_image r='"<<item.average<<"'/>";
+        }
+
+    private:
+        float average;
+    };
+
+// ----------------------------------------------------------------------------------------
+
+
     template <typename T, long NR, long NC, typename MM, typename L>
     class input<matrix<T,NR,NC,MM,L>> 
     {

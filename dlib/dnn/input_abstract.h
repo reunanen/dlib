@@ -267,6 +267,67 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
+    class input_grayscale_image
+    {
+        /*!
+            WHAT THIS OBJECT REPRESENTS
+                This input layer works with grayscale images of type matrix<uint8_t>.  It is
+                very similar to the dlib::input layer except that it allows you to subtract
+                the average color value from each color channel when converting an image to
+                a tensor.
+        !*/
+    public:
+        typedef matrix<uint8_t> input_type;
+
+        input_grayscale_image (
+        );
+        /*!
+            ensures
+                - #get_average()   == 127.5
+        !*/
+
+        input_grayscale_image (
+            float average
+        ); 
+        /*!
+            ensures
+                - #get_average() == average
+        !*/
+
+        float get_average(
+        ) const;
+        /*!
+            ensures
+                - returns the value subtracted from the input color.
+        !*/
+
+        template <typename forward_iterator>
+        void to_tensor (
+            forward_iterator ibegin,
+            forward_iterator iend,
+            resizable_tensor& data
+        ) const;
+        /*!
+            requires
+                - [ibegin, iend) is an iterator range over input_type objects.
+                - std::distance(ibegin,iend) > 0
+                - The input range should contain images that all have the same
+                  dimensions.
+            ensures
+                - Converts the iterator range into a tensor and stores it into #data.  In
+                  particular, if the input images have R rows, C columns then we will have:
+                    - #data.num_samples() == std::distance(ibegin,iend)
+                    - #data.nr() == R
+                    - #data.nc() == C
+                    - #data.k() == 1
+                  Moreover, the grayscale channel is normalized by having its average value
+                  subtracted (according to get_average()) and then divided by 256.0.
+        !*/
+
+    };
+
+// ----------------------------------------------------------------------------------------
+
     template <
         typename PYRAMID_TYPE
         >
