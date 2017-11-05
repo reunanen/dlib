@@ -2011,10 +2011,11 @@ namespace dlib
         static void to_label (
             const tensor& input_tensor,
             const SUB_TYPE& sub,
-            label_iterator iter
+            label_iterator iter,
+            std::vector<double> gain_factors = std::vector<double>()
         )
         {
-            loss_multiclass_log_per_pixel_::to_label(input_tensor, sub, iter);
+            loss_multiclass_log_per_pixel_::to_label(input_tensor, sub, iter, gain_factors);
         }
 
         template <
