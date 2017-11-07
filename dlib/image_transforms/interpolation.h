@@ -204,8 +204,6 @@ namespace dlib
             pixel_type& result
         ) const
         {
-            COMPILE_TIME_ASSERT(pixel_traits<typename image_view_type::pixel_type>::has_alpha == false);
-
             if (get_rect(img).contains(p))
             {
                 assign_pixel(result, img[p.y()][p.x()]);
