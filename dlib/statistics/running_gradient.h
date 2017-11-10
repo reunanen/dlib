@@ -262,7 +262,11 @@ namespace dlib
         for (auto i = container.rbegin(); i != container.rend(); ++i)
         {
             ++j;
-            g.add(*i);
+            const auto& value = *i;
+            if (!std::isinf(value))
+            {
+                g.add(value);
+            }
             if (g.current_n() > 2)
             {
                 // Note that this only looks backwards because we are looping over the
