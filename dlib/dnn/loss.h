@@ -381,7 +381,7 @@ namespace dlib
             unsigned long width = 0;
             unsigned long height = 0;
             std::string label;
-            double gain_factor = 1.0;
+            double gain = 0.0;
 
             friend inline void serialize(const detector_window_details& item, std::ostream& out)
             {
@@ -390,7 +390,7 @@ namespace dlib
                 serialize(item.width, out);
                 serialize(item.height, out);
                 serialize(item.label, out);
-                serialize(item.gain_factor, out);
+                serialize(item.gain, out);
             }
 
             friend inline void deserialize(detector_window_details& item, std::istream& in)
@@ -404,7 +404,7 @@ namespace dlib
                 if (version >= 2)
                     deserialize(item.label, in);
                 if (version >= 3)
-                    deserialize(item.gain_factor, in);
+                    deserialize(item.gain, in);
             }
 
         };
@@ -688,7 +688,7 @@ namespace dlib
             const SUB_TYPE& sub,
             label_iterator iter,
             double adjust_threshold = 0,
-            std::vector<double> gain_factors = std::vector<double>()
+            std::vector<double> gains = std::vector<double>()
         ) const
         {
             const tensor& output_tensor = sub.get_output();
@@ -700,7 +700,7 @@ namespace dlib
             output_label_type final_dets;
             for (long i = 0; i < output_tensor.num_samples(); ++i)
             {
-                tensor_to_dets(input_tensor, output_tensor, i, dets_accum, adjust_threshold, sub, gain_factors);
+                tensor_to_dets(input_tensor, output_tensor, i, dets_accum, adjust_threshold, sub, gains);
 
                 // Do non-max suppression
                 final_dets.clear();
@@ -973,20 +973,18 @@ namespace dlib
             std::vector<intermediate_detection>& dets_accum,
             double adjust_threshold,
             const net_type& net,
-            std::vector<double> gain_factors
+            std::vector<double> gains
         ) const
         {
             DLIB_CASSERT(net.sample_expansion_factor() == 1,net.sample_expansion_factor());
             DLIB_CASSERT(output_tensor.k() == (long)options.detector_windows.size());
-            DLIB_CASSERT(gain_factors.empty() || gain_factors.size() == options.detector_windows.size());
+            DLIB_CASSERT(gains.empty() || gains.size() == options.detector_windows.size());
             const float* out_data = output_tensor.host() + output_tensor.k()*output_tensor.nr()*output_tensor.nc()*i;
             // scan the final layer and output the positive scoring locations
             dets_accum.clear();
             for (long k = 0; k < output_tensor.k(); ++k)
             {
-                const double gain_factor = gain_factors.empty() ? options.detector_windows[k].gain_factor : gain_factors[k];
-                DLIB_CASSERT(gain_factor > 0.0);
-                const double gain_offset = std::log(gain_factor);
+                const double gain = gains.empty() ? options.detector_windows[k].gain : gains[k];
                 for (long r = 0; r < output_tensor.nr(); ++r)
                 {
                     for (long c = 0; c < output_tensor.nc(); ++c)
@@ -1827,7 +1825,7 @@ namespace dlib
             const tensor& input_tensor,
             const SUB_TYPE& sub,
             label_iterator iter,
-            std::vector<double> gain_factors = std::vector<double>()
+            std::vector<double> gains = std::vector<double>()
         )
         {
             DLIB_CASSERT(sub.sample_expansion_factor() == 1);
@@ -1837,14 +1835,7 @@ namespace dlib
             DLIB_CASSERT(output_tensor.k() >= 1); // Note that output_tensor.k() should match the number of labels.
             DLIB_CASSERT(output_tensor.k() < std::numeric_limits<uint16_t>::max());
             DLIB_CASSERT(input_tensor.num_samples() == output_tensor.num_samples());
-            DLIB_CASSERT(gain_factors.empty() || gain_factors.size() == output_tensor.k());
-
-            std::vector<double> gain_offsets(gain_factors.size());
-            for (size_t i = 0, end = gain_factors.size(); i < end; ++i) {
-                const double gain_factor = gain_factors[i];
-                DLIB_CASSERT(gain_factor > 0.0);
-                gain_offsets[i] = std::log(gain_factor);
-            }
+            DLIB_CASSERT(gains.empty() || gains.size() == output_tensor.k());
 
             const float* const out_data = output_tensor.host();
 
@@ -1855,8 +1846,8 @@ namespace dlib
                 float max_value = -std::numeric_limits<float>::infinity();
                 for (long k = 0; k < output_tensor.k(); ++k) 
                 {
-                    const double gain_offset = gain_offsets.empty() ? 0.0 : gain_offsets[k];
-                    const float value = out_data[tensor_index(output_tensor, sample, k, r, c)] + gain_offset;
+                    const double gain = gains.empty() ? 0.0 : gains[k];
+                    const float value = out_data[tensor_index(output_tensor, sample, k, r, c)] + gain;
                     if (value > max_value) 
                     {
                         label = static_cast<uint16_t>(k);
@@ -2019,10 +2010,10 @@ namespace dlib
             const tensor& input_tensor,
             const SUB_TYPE& sub,
             label_iterator iter,
-            std::vector<double> gain_factors = std::vector<double>()
+            std::vector<double> gains = std::vector<double>()
         )
         {
-            loss_multiclass_log_per_pixel_::to_label(input_tensor, sub, iter, gain_factors);
+            loss_multiclass_log_per_pixel_::to_label(input_tensor, sub, iter, gains);
         }
 
         template <

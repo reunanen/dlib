@@ -383,7 +383,7 @@ namespace dlib
             unsigned long width = 0;
             unsigned long height = 0;
             std::string label;
-            double gain_factor = 1.0;
+            double gain = 0.0;
 
             friend inline void serialize(const detector_window_details& item, std::ostream& out);
             friend inline void deserialize(detector_window_details& item, std::istream& in);
@@ -527,7 +527,7 @@ namespace dlib
             const SUB_TYPE& sub,
             label_iterator iter,
             double adjust_threshold = 0,
-            const std::vector<double>& gain_factors = std::vector<double>()
+            const std::vector<double>& gains = std::vector<double>()
         ) const;
         /*!
             This function has the same interface as EXAMPLE_LOSS_LAYER_::to_label() except
@@ -535,7 +535,7 @@ namespace dlib
                 - sub.get_output().k() == 1
                 - sub.get_output().num_samples() == input_tensor.num_samples()
                 - sub.sample_expansion_factor() == 1
-                - gain_factors.empty() || gain_factors.size() == sub.get_output().k()
+                - gains.empty() || gains.size() == sub.get_output().k()
             Also, the output labels are std::vectors of mmod_rects where, for each mmod_rect R,
             we have the following interpretations:
                 - R.rect == the location of an object in the image.
@@ -935,14 +935,14 @@ namespace dlib
             const tensor& input_tensor,
             const SUB_TYPE& sub,
             label_iterator iter,
-            std::vector<double> gain_factors = std::vector<double>()
+            std::vector<double> gains = std::vector<double>()
         ) const;
         /*!
             This function has the same interface as EXAMPLE_LOSS_LAYER_::to_label() except
             it has the additional calling requirements that:
                 - sub.get_output().num_samples() == input_tensor.num_samples()
                 - sub.sample_expansion_factor() == 1
-                - gain_factors.empty() || gain_factors.size() == sub.get_output().k()
+                - gains.empty() || gains.size() == sub.get_output().k()
             and the output label is the predicted class for each classified element.  The number
             of possible output classes is sub.get_output().k().
         !*/
