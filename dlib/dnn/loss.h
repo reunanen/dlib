@@ -368,6 +368,12 @@ namespace dlib
 // ----------------------------------------------------------------------------------------
 // ----------------------------------------------------------------------------------------
 
+    enum class use_image_pyramid : uint8_t
+    {
+        no,
+        yes
+    };
+
     struct mmod_options
     {
     public:
@@ -418,6 +424,8 @@ namespace dlib
         test_box_overlap overlaps_nms = test_box_overlap(0.4);
         test_box_overlap overlaps_ignore;
 
+        use_image_pyramid assume_image_pyramid = use_image_pyramid::yes;
+
         mmod_options (
             const std::vector<std::vector<mmod_rect>>& boxes,
             const unsigned long target_size,       // We want the length of the longest dimension of the detector window to be this.
@@ -463,8 +471,37 @@ namespace dlib
 
             DLIB_CASSERT(detector_windows.size() != 0, "You can't call mmod_options's constructor with a set of boxes that is empty (or only contains ignored boxes).");
 
+            set_overlap_nms(boxes);
+        }
 
+        mmod_options(
+            use_image_pyramid assume_image_pyramid,
+            const std::vector<std::vector<mmod_rect>>& boxes,
+            const double min_detector_window_overlap_iou = 0.75
+        )
+            : assume_image_pyramid(assume_image_pyramid)
+        {
+            DLIB_CASSERT(assume_image_pyramid == use_image_pyramid::no);
+            DLIB_CASSERT(0.5 < min_detector_window_overlap_iou && min_detector_window_overlap_iou < 1);
 
+            // Figure out what detector windows we will need.
+            for (auto& label : get_labels(boxes))
+            {
+                for (auto rectangle : find_covering_rectangles(boxes, test_box_overlap(min_detector_window_overlap_iou), label))
+                {
+                    detector_windows.push_back(detector_window_details(rectangle.width(), rectangle.height(), label));
+                }
+            }
+
+            DLIB_CASSERT(detector_windows.size() != 0, "You can't call mmod_options's constructor with a set of boxes that is empty (or only contains ignored boxes).");
+
+            set_overlap_nms(boxes);
+        }
+
+    private:
+
+        void set_overlap_nms(const std::vector<std::vector<mmod_rect>>& boxes)
+        {
             // Convert from mmod_rect to rectangle so we can call
             // find_tight_overlap_tester().
             std::vector<std::vector<rectangle>> temp;
@@ -490,9 +527,6 @@ namespace dlib
             auto percent_covered_thresh = advance_toward_1(overlaps_nms.get_percent_covered_thresh());
             overlaps_nms = test_box_overlap(iou_thresh, percent_covered_thresh);
         }
-
-
-    private:
 
         static double advance_toward_1 (
             double val
@@ -600,11 +634,31 @@ namespace dlib
             return ratios;
         }
 
+        static std::vector<dlib::rectangle> find_covering_rectangles (
+            const std::vector<std::vector<mmod_rect>>& rects,
+            const test_box_overlap& overlaps,
+            const std::string& label
+        )
+        {
+            std::vector<rectangle> boxes;
+            // Make sure all the boxes have the same position, so that the we only check for
+            // width and height.
+            for (auto& bb : rects)
+            {
+                for (auto&& b : bb)
+                {
+                    if (!b.ignore && b.label == label)
+                        boxes.push_back(rectangle(b.rect.width(), b.rect.height()));
+                }
+            }
+
+            return find_rectangles_overlapping_all_others(boxes, overlaps);
+        }
     };
 
     inline void serialize(const mmod_options& item, std::ostream& out)
     {
-        int version = 2;
+        int version = 3;
 
         serialize(version, out);
         serialize(item.detector_windows, out);
@@ -613,13 +667,14 @@ namespace dlib
         serialize(item.truth_match_iou_threshold, out);
         serialize(item.overlaps_nms, out);
         serialize(item.overlaps_ignore, out);
+        serialize(static_cast<uint8_t>(item.assume_image_pyramid), out);
     }
 
     inline void deserialize(mmod_options& item, std::istream& in)
     {
         int version = 0;
         deserialize(version, in);
-        if (version != 2 && version != 1)
+        if (version != 3 && version != 2 && version != 1)
             throw serialization_error("Unexpected version found while deserializing dlib::mmod_options");
         if (version == 1)
         {
@@ -638,6 +693,13 @@ namespace dlib
         deserialize(item.truth_match_iou_threshold, in);
         deserialize(item.overlaps_nms, in);
         deserialize(item.overlaps_ignore, in);
+        item.assume_image_pyramid = use_image_pyramid::yes;
+        if (version >= 3)
+        {
+            uint8_t assume_image_pyramid = 0;
+            deserialize(assume_image_pyramid, in);
+            item.assume_image_pyramid = static_cast<use_image_pyramid>(assume_image_pyramid);
+        }
     }
 
 // ----------------------------------------------------------------------------------------
@@ -737,6 +799,7 @@ namespace dlib
             DLIB_CASSERT(input_tensor.num_samples() == output_tensor.num_samples());
             DLIB_CASSERT(output_tensor.k() == (long)options.detector_windows.size());
 
+            double det_thresh_speed_adjust = 0;
 
 
             // we will scale the loss so that it doesn't get really huge
@@ -753,9 +816,17 @@ namespace dlib
             std::vector<intermediate_detection> dets;
             for (long i = 0; i < output_tensor.num_samples(); ++i)
             {
-                tensor_to_dets(input_tensor, output_tensor, i, dets, -options.loss_per_false_alarm, sub, std::vector<double>());
+                tensor_to_dets(input_tensor, output_tensor, i, dets, -options.loss_per_false_alarm + det_thresh_speed_adjust, sub, std::vector<double>());
 
                 const unsigned long max_num_dets = 50 + truth->size()*5;
+                // Prevent calls to tensor_to_dets() from running for a really long time
+                // due to the production of an obscene number of detections.
+                const unsigned long max_num_initial_dets = max_num_dets*100;
+                if (dets.size() >= max_num_initial_dets)
+                {
+                    det_thresh_speed_adjust = std::max(det_thresh_speed_adjust,dets[max_num_initial_dets].detection_confidence + options.loss_per_false_alarm);
+                }
+
 
                 // The loss will measure the number of incorrect detections.  A detection is
                 // incorrect if it doesn't hit a truth rectangle or if it is a duplicate detection
@@ -767,7 +838,7 @@ namespace dlib
                     {
                         size_t k;
                         point p;
-                        if(image_rect_to_feat_coord(p, input_tensor, x, x.label, sub, k))
+                        if(image_rect_to_feat_coord(p, input_tensor, x, x.label, sub, k, options.assume_image_pyramid))
                         {
                             // Ignore boxes that can't be detected by the CNN.
                             loss -= options.loss_per_missed_target;
@@ -843,7 +914,7 @@ namespace dlib
                             // We are ignoring this box so we shouldn't have counted it in the
                             // loss in the first place.  So we subtract out the loss values we
                             // added for it in the code above.
-                            loss -= 1-out_data[idx];
+                            loss -= options.loss_per_missed_target-out_data[idx];
                             g[idx] = 0;
                             std::cout << "Warning, ignoring object.  We encountered a truth rectangle located at " << (*truth)[i].rect;
                             std::cout << " that is suppressed by non-max-suppression ";
@@ -1006,21 +1077,39 @@ namespace dlib
 
         size_t find_best_detection_window (
             rectangle rect,
-            const std::string& label
+            const std::string& label,
+            use_image_pyramid assume_image_pyramid
         ) const
         {
-            rect = move_rect(set_rect_area(rect, 400*400), point(0,0));
+            if (assume_image_pyramid == use_image_pyramid::yes)
+            {
+                rect = move_rect(set_rect_area(rect, 400*400), point(0,0));
+            }
+            else
+            {
+                rect = rectangle(rect.width(), rect.height());
+            }
 
-            // Figure out which detection window in options.detector_windows has the most
-            // similar aspect ratio to rect.
+            // Figure out which detection window in options.detector_windows is most similar to rect
+            // (in terms of aspect ratio, if assume_image_pyramid == use_image_pyramid::yes).
             size_t best_i = 0;
             double best_ratio_diff = -std::numeric_limits<double>::infinity();
             for (size_t i = 0; i < options.detector_windows.size(); ++i)
             {
                 if (options.detector_windows[i].label != label)
                     continue;
-                rectangle det_window = centered_rect(point(0,0), options.detector_windows[i].width, options.detector_windows[i].height);
-                det_window = move_rect(set_rect_area(det_window, 400*400), point(0,0));
+
+                rectangle det_window;
+                
+                if (options.assume_image_pyramid == use_image_pyramid::yes)
+                {
+                    det_window = centered_rect(point(0,0), options.detector_windows[i].width, options.detector_windows[i].height);
+                    det_window = move_rect(set_rect_area(det_window, 400*400), point(0,0));
+                }
+                else
+                {
+                    det_window = rectangle(options.detector_windows[i].width, options.detector_windows[i].height);
+                }
 
                 double iou = box_intersection_over_union(rect, det_window);
                 if (iou > best_ratio_diff)
@@ -1039,7 +1128,8 @@ namespace dlib
             const rectangle& rect,
             const std::string& label,
             const net_type& net,
-            size_t& det_idx
+            size_t& det_idx,
+            use_image_pyramid assume_image_pyramid
         ) const 
         {
             using namespace std;
@@ -1051,14 +1141,24 @@ namespace dlib
                 throw impossible_labeling_error(sout.str());
             }
 
-            det_idx = find_best_detection_window(rect,label); 
+            det_idx = find_best_detection_window(rect,label,assume_image_pyramid);
 
-            // Compute the scale we need to be at to get from rect to our detection window.
-            // Note that we compute the scale as the max of two numbers.  It doesn't
-            // actually matter which one we pick, because if they are very different then
-            // it means the box can't be matched by the sliding window.  But picking the
-            // max causes the right error message to be selected in the logic below.
-            const double scale = std::max(options.detector_windows[det_idx].width/(double)rect.width(), options.detector_windows[det_idx].height/(double)rect.height());
+            double scale = 1.0;
+            if (options.assume_image_pyramid == use_image_pyramid::yes)
+            {
+                // Compute the scale we need to be at to get from rect to our detection window.
+                // Note that we compute the scale as the max of two numbers.  It doesn't
+                // actually matter which one we pick, because if they are very different then
+                // it means the box can't be matched by the sliding window.  But picking the
+                // max causes the right error message to be selected in the logic below.
+                scale = std::max(options.detector_windows[det_idx].width/(double)rect.width(), options.detector_windows[det_idx].height/(double)rect.height());
+            }
+            else
+            {
+                // We don't want invariance to scale.
+                scale = 1.0;
+            }
+
             const rectangle mapped_rect = input_layer(net).image_space_to_tensor_space(input_tensor, std::min(1.0,scale), rect);
 
             // compute the detection window that we would use at this position.
@@ -1080,7 +1180,8 @@ namespace dlib
                 }
                 else
                 {
-                    std::cout << "This is because the rectangle's aspect ratio is too different from the best matching detection window, ";
+                    std::cout << "This is either because (1) the final layer's features have too large of a stride across the image, limiting the possible locations the sliding window can search ";
+                    std::cout << "or (2) because the rectangle's aspect ratio is too different from the best matching detection window, ";
                     std::cout << "which has a width and height of " << options.detector_windows[det_idx].width << " and " << options.detector_windows[det_idx].height << "." << std::endl;
                 }
                 return true;
@@ -1646,7 +1747,7 @@ namespace dlib
                 const float y = *truth++;
                 const float temp1 = y - out_data[i];
                 const float temp2 = scale*temp1;
-                loss += 0.5*temp2*temp1;
+                loss += temp2*temp1;
                 g[i] = -temp2;
 
             }
@@ -1681,6 +1782,137 @@ namespace dlib
 
     template <typename SUBNET>
     using loss_mean_squared = add_loss_layer<loss_mean_squared_, SUBNET>;
+
+// ----------------------------------------------------------------------------------------
+
+    class loss_epsilon_insensitive_
+    {
+    public:
+
+        typedef float training_label_type;
+        typedef float output_label_type;
+
+        loss_epsilon_insensitive_() = default;
+        loss_epsilon_insensitive_(double eps) : eps(eps) 
+        {
+            DLIB_CASSERT(eps >= 0, "You can't set a negative error epsilon.");
+        }
+
+        double get_epsilon () const { return eps; }
+        void set_epsilon(double e)
+        {
+            DLIB_CASSERT(e >= 0, "You can't set a negative error epsilon.");
+            eps = e;
+        }
+
+        template <
+            typename SUB_TYPE,
+            typename label_iterator
+            >
+        void to_label (
+            const tensor& input_tensor,
+            const SUB_TYPE& sub,
+            label_iterator iter
+        ) const
+        {
+            DLIB_CASSERT(sub.sample_expansion_factor() == 1);
+
+            const tensor& output_tensor = sub.get_output();
+
+            DLIB_CASSERT(output_tensor.nr() == 1 &&
+                         output_tensor.nc() == 1 &&
+                         output_tensor.k() == 1);
+            DLIB_CASSERT(input_tensor.num_samples() == output_tensor.num_samples());
+
+            const float* out_data = output_tensor.host();
+            for (long i = 0; i < output_tensor.num_samples(); ++i)
+            {
+                *iter++ = out_data[i];
+            }
+        }
+
+
+        template <
+            typename const_label_iterator,
+            typename SUBNET
+            >
+        double compute_loss_value_and_gradient (
+            const tensor& input_tensor,
+            const_label_iterator truth,
+            SUBNET& sub
+        ) const
+        {
+            const tensor& output_tensor = sub.get_output();
+            tensor& grad = sub.get_gradient_input();
+
+            DLIB_CASSERT(sub.sample_expansion_factor() == 1);
+            DLIB_CASSERT(input_tensor.num_samples() != 0);
+            DLIB_CASSERT(input_tensor.num_samples()%sub.sample_expansion_factor() == 0);
+            DLIB_CASSERT(input_tensor.num_samples() == grad.num_samples());
+            DLIB_CASSERT(input_tensor.num_samples() == output_tensor.num_samples());
+            DLIB_CASSERT(output_tensor.nr() == 1 &&
+                         output_tensor.nc() == 1 &&
+                         output_tensor.k() == 1);
+            DLIB_CASSERT(grad.nr() == 1 &&
+                         grad.nc() == 1 &&
+                         grad.k() == 1);
+
+            // The loss we output is the average loss over the mini-batch.
+            const double scale = 1.0/output_tensor.num_samples();
+            double loss = 0;
+            float* g = grad.host_write_only();
+            const float* out_data = output_tensor.host();
+            for (long i = 0; i < output_tensor.num_samples(); ++i)
+            {
+                const float y = *truth++;
+                const float err = out_data[i]-y;
+                if (err > eps)
+                {
+                    loss += scale*(err-eps);
+                    g[i] = scale;
+                }
+                else if (err < -eps)
+                {
+                    loss += scale*(eps-err);
+                    g[i] = -scale;
+                }
+            }
+            return loss;
+        }
+
+        friend void serialize(const loss_epsilon_insensitive_& item, std::ostream& out)
+        {
+            serialize("loss_epsilon_insensitive_", out);
+            serialize(item.eps, out);
+        }
+
+        friend void deserialize(loss_epsilon_insensitive_& item, std::istream& in)
+        {
+            std::string version;
+            deserialize(version, in);
+            if (version != "loss_epsilon_insensitive_")
+                throw serialization_error("Unexpected version found while deserializing dlib::loss_epsilon_insensitive_.");
+            deserialize(item.eps, in);
+        }
+
+        friend std::ostream& operator<<(std::ostream& out, const loss_epsilon_insensitive_& item)
+        {
+            out << "loss_epsilon_insensitive epsilon: " << item.eps;
+            return out;
+        }
+
+        friend void to_xml(const loss_epsilon_insensitive_& item, std::ostream& out)
+        {
+            out << "<loss_epsilon_insensitive_ epsilon='" << item.eps << "'/>";
+        }
+
+    private:
+        double eps = 1;
+
+    };
+
+    template <typename SUBNET>
+    using loss_epsilon_insensitive = add_loss_layer<loss_epsilon_insensitive_, SUBNET>;
 
 // ----------------------------------------------------------------------------------------
 
@@ -1763,7 +1995,7 @@ namespace dlib
                     const float y = ytrue(j, 0);
                     const float temp1 = y - *out_data++;
                     const float temp2 = scale*temp1;
-                    loss += 0.5*temp2*temp1;
+                    loss += temp2*temp1;
                     *g = -temp2;
                     ++g;
                 }
@@ -2210,7 +2442,7 @@ namespace dlib
                         const size_t idx = tensor_index(output_tensor, i, 0, r, c);
                         const float temp1 = y - out_data[idx];
                         const float temp2 = scale*temp1;
-                        loss += 0.5*temp2*temp1;
+                        loss += temp2*temp1;
                         g[idx] = -temp2;
                     }
                 }
@@ -2255,6 +2487,111 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
+    class loss_dot_ 
+    {
+    public:
+
+        typedef matrix<float,0,1> training_label_type;
+        typedef matrix<float,0,1> output_label_type;
+
+        template <
+            typename SUB_TYPE,
+            typename label_iterator
+            >
+        void to_label (
+            const tensor& input_tensor,
+            const SUB_TYPE& sub,
+            label_iterator iter
+        ) const
+        {
+            const tensor& output_tensor = sub.get_output();
+            DLIB_CASSERT(sub.sample_expansion_factor() == 1);
+            DLIB_CASSERT(input_tensor.num_samples() != 0);
+            DLIB_CASSERT(input_tensor.num_samples()%sub.sample_expansion_factor() == 0);
+            DLIB_CASSERT(input_tensor.num_samples() == output_tensor.num_samples());
+
+            for (long i = 0; i < output_tensor.num_samples(); ++i)
+                *iter++ = trans(rowm(mat(output_tensor),i));
+        }
+
+
+        template <
+            typename const_label_iterator,
+            typename SUBNET
+            >
+        double compute_loss_value_and_gradient (
+            const tensor& input_tensor,
+            const_label_iterator truth, 
+            SUBNET& sub
+        ) const
+        {
+            const tensor& output_tensor = sub.get_output();
+            tensor& grad = sub.get_gradient_input();
+
+            DLIB_CASSERT(sub.sample_expansion_factor() == 1);
+            DLIB_CASSERT(input_tensor.num_samples() != 0);
+            DLIB_CASSERT(input_tensor.num_samples()%sub.sample_expansion_factor() == 0);
+            DLIB_CASSERT(input_tensor.num_samples() == grad.num_samples());
+            DLIB_CASSERT(input_tensor.num_samples() == output_tensor.num_samples());
+
+            const long network_output_dims = output_tensor.size()/output_tensor.num_samples();
+
+
+            // The loss we output is the average loss over the mini-batch. 
+            const double scale = 1.0/output_tensor.num_samples();
+            double loss = 0;
+            float* g = grad.host();
+            const float* out_data = output_tensor.host();
+            for (long i = 0; i < output_tensor.num_samples(); ++i)
+            {
+                DLIB_CASSERT(truth->size() == network_output_dims, "The network must output a vector with the same dimensionality as the training labels. "
+                    << "\ntruth->size():       " << truth->size()
+                    << "\nnetwork_output_dims: " << network_output_dims); 
+
+                const float* t = &(*truth++)(0);
+
+                for (long j = 0; j < network_output_dims; ++j)
+                {
+                    g[j] = -t[j]*scale;
+                    loss -= out_data[j]*t[j];
+                }
+
+                g += network_output_dims;
+                out_data += network_output_dims;
+            }
+            return loss*scale;
+        }
+
+        friend void serialize(const loss_dot_& , std::ostream& out)
+        {
+            serialize("loss_dot_", out);
+        }
+
+        friend void deserialize(loss_dot_& , std::istream& in)
+        {
+            std::string version;
+            deserialize(version, in);
+            if (version != "loss_dot_")
+                throw serialization_error("Unexpected version found while deserializing dlib::loss_dot_.");
+        }
+
+        friend std::ostream& operator<<(std::ostream& out, const loss_dot_& )
+        {
+            out << "loss_dot";
+            return out;
+        }
+
+        friend void to_xml(const loss_dot_& /*item*/, std::ostream& out)
+        {
+            out << "<loss_dot/>";
+        }
+
+    };
+
+    template <typename SUBNET>
+    using loss_dot = add_loss_layer<loss_dot_, SUBNET>;
+
+// ----------------------------------------------------------------------------------------
 
 }
 
