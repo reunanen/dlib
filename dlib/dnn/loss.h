@@ -11,6 +11,7 @@
 #include "../image_processing/box_overlap_testing.h"
 #include "../image_processing/full_object_detection.h"
 #include "../svm/ranking_tools.h"
+#include "../memory_manager_stateless.h"
 #include <sstream>
 
 namespace dlib
@@ -2213,7 +2214,6 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
-    template <typename mem_manager = default_memory_manager>
     class loss_multiclass_log_per_pixel_weighted_
     {
     public:
@@ -2232,8 +2232,10 @@ namespace dlib
             float weight = 1.f;
         };
 
-        typedef matrix<weighted_label,0,0,mem_manager> training_label_type;
-        typedef matrix<uint16_t,0,0,mem_manager> output_label_type;
+        // TODO: Do not define the memory manager here. Either pass it as a template parameter, or move the definition
+        //       of this whole loss class to the application code.
+        typedef matrix<weighted_label,0,0,memory_manager_stateless<weighted_label>::kernel_2_3e> training_label_type;
+        typedef matrix<uint16_t,0,0,memory_manager_stateless<uint16_t>::kernel_2_3e> output_label_type;
 
         template <
             typename SUB_TYPE,
