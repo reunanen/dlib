@@ -2213,6 +2213,7 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
+    template <typename mem_manager = default_memory_manager>
     class loss_multiclass_log_per_pixel_weighted_
     {
     public:
@@ -2231,8 +2232,8 @@ namespace dlib
             float weight = 1.f;
         };
 
-        typedef matrix<weighted_label> training_label_type;
-        typedef matrix<uint16_t> output_label_type;
+        typedef matrix<weighted_label,0,0,mem_manager> training_label_type;
+        typedef matrix<uint16_t,0,0,mem_manager> output_label_type;
 
         template <
             typename SUB_TYPE,

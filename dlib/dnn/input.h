@@ -305,10 +305,11 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
+    template <typename mem_manager = default_memory_manager>
     class input_grayscale_image
     {
     public:
-        typedef matrix<uint8_t> input_type;
+        typedef matrix<uint8_t,0,0,mem_manager> input_type;
 
         input_grayscale_image(
         ) : average(127.5f)
