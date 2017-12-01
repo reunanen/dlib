@@ -19,6 +19,12 @@
 #include "tensor_tools.h"
 #include <type_traits>
 
+#ifdef _MSC_VER
+// Tell Visual Studio not to recursively inline functions very much because otherwise it
+// takes hours to compile the DNN code sometimes.  It's crazy.  Hopefully we can remove
+// this some day when the visual studio compiler is more efficient.
+#pragma inline_depth(2)
+#endif
 
 
 namespace dlib
