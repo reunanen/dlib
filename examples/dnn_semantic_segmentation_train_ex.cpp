@@ -228,6 +228,21 @@ void init_transfer_learning(const std::string filename, net_type& net)
     dlib::layer<175>(net).layer_details() = dlib::layer<100>(imagenet_net).layer_details(); // con 128,3,3,1,1
     dlib::layer<170>(net).layer_details() = dlib::layer<95>(imagenet_net).layer_details(); // con 128,3,3,1,1
     dlib::layer<167>(net).layer_details() = dlib::layer<92>(imagenet_net).layer_details(); // con 128,3,3,1,1
+
+    // set learning rate multipliers so that the initial layers are fine-tuned only
+    dlib::layer<218>(net).layer_details().set_learning_rate_multiplier(1e-6); // con 64,7,7,2,2
+    dlib::layer<213>(net).layer_details().set_learning_rate_multiplier(1e-4); // con 64,3,3,1,1
+    dlib::layer<210>(net).layer_details().set_learning_rate_multiplier(1e-4); // con 64,3,3,1,1
+    dlib::layer<205>(net).layer_details().set_learning_rate_multiplier(1e-4); // con 64,3,3,1,1
+    dlib::layer<202>(net).layer_details().set_learning_rate_multiplier(1e-3); // con 64,3,3,1,1
+    dlib::layer<197>(net).layer_details().set_learning_rate_multiplier(1e-3); // con 64,3,3,1,1
+    dlib::layer<194>(net).layer_details().set_learning_rate_multiplier(1e-3); // con 128,3,3,2,2
+    dlib::layer<189>(net).layer_details().set_learning_rate_multiplier(1e-2); // con 128,3,3,1,1
+    dlib::layer<186>(net).layer_details().set_learning_rate_multiplier(1e-2); // con 128,3,3,1,1
+    dlib::layer<178>(net).layer_details().set_learning_rate_multiplier(1e-2); // con 128,3,3,1,1
+    dlib::layer<175>(net).layer_details().set_learning_rate_multiplier(1e-1); // con 128,3,3,1,1
+    dlib::layer<170>(net).layer_details().set_learning_rate_multiplier(1e-1); // con 128,3,3,1,1
+    dlib::layer<167>(net).layer_details().set_learning_rate_multiplier(1e-1); // con 128,3,3,1,1
 }
 
 // ----------------------------------------------------------------------------------------
