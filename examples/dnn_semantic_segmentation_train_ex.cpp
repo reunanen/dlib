@@ -192,6 +192,46 @@ void rgb_label_image_to_index_label_image(
 
 // ----------------------------------------------------------------------------------------
 
+template <typename SUBNET> using level1_imagenet = ares<512,ares<512,ares_down<512,SUBNET>>>;
+template <typename SUBNET> using level2_imagenet = ares<256,ares<256,ares<256,ares<256,ares<256,ares_down<256,SUBNET>>>>>>;
+template <typename SUBNET> using level3_imagenet = ares<128,ares<128,ares<128,ares_down<128,SUBNET>>>>;
+template <typename SUBNET> using level4_imagenet = ares<64,ares<64,ares<64,SUBNET>>>;
+
+void init_transfer_learning(const std::string filename, net_type& net)
+{
+    cout << "\nINITIALIZING TRANSFER LEARNING USING IMAGENET TRAINED MODEL\n" << endl;
+
+    using imagenet_net_type = loss_multiclass_log<fc<1000,avg_pool_everything<
+        level1_imagenet<
+        level2_imagenet<
+        level3_imagenet<
+        level4_imagenet<
+        max_pool<3,3,2,2,relu<affine<con<64,7,7,2,2,
+        input_rgb_image_sized<227>
+        >>>>>>>>>>>;
+
+    imagenet_net_type imagenet_net;
+    std::vector<string> imagenet_labels; // not really needed
+    deserialize(filename) >> imagenet_net >> imagenet_labels;
+
+    // copy some individual layers
+    dlib::layer<218>(net).layer_details() = dlib::layer<143>(imagenet_net).layer_details(); // con 64,7,7,2,2
+    dlib::layer<213>(net).layer_details() = dlib::layer<138>(imagenet_net).layer_details(); // con 64,3,3,1,1
+    dlib::layer<210>(net).layer_details() = dlib::layer<135>(imagenet_net).layer_details(); // con 64,3,3,1,1
+    dlib::layer<205>(net).layer_details() = dlib::layer<130>(imagenet_net).layer_details(); // con 64,3,3,1,1
+    dlib::layer<202>(net).layer_details() = dlib::layer<127>(imagenet_net).layer_details(); // con 64,3,3,1,1
+    dlib::layer<197>(net).layer_details() = dlib::layer<122>(imagenet_net).layer_details(); // con 64,3,3,1,1
+    dlib::layer<194>(net).layer_details() = dlib::layer<119>(imagenet_net).layer_details(); // con 128,3,3,2,2
+    dlib::layer<189>(net).layer_details() = dlib::layer<114>(imagenet_net).layer_details(); // con 128,3,3,1,1
+    dlib::layer<186>(net).layer_details() = dlib::layer<111>(imagenet_net).layer_details(); // con 128,3,3,1,1
+    dlib::layer<178>(net).layer_details() = dlib::layer<103>(imagenet_net).layer_details(); // con 128,3,3,1,1
+    dlib::layer<175>(net).layer_details() = dlib::layer<100>(imagenet_net).layer_details(); // con 128,3,3,1,1
+    dlib::layer<170>(net).layer_details() = dlib::layer<95>(imagenet_net).layer_details(); // con 128,3,3,1,1
+    dlib::layer<167>(net).layer_details() = dlib::layer<92>(imagenet_net).layer_details(); // con 128,3,3,1,1
+}
+
+// ----------------------------------------------------------------------------------------
+
 // Calculate the per-pixel accuracy on a dataset whose file names are supplied as a parameter.
 double calculate_accuracy(anet_type& anet, const std::vector<image_info>& dataset)
 {
@@ -284,6 +324,12 @@ int main(int argc, char** argv) try
     const double momentum = 0.9;
 
     net_type net;
+
+    const std::string transfer_learning_filename("resnet34_1000_imagenet_classifier.dnn");
+    if (file_exists(transfer_learning_filename)) {
+        init_transfer_learning(transfer_learning_filename, net);
+    }
+
     dnn_trainer<net_type> trainer(net,sgd(weight_decay, momentum));
     trainer.be_verbose();
     trainer.set_learning_rate(initial_learning_rate);
