@@ -8,19 +8,17 @@ endif()
 set(USING_OLD_VISUAL_STUDIO_COMPILER 0)
 if(MSVC AND MSVC_VERSION VERSION_LESS 1900)
    message(FATAL_ERROR "C++11 is required to use dlib, but the version of Visual Studio you are using is too old and doesn't support C++11.  You need Visual Studio 2015 or newer. ")
-elseif(MSVC AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 19.0.24215.1 ) 
-   message(STATUS "NOTE: Visual Studio didn't have good enough C++11 support until Visual Studio 2015 update 3 (v19.0.24215.1)")
+elseif(MSVC AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 19.0.24210.0 ) 
+   message(STATUS "NOTE: Visual Studio didn't have good enough C++11 support until Visual Studio 2015 update 3 (v19.0.24210.0)")
    message(STATUS "So we aren't enabling things that require full C++11 support (e.g. the deep learning tools).")
    message(STATUS "Also, be aware that Visual Studio's version naming is confusing, in particular, there are multiple versions of 'update 3'")
    message(STATUS "So if you are getting this message you need to update to the newer version of Visual Studio to use full C++11.")
    set(USING_OLD_VISUAL_STUDIO_COMPILER 1)
 elseif(MSVC AND (MSVC_VERSION EQUAL 1911 OR MSVC_VERSION EQUAL 1910))
    message(STATUS "******************************************************************************************")
-   message(STATUS "Visual Studio 2017 has incomplete C++11 support and is unable to compile the DNN examples.")
-   message(STATUS "So we are disabling the deep learning tools.  If you want to use the DNN tools in ")
-   message(STATUS "dlib then use Visual Studio 2015 which, surprisingly, has better C++11 support.")
-   message(STATUS "Or if you are reading this in the future and a newer version of Visual Studio that ")
-   message(STATUS "supports C++11 is available then use that.")
+   message(STATUS "Your version of Visual Studio has incomplete C++11 support and is unable to compile the ")
+   message(STATUS "DNN examples. So we are disabling the deep learning tools.  If you want to use the DNN ")
+   message(STATUS "tools in dlib then update your copy of Visual Studio.")
    message(STATUS "******************************************************************************************")
    set(USING_OLD_VISUAL_STUDIO_COMPILER 1)
 endif()
@@ -43,7 +41,7 @@ endif()
 
 
 set(gcc_like_compilers GNU Clang  Intel)
-set(intel_archs x86_64 i386 i686 AMD64 x86)
+set(intel_archs x86_64 i386 i686 AMD64 amd64 x86)
 
 
 # Setup some options to allow a user to enable SSE and AVX instruction use.  
@@ -93,6 +91,13 @@ elseif (MSVC OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC") # else if using Visu
       list(APPEND active_preprocessor_switches "-DDLIB_HAVE_SSE2")
    endif()
 
+elseif((";${gcc_like_compilers};" MATCHES ";${CMAKE_CXX_COMPILER_ID};")  AND
+        ("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "^arm"))
+   option(USE_NEON_INSTRUCTIONS "Compile your program with ARM-NEON instructions" OFF)
+   if(USE_NEON_INSTRUCTIONS)
+      list(APPEND active_compile_opts -mfpu=neon)
+      message(STATUS "Enabling ARM-NEON instructions")
+   endif()
 endif()
 
 

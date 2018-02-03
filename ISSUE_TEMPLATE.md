@@ -1,18 +1,17 @@
-If you are reporting a bug or problem with dlib then fill out the entire template below.  Issues asking questions about why something doesn't work that fail to fill out the entire template will be closed.
+IF YOU ARE REPORTING A BUG OR PROBLEM WITH DLIB THEN FILL OUT THE ENTIRE TEMPLATE BELOW.  ISSUES ASKING QUESTIONS ABOUT WHY SOMETHING DOESN'T WORK THAT FAIL TO FILL OUT THE ENTIRE TEMPLATE WILL BE CLOSED.
 
-Also, **the issue tracker is not a code writing service, do not ask for someone to write code for you.**  In particular, do not submit issues asking for feature improvements to the example programs.  The examples are documentation, their purpose is to teach, not to be useful programs.  **If there is some feature improvement you want in an example program then it's up to you to write it**.  
+**The issue tracker is not a code writing service, do not ask for someone to write code for you.**  E.g. Do not ask for feature improvements to the example programs. **If there is some feature improvement you want in an example program then it's up to you to write it**.  
 
-Finally, before you ask a question, check google for a solution, [the dlib FAQ](http://dlib.net/faq.html), or generally consult the dlib documentation.  Every single function in dlib is documented in detail.  If you post an issue but you obviously haven't read the documentation for the part of dlib you are using then you won't get an answer.  
+Before you ask a question, check Google for a solution, [the dlib FAQ](http://dlib.net/faq.html), or consult the dlib documentation.  Every single function in dlib is documented in detail.  If you obviously haven't read the documentation your issue will be closed.  
 
 If you aren't reporting a bug or problem with dlib then delete this template and write whatever you want here.
  
+<!-- ================================================================== -->
+<!-- ==================  BUG/PROBLEM REPORT TEMPLATE ================== -->
+<!-- ================================================================== -->
 
-<!-- ================================================================ -->
-<!-- =====================  BUG REPORT TEMPLATE ===================== -->
-<!-- ================================================================ -->
 
-
-<!-- Delete the above instructions and then provide a general summary of the issue in the Title above.  Then fill out the template below. -->
+<!-- Delete the above instructions and then provide a general summary of the issue in the Title above.  Then fill out the template below.  FAILURE TO FILL OUT EVERY PART WILL RESULT IN YOUR ISSUE BEING CLOSED -->
 
 ## Expected Behavior
 <!--- Tell us what should happen.  What were you doing?  What part of dlib are you using?  What do you think should happen? -->
@@ -21,7 +20,7 @@ If you aren't reporting a bug or problem with dlib then delete this template and
 <!--- Tell us what happens instead of the expected behavior.  If you get an error, include the entire error message in the bug report.  DO NOT POST SCREEN SHOTS.  Paste in the text instead.   If the issue is some kind of build problem, include the entire CMake output along with the error message. -->
 
 ## Steps to Reproduce
-<!--- Provide an unambiguous set of steps to reproduce this bug. Include code to reproduce, if relevant -->
+<!--- Provide an unambiguous set of steps to reproduce this problem. Include code to reproduce, if relevant -->
 
 
 

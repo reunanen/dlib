@@ -6,6 +6,7 @@
 #include "convert_pascal_v1.h"
 #include "convert_idl.h"
 #include "cluster.h"
+#include "flip_dataset.h"
 #include <dlib/cmd_line_parser.h>
 #include <dlib/image_transforms.h>
 #include <dlib/svm.h>
@@ -20,9 +21,8 @@
 #include <dlib/dir_nav.h>
 
 
-const char* VERSION = "1.12";
+const char* VERSION = "1.13";
 
-const int JPEG_QUALITY = 90;
 
 
 using namespace std;
@@ -264,77 +264,6 @@ void merge_metadata_files (
     }
 
     save_image_dataset_metadata(dest, "merged.xml");
-}
-
-// ----------------------------------------------------------------------------------------
-
-string to_png_name (const string& filename)
-{
-    string::size_type pos = filename.find_last_of(".");
-    if (pos == string::npos)
-        throw dlib::error("invalid filename: " + filename);
-    return filename.substr(0,pos) + ".png";
-}
-
-string to_jpg_name (const string& filename)
-{
-    string::size_type pos = filename.find_last_of(".");
-    if (pos == string::npos)
-        throw dlib::error("invalid filename: " + filename);
-    return filename.substr(0,pos) + ".jpg";
-}
-
-// ----------------------------------------------------------------------------------------
-
-void flip_dataset(const command_line_parser& parser)
-{
-    image_dataset_metadata::dataset metadata;
-    const string datasource = parser.option("flip").argument();
-    load_image_dataset_metadata(metadata,datasource);
-
-    // Set the current directory to be the one that contains the
-    // metadata file. We do this because the file might contain
-    // file paths which are relative to this folder.
-    set_current_dir(get_parent_directory(file(datasource)));
-
-    const string metadata_filename = get_parent_directory(file(datasource)).full_name() +
-        directory::get_separator() + "flipped_" + file(datasource).name();
-
-
-    array2d<rgb_pixel> img, temp;
-    for (unsigned long i = 0; i < metadata.images.size(); ++i)
-    {
-        file f(metadata.images[i].filename);
-        string filename = get_parent_directory(f).full_name() + directory::get_separator() + "flipped_" + to_png_name(f.name());
-
-        load_image(img, metadata.images[i].filename);
-        flip_image_left_right(img, temp);
-        if (parser.option("jpg"))
-        {
-            filename = to_jpg_name(filename);
-            save_jpeg(temp, filename,JPEG_QUALITY);
-        }
-        else
-        {
-            save_png(temp, filename);
-        }
-
-        for (unsigned long j = 0; j < metadata.images[i].boxes.size(); ++j)
-        {
-            metadata.images[i].boxes[j].rect = impl::flip_rect_left_right(metadata.images[i].boxes[j].rect, get_rect(img));
-
-            // flip all the object parts
-            std::map<std::string,point>::iterator k;
-            for (k = metadata.images[i].boxes[j].parts.begin(); k != metadata.images[i].boxes[j].parts.end(); ++k)
-            {
-                k->second = impl::flip_rect_left_right(rectangle(k->second,k->second), get_rect(img)).tl_corner();
-            }
-        }
-
-        metadata.images[i].filename = filename;
-    }
-
-    save_image_dataset_metadata(metadata, metadata_filename);
 }
 
 // ----------------------------------------------------------------------------------------
@@ -621,7 +550,11 @@ int main(int argc, char** argv)
                                  "image tags from <arg1>.  The results are saved into merged.xml and neither <arg1> or "
                                  "<arg2> files are modified.",2);
         parser.add_option("flip", "Read an XML image dataset from the <arg> XML file and output a left-right flipped "
-                                  "version of the dataset and an accompanying flipped XML file named flipped_<arg>.",1);
+                                  "version of the dataset and an accompanying flipped XML file named flipped_<arg>. " 
+                                  "We also adjust object part labels after flipping so that the new flipped dataset "
+                                  "has the same average part layout as the source dataset." ,1);
+        parser.add_option("flip-basic", "This option is just like --flip, except we don't adjust any object part labels after flipping. "
+                                        "The parts are instead simply mirrored to the flipped dataset.", 1);
         parser.add_option("rotate", "Read an XML image dataset and output a copy that is rotated counter clockwise by <arg> degrees. "
                                   "The output is saved to an XML file prefixed with rotated_<arg>.",1);
         parser.add_option("cluster", "Cluster all the objects in an XML file into <arg> different clusters and save "
@@ -646,7 +579,7 @@ int main(int argc, char** argv)
         parser.parse(argc, argv);
 
         const char* singles[] = {"h","c","r","l","files","convert","parts","rmdiff", "rmtrunc", "rmdupes", "seed", "shuffle", "split", "add", 
-                                 "flip", "rotate", "tile", "size", "cluster", "resample", "min-object-size", "rmempty",
+                                 "flip-basic", "flip", "rotate", "tile", "size", "cluster", "resample", "min-object-size", "rmempty",
                                  "crop-size", "cropped-object-size", "rmlabel", "rm-other-labels", "rm-if-overlaps", "sort-num-objects", 
                                  "one-object-per-image", "jpg", "rmignore", "sort"};
         parser.check_one_time_options(singles);
@@ -669,6 +602,8 @@ int main(int argc, char** argv)
         parser.check_incompatible_options("c", "rmtrunc");
         parser.check_incompatible_options("c", "add");
         parser.check_incompatible_options("c", "flip");
+        parser.check_incompatible_options("c", "flip-basic");
+        parser.check_incompatible_options("flip", "flip-basic");
         parser.check_incompatible_options("c", "rotate");
         parser.check_incompatible_options("c", "rename");
         parser.check_incompatible_options("c", "ignore");
@@ -681,24 +616,30 @@ int main(int argc, char** argv)
         parser.check_incompatible_options("l", "add");
         parser.check_incompatible_options("l", "parts");
         parser.check_incompatible_options("l", "flip");
+        parser.check_incompatible_options("l", "flip-basic");
         parser.check_incompatible_options("l", "rotate");
         parser.check_incompatible_options("files", "rename");
         parser.check_incompatible_options("files", "ignore");
         parser.check_incompatible_options("files", "add");
         parser.check_incompatible_options("files", "parts");
         parser.check_incompatible_options("files", "flip");
+        parser.check_incompatible_options("files", "flip-basic");
         parser.check_incompatible_options("files", "rotate");
         parser.check_incompatible_options("add", "flip");
+        parser.check_incompatible_options("add", "flip-basic");
         parser.check_incompatible_options("add", "rotate");
         parser.check_incompatible_options("add", "tile");
         parser.check_incompatible_options("flip", "tile");
+        parser.check_incompatible_options("flip-basic", "tile");
         parser.check_incompatible_options("rotate", "tile");
         parser.check_incompatible_options("cluster", "tile");
         parser.check_incompatible_options("resample", "tile");
         parser.check_incompatible_options("flip", "cluster");
+        parser.check_incompatible_options("flip-basic", "cluster");
         parser.check_incompatible_options("rotate", "cluster");
         parser.check_incompatible_options("add", "cluster");
         parser.check_incompatible_options("flip", "resample");
+        parser.check_incompatible_options("flip-basic", "resample");
         parser.check_incompatible_options("rotate", "resample");
         parser.check_incompatible_options("add", "resample");
         parser.check_incompatible_options("shuffle", "tile");
@@ -750,7 +691,7 @@ int main(int argc, char** argv)
             return EXIT_SUCCESS;
         }
 
-        if (parser.option("flip"))
+        if (parser.option("flip") || parser.option("flip-basic"))
         {
             flip_dataset(parser);
             return EXIT_SUCCESS;

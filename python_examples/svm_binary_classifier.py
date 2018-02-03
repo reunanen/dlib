@@ -20,14 +20,16 @@
 #   things run faster.  
 #
 #   Compiling dlib should work on any operating system so long as you have
-#   CMake and boost-python installed.  On Ubuntu, this can be done easily by
-#   running the command:
-#       sudo apt-get install libboost-python-dev cmake
+#   CMake installed.  On Ubuntu, this can be done easily by running the
+#   command:
+#       sudo apt-get install cmake
 #
 
 import dlib
-import pickle
-
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 x = dlib.vectors()
 y = dlib.array()
@@ -62,5 +64,5 @@ print("prediction for second sample: {}".format(classifier(x[1])))
 
 # classifier models can also be pickled in the same was as any other python object.
 with open('saved_model.pickle', 'wb') as handle:
-    pickle.dump(classifier, handle)
+    pickle.dump(classifier, handle, 2)
 
