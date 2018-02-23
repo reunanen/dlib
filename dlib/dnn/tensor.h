@@ -205,7 +205,7 @@ namespace dlib
         long m_k;
         long m_nr;
         long m_nc;
-        long m_size; // always equal to m_n*m_k*m_nr*m_nc
+        size_t m_size; // always equal to m_n*m_k*m_nr*m_nc
     };
 
 // ----------------------------------------------------------------------------------------
@@ -384,7 +384,7 @@ namespace dlib
             m_k = k_;
             m_nr = nr_;
             m_nc = nc_;
-            m_size = n_*k_*nr_*nc_;
+            m_size = static_cast<size_t>(n_) * static_cast<size_t>(k_) * static_cast<size_t>(nr_) * static_cast<size_t>(nc_);
             data_instance.set_size(m_size);
 #ifdef DLIB_USE_CUDA
             cudnn_descriptor.set_size(m_n,m_k,m_nr,m_nc);
