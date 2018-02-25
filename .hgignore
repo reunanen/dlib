@@ -5,10 +5,15 @@
 \.swo$
 \.o$
 \.a$
+\.so$
 \.orig$
 \.obj$
 \.pyc$
 ^build/
+^dist/
+^\.cache/
+^\.eggs/
+^dlib\.egg-info/
 ^docs/release/
 ^docs/docs/web/
 ^docs/docs/chm/

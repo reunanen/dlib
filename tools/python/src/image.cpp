@@ -1,10 +1,12 @@
+#include "opaque_types.h"
 #include <dlib/python.h>
-#include <boost/python/args.hpp>
 #include "dlib/pixel.h"
+#include <dlib/image_transforms.h>
 
 using namespace dlib;
 using namespace std;
-using namespace boost::python;
+
+namespace py = pybind11;
 
 // ----------------------------------------------------------------------------------------
 
@@ -20,20 +22,19 @@ string print_rgb_pixel_str(const rgb_pixel& p)
 string print_rgb_pixel_repr(const rgb_pixel& p)
 {
     std::ostringstream sout;
-    sout << "rgb_pixel(" << p.red << "," << p.green << "," << p.blue << ")";
+    sout << "rgb_pixel(" << (int)p.red << "," << (int)p.green << "," << (int)p.blue << ")";
     return sout.str();
 }
 
 // ----------------------------------------------------------------------------------------
-void bind_image_classes()
-{
-    using boost::python::arg;
 
-    class_<rgb_pixel>("rgb_pixel")
-        .def(init<unsigned char,unsigned char,unsigned char>( (arg("red"),arg("green"),arg("blue")) ))
+void bind_image_classes(py::module& m)
+{
+    py::class_<rgb_pixel>(m, "rgb_pixel")
+        .def(py::init<unsigned char,unsigned char,unsigned char>(), py::arg("red"), py::arg("green"), py::arg("blue"))
         .def("__str__", &print_rgb_pixel_str)
         .def("__repr__", &print_rgb_pixel_repr)
-        .add_property("red", &rgb_pixel::red)
-        .add_property("green", &rgb_pixel::green)
-        .add_property("blue", &rgb_pixel::blue);
+        .def_readwrite("red", &rgb_pixel::red)
+        .def_readwrite("green", &rgb_pixel::green)
+        .def_readwrite("blue", &rgb_pixel::blue);
 }

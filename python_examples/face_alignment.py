@@ -17,9 +17,9 @@
 #   installed.
 #
 #   Compiling dlib should work on any operating system so long as you have
-#   CMake and boost-python installed.  On Ubuntu, this can be done easily by
-#   running the command:
-#       sudo apt-get install libboost-python-dev cmake
+#   CMake installed.  On Ubuntu, this can be done easily by running the
+#   command:
+#       sudo apt-get install cmake
 #
 #   Also note that this example requires OpenCV and Numpy which can be installed
 #   via the command:
@@ -77,15 +77,13 @@ for detection in dets:
 # images = dlib.get_face_chips(img, faces, size=160, padding=0.25)
 images = dlib.get_face_chips(img, faces, size=320)
 for image in images:
-    cv_rgb_image = np.array(image).astype(np.uint8)
-    cv_bgr_img = cv2.cvtColor(cv_rgb_image, cv2.COLOR_RGB2BGR)
+    cv_bgr_img = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
     cv2.imshow('image',cv_bgr_img)
     cv2.waitKey(0)
 
 # It is also possible to get a single chip
 image = dlib.get_face_chip(img, faces[0])
-cv_rgb_image = np.array(image).astype(np.uint8)
-cv_bgr_img = cv2.cvtColor(cv_rgb_image, cv2.COLOR_RGB2BGR)
+cv_bgr_img = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 cv2.imshow('image',cv_bgr_img)
 cv2.waitKey(0)
 

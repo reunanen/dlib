@@ -37,6 +37,13 @@ namespace dlib
             const tensor& src2
         );
 
+        void scale_channels (
+            bool add_to,
+            tensor& dest,
+            const tensor& src,
+            const tensor& scales
+        );
+
         void add(
             float beta,
             tensor& dest,
@@ -243,6 +250,19 @@ namespace dlib
         );
 
         void softmax_gradient (
+            tensor& grad,
+            const tensor& dest,
+            const tensor& gradient_input
+        );
+
+    // ------------------------------------------------------------------------------------
+
+        void softmax_all (
+            tensor& dest,
+            const tensor& src
+        );
+
+        void softmax_all_gradient (
             tensor& grad,
             const tensor& dest,
             const tensor& gradient_input

@@ -30,6 +30,7 @@ namespace dlib
             num_test_splits = 20;
             feature_pool_region_padding = 0;
             random_seed = "";
+            num_threads = 0;
         }
 
         bool be_verbose;
@@ -43,6 +44,9 @@ namespace dlib
         unsigned long num_test_splits;
         double feature_pool_region_padding;
         std::string random_seed;
+
+        // not serialized
+        unsigned long num_threads;
     };
 
     inline void serialize (
@@ -109,7 +113,8 @@ namespace dlib
             << "lambda_param=" << o.lambda_param << ","
             << "num_test_splits=" << o.num_test_splits << ","
             << "feature_pool_region_padding=" << o.feature_pool_region_padding << ","
-            << "random_seed=" << o.random_seed
+            << "random_seed=" << o.random_seed << ","
+            << "num_threads=" << o.num_threads
         << ")";
         return sout.str();
     }
@@ -144,8 +149,8 @@ namespace dlib
             throw error("Invalid lambda_param value given to train_shape_predictor(), lambda_param must be > 0.");
         if (!(0 < options.nu && options.nu <= 1))
             throw error("Invalid nu value given to train_shape_predictor(). It is required that 0 < nu <= 1.");
-        if (options.feature_pool_region_padding < 0)
-            throw error("Invalid feature_pool_region_padding value given to train_shape_predictor(), feature_pool_region_padding must be >= 0.");
+        if (options.feature_pool_region_padding <= -0.5)
+            throw error("Invalid feature_pool_region_padding value given to train_shape_predictor(), feature_pool_region_padding must be > -0.5.");
 
         if (images.size() != detections.size())
             throw error("The list of images must have the same length as the list of detections.");
@@ -165,6 +170,7 @@ namespace dlib
         trainer.set_feature_pool_region_padding(options.feature_pool_region_padding);
         trainer.set_lambda(options.lambda_param);
         trainer.set_num_test_splits(options.num_test_splits);
+        trainer.set_num_threads(options.num_threads);
 
         if (options.be_verbose)
         {
@@ -176,6 +182,7 @@ namespace dlib
             std::cout << "Training with oversampling amount: " << options.oversampling_amount << std::endl;
             std::cout << "Training with feature pool size: " << options.feature_pool_size << std::endl;
             std::cout << "Training with feature pool region padding: " << options.feature_pool_region_padding << std::endl;
+            std::cout << "Training with " << options.num_threads << " threads." << std::endl;
             std::cout << "Training with lambda_param: " << options.lambda_param << std::endl;
             std::cout << "Training with " << options.num_test_splits << " split tests."<< std::endl;
             trainer.be_verbose();

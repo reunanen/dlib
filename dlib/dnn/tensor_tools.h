@@ -50,6 +50,24 @@ namespace dlib { namespace tt
             - #out == sum_cols(pointwise_multiply(mat(lhs), mat(rhs))); 
     !*/
 
+    void dot_prods (
+        bool add_to,
+        tensor& out,
+        const tensor& lhs,
+        const tensor& rhs
+    );
+    /*!
+        requires
+            - have_same_dimensions(lhs,rhs) == true
+            - out.size() == lhs.num_samples()
+            - out.k() == out.nr() == out.nc() == 1
+        ensures
+            - if (add_to) then
+                - #out == mat(out) + sum_cols(pointwise_multiply(mat(lhs), mat(rhs))); 
+            - else
+                - #out == sum_cols(pointwise_multiply(mat(lhs), mat(rhs))); 
+    !*/
+
     void scale_columns (
         tensor& out,
         const tensor& m,
@@ -271,6 +289,27 @@ namespace dlib { namespace tt
               Second, if dest.num_samples()==1, then after the pointwise multiplication of
               src1 with src2, the result has its samples summed to produce an output tensor
               with num_samples()==1 which is then assigned to #dest.
+            - if (add_to) then
+                - Instead of assigning the result to dest, this function adds the result to dest.
+    !*/
+
+    void scale_channels (
+        bool add_to,
+        tensor& dest,
+        const tensor& src,
+        const tensor& scales
+    );
+    /*!
+        requires
+            - have_same_dimensions(dest, src) == true
+            - scales.num_samples() == src.num_samples()
+            - scales.k()           == src.k()
+            - scales.nr()          == 1
+            - scales.nc()          == 1
+        ensures
+            - Scales each channel of src by the corresponding value in scales.  To be
+              precise, we will have:
+                - #dest(n,k,r,c) == src(n,k,r,c)*scales(n,k,1,1)
             - if (add_to) then
                 - Instead of assigning the result to dest, this function adds the result to dest.
     !*/
@@ -1212,6 +1251,44 @@ namespace dlib { namespace tt
               is_same_object(grad,gradient_input)==true then the output is assigned to
               grad, replacing its previous contents.  Otherwise the output is added to
               grad.
+            - This function supports in-place operation, i.e. having
+              is_same_object(grad, gradient_input)==true
+    !*/
+
+// ----------------------------------------------------------------------------------------
+
+    void softmax_all (
+        tensor& dest,
+        const tensor& src
+    );
+    /*!
+        requires
+            - have_same_dimensions(dest, src) == true
+        ensures
+            - Note that the softmax function is a vector valued function: 
+              s(x) == exp(x)/sum(exp(x)) 
+            - Computes the softmax function on src and writes the results to dest.  The
+              softmax is computed over the entire tensor with one invocation of s().  So
+              unlike softmax() which computes many s() evaluations, one for each spatial
+              location, softmax_all() calls s() once for the entire tensor.
+            - This function supports in-place operation, i.e. having
+              is_same_object(dest, src)==true
+    !*/
+
+    void softmax_all_gradient (
+        tensor& grad,
+        const tensor& dest,
+        const tensor& gradient_input
+    );
+    /*!
+        requires
+            - have_same_dimensions(dest,gradient_input) == true 
+            - have_same_dimensions(dest,grad) == true 
+            - is_same_object(grad, dest)==false
+        ensures
+            - We interpret dest as the output of softmax_all(dest,SRC) for some SRC tensor.
+              Then let f(SRC) == dot(gradient_input,dest) Then this function computes the
+              gradient of f() with respect to SRC and assigns it to grad.
             - This function supports in-place operation, i.e. having
               is_same_object(grad, gradient_input)==true
     !*/

@@ -69,6 +69,23 @@ namespace dlib { namespace tt
 #endif
     }
 
+    void dot_prods (
+        bool add_to,
+        tensor& out,
+        const tensor& lhs,
+        const tensor& rhs
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::dot_prods(add_to, out, lhs, rhs);
+#else
+        if (add_to)
+            out += sum_cols(pointwise_multiply(mat(lhs), mat(rhs))); 
+        else
+            out = sum_cols(pointwise_multiply(mat(lhs), mat(rhs))); 
+#endif
+    }
+
     void scale_columns (
         tensor& out,
         const tensor& m,
@@ -288,6 +305,20 @@ namespace dlib { namespace tt
         cpu::multiply(add_to, dest, src1, src2);
 #endif
 
+    }
+
+    void scale_channels (
+        bool add_to,
+        tensor& dest,
+        const tensor& src,
+        const tensor& scales
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::scale_channels(add_to, dest, src, scales);
+#else
+        cpu::scale_channels(add_to, dest, src, scales);
+#endif
     }
 
     void multiply_conv (
@@ -738,6 +769,33 @@ namespace dlib { namespace tt
         cuda::softmax_gradient(grad, dest, gradient_input);
 #else
         cpu::softmax_gradient(grad, dest, gradient_input);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    void softmax_all (
+        tensor& dest,
+        const tensor& src
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::softmax_all(dest,src);
+#else
+        cpu::softmax_all(dest,src);
+#endif
+    }
+
+    void softmax_all_gradient (
+        tensor& grad,
+        const tensor& dest,
+        const tensor& gradient_input
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::softmax_all_gradient(grad, dest, gradient_input);
+#else
+        cpu::softmax_all_gradient(grad, dest, gradient_input);
 #endif
     }
 

@@ -363,6 +363,228 @@ namespace dlib
     using loss_multiclass_log = add_loss_layer<loss_multiclass_log_, SUBNET>;
 
 // ----------------------------------------------------------------------------------------
+
+    class loss_multimulticlass_log_ 
+    {
+        /*!
+            WHAT THIS OBJECT REPRESENTS
+                This object implements the loss layer interface defined above by
+                EXAMPLE_LOSS_LAYER_.  In particular, it implements a collection of
+                multiclass classifiers.  An example will make its use clear.  So suppose,
+                for example, that you want to make something that takes a picture of a
+                vehicle and answers the following questions:
+                    - What type of vehicle is it? A sedan or a truck?
+                    - What color is it? red, green, blue, gray, or black?
+                You need two separate multi-class classifiers to do this.  One to decide
+                the type of vehicle, and another to decide the color.  The
+                loss_multimulticlass_log_ allows you to pack these two classifiers into one
+                neural network.  This means that when you use the network to process an
+                image it will output 2 labels for each image, the type label and the color
+                label.  
+
+                To create a loss_multimulticlass_log_ for the above case you would
+                construct it as follows:
+                    std::map<std::string,std::vector<std::string>> labels;
+                    labels["type"] = {"sedan", "truck"};
+                    labels["color"] = {"red", "green", "blue", "gray", "black"};
+                    loss_multimulticlass_log_ myloss(labels);
+                Then you could use myloss with a network object and train it to do this
+                task.  More generally, you can use any number of classifiers and labels
+                when using this object.  Finally, each of the classifiers uses a standard
+                multi-class logistic regression loss.
+        !*/
+
+    public:
+
+        loss_multimulticlass_log_(
+        ); 
+        /*!
+            ensures
+                - #number_of_labels() == 0
+                - #get_labels().size() == 0
+        !*/
+
+        loss_multimulticlass_log_ (
+            const std::map<std::string,std::vector<std::string>>& labels
+        );
+        /*!
+            requires
+                - Each vector in labels must contain at least 2 strings.  I.e. each
+                  classifier must have at least two possible labels.
+            ensures
+                - #number_of_labels() == the total number of strings in all the
+                  std::vectors in labels.
+                - #number_of_classifiers() == labels.size()
+                - #get_labels() == labels
+        !*/
+
+        unsigned long number_of_labels(
+        ) const; 
+        /*!
+            ensures
+                - returns the total number of labels known to this loss.  This is the count of 
+                  all the labels in each classifier.
+        !*/
+
+        unsigned long number_of_classifiers(
+        ) const; 
+        /*!
+            ensures
+                - returns the number of classifiers defined by this loss.
+        !*/
+
+        std::map<std::string,std::vector<std::string>> get_labels ( 
+        ) const;
+        /*!
+            ensures
+                - returns the names of the classifiers and labels used by this loss.  In
+                  particular, if the returned object is L then:
+                    - L[CLASS] == the set of labels used by the classifier CLASS.
+                    - L.size() == number_of_classifiers()
+                    - The count of strings in the vectors in L == number_of_labels()
+        !*/
+
+        class classifier_output
+        {
+            /*!
+                WHAT THIS OBJECT REPRESENTS
+                    This object stores the predictions from one of the classifiers in
+                    loss_multimulticlass_log_.  It allows you to find out the most likely
+                    string label predicted by that classifier, as well as get the class
+                    conditional probability of any of the classes in the classifier.
+            !*/
+
+        public:
+
+            classifier_output(
+            );
+            /*!
+                ensures
+                    - #num_classes() == 0
+            !*/
+
+            size_t num_classes(
+            ) const; 
+            /*!
+                ensures
+                    - returns the number of possible classes output by this classifier.
+            !*/
+
+            double probability_of_class (
+                size_t i
+            ) const;
+            /*!
+                requires
+                    - i < num_classes()
+                ensures
+                    - returns the probability that the true class has a label of label(i).
+                    - The sum of probability_of_class(j) for j in the range [0, num_classes()) is always 1.
+            !*/
+
+            const std::string& label(
+                size_t i
+            ) const;
+            /*!
+                requires
+                    - i < num_classes()
+                ensures
+                    - returns the string label for the ith class.
+            !*/
+
+            operator std::string(
+            ) const;
+            /*!
+                requires
+                    - num_classes() != 0
+                ensures
+                    - returns the string label for the most probable class.
+            !*/
+
+            friend std::ostream& operator<< (std::ostream& out, const classifier_output& item);
+            /*!
+                requires
+                    - num_classes() != 0
+                ensures
+                    - prints the most probable class label to out.
+            !*/
+
+        };
+
+        // Both training_label_type and output_label_type should always have sizes equal to
+        // number_of_classifiers().  That is, the std::map should have an entry for every
+        // classifier known to this loss.
+        typedef std::map<std::string,std::string> training_label_type;
+        typedef std::map<std::string,classifier_output> output_label_type;
+
+
+        template <
+            typename SUB_TYPE,
+            typename label_iterator
+            >
+        void to_label (
+            const tensor& input_tensor,
+            const SUB_TYPE& sub,
+            label_iterator iter
+        ) const;
+        /*!
+            This function has the same interface as EXAMPLE_LOSS_LAYER_::to_label() except
+            it has the additional calling requirements that: 
+                - number_of_labels() != 0
+                - sub.get_output().k() == number_of_labels()
+                - sub.get_output().nr() == 1
+                - sub.get_output().nc() == 1
+                - sub.get_output().num_samples() == input_tensor.num_samples()
+                - sub.sample_expansion_factor() == 1
+        !*/
+
+        template <
+            typename const_label_iterator,
+            typename SUBNET
+            >
+        double compute_loss_value_and_gradient (
+            const tensor& input_tensor,
+            const_label_iterator truth, 
+            SUBNET& sub
+        ) const;
+        /*!
+            This function has the same interface as EXAMPLE_LOSS_LAYER_::compute_loss_value_and_gradient() 
+            except it has the additional calling requirements that: 
+                - number_of_labels() != 0
+                - sub.get_output().k() == number_of_labels()
+                    It should be noted that the last layer in your network should usually
+                    be an fc layer.  If so, you can satisfy this requirement of k() being
+                    number_of_labels() by calling set_num_outputs() prior to training your
+                    network like so:
+                    your_network.subnet().layer_details().set_num_outputs(your_network.loss_details().number_of_labels());
+                - sub.get_output().nr() == 1
+                - sub.get_output().nc() == 1
+                - sub.get_output().num_samples() == input_tensor.num_samples()
+                - sub.sample_expansion_factor() == 1
+                - All the std::maps pointed to by truth contain entries for all the
+                  classifiers known to this loss.  That is, it must be valid to call
+                  truth[i][classifier] for any of the classifiers known to this loss.  To
+                  say this another way, all the training samples must contain labels for
+                  each of the classifiers defined by this loss.
+
+                  To really belabor this, this also means that truth[i].size() ==
+                  get_labels().size() and that both truth[i] and get_labels() have the same
+                  set of key strings.  It also means that the value strings in truth[i]
+                  must be strings known to the loss, i.e. they are valid labels according
+                  to get_labels().
+        !*/
+    };
+
+    template <typename SUBNET>
+    using loss_multimulticlass_log = add_loss_layer<loss_multimulticlass_log_, SUBNET>;
+
+    // Allow comparison between classifier_outputs and std::string to check if the
+    // predicted class is a particular string.
+    inline bool operator== (const std::string& lhs, const loss_multimulticlass_log_::classifier_output& rhs)
+    { return lhs == static_cast<const std::string&>(rhs); }
+    inline bool operator== (const loss_multimulticlass_log_::classifier_output& lhs, const std::string& rhs)
+    { return rhs == static_cast<const std::string&>(lhs); }
+
+// ----------------------------------------------------------------------------------------
 // ----------------------------------------------------------------------------------------
 
     enum class use_image_pyramid : uint8_t
@@ -426,10 +648,6 @@ namespace dlib
         // objects in your dataset that you are unsure if you want to detect or otherwise
         // don't care if the detector gets them or not.  
         test_box_overlap overlaps_ignore;
-
-        // Print warnings to stdout about truth rects that are suppressed by
-        // non-max-suppression because they are overlapped by other truth rectangles?
-        bool warn_about_truth_rects_ignored_due_to_nms = true;
 
         // Usually the detector would be scale-invariant, and used with an image pyramid.
         // However, sometimes scale-invariance may not be desired.
@@ -828,6 +1046,106 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
+    class loss_epsilon_insensitive_
+    {
+        /*!
+            WHAT THIS OBJECT REPRESENTS
+                This object implements the loss layer interface defined above by
+                EXAMPLE_LOSS_LAYER_.  In particular, it implements the epsilon insensitive
+                loss, which is appropriate for regression problems.  In particular, this
+                loss function is;
+                    loss(y1,y2) = abs(y1-y2)<epsilon ? 0 : abs(y1-y2)-epsilon
+
+                Therefore, the loss is basically just the abs() loss except there is a dead
+                zone around zero, causing the loss to not care about mistakes of magnitude
+                smaller than epsilon.
+        !*/
+    public:
+
+        typedef float training_label_type;
+        typedef float output_label_type;
+
+        loss_epsilon_insensitive_(
+        ) = default;
+        /*!
+            ensures
+                - #get_epsilon() == 1
+        !*/
+
+        loss_epsilon_insensitive_(
+            double eps
+        );
+        /*!
+            requires
+                - eps >= 0
+            ensures
+                - #get_epsilon() == eps
+        !*/
+
+        double get_epsilon (
+        ) const;
+        /*!
+            ensures
+                - returns the epsilon value used in the loss function.  Mistakes in the
+                  regressor smaller than get_epsilon() are ignored by the loss function.
+        !*/
+
+        void set_epsilon(
+            double eps
+        );
+        /*!
+            requires
+                - eps >= 0
+            ensures
+                - #get_epsilon() == eps
+        !*/
+
+        template <
+            typename SUB_TYPE,
+            typename label_iterator
+            >
+        void to_label (
+            const tensor& input_tensor,
+            const SUB_TYPE& sub,
+            label_iterator iter
+        ) const;
+        /*!
+            This function has the same interface as EXAMPLE_LOSS_LAYER_::to_label() except
+            it has the additional calling requirements that:
+                - sub.get_output().nr() == 1
+                - sub.get_output().nc() == 1
+                - sub.get_output().k() == 1
+                - sub.get_output().num_samples() == input_tensor.num_samples()
+                - sub.sample_expansion_factor() == 1
+            and the output label is the predicted continuous variable.
+        !*/
+
+        template <
+            typename const_label_iterator,
+            typename SUBNET
+            >
+        double compute_loss_value_and_gradient (
+            const tensor& input_tensor,
+            const_label_iterator truth,
+            SUBNET& sub
+        ) const;
+        /*!
+            This function has the same interface as EXAMPLE_LOSS_LAYER_::compute_loss_value_and_gradient()
+            except it has the additional calling requirements that:
+                - sub.get_output().nr() == 1
+                - sub.get_output().nc() == 1
+                - sub.get_output().k() == 1
+                - sub.get_output().num_samples() == input_tensor.num_samples()
+                - sub.sample_expansion_factor() == 1
+        !*/
+
+    };
+
+    template <typename SUBNET>
+    using loss_epsilon_insensitive = add_loss_layer<loss_epsilon_insensitive_, SUBNET>;
+
+// ----------------------------------------------------------------------------------------
+
     class loss_mean_squared_
     {
         /*!
@@ -1156,6 +1474,68 @@ namespace dlib
 
     template <typename SUBNET>
     using loss_mean_squared_per_pixel = add_loss_layer<loss_mean_squared_per_pixel_, SUBNET>;
+
+// ----------------------------------------------------------------------------------------
+
+    class loss_dot_ 
+    {
+        /*!
+            WHAT THIS OBJECT REPRESENTS
+                This object implements the loss layer interface defined above by
+                EXAMPLE_LOSS_LAYER_.  In particular, selecting this loss means you want
+                maximize the dot product between the output of a network and a set of
+                training vectors.  The loss is therefore the negative dot product.  To be
+                very specific, if X is the output vector of a network and Y is a training
+                label (also a vector), then the loss for this training sample is: -dot(X,Y)
+        !*/
+
+    public:
+
+        typedef matrix<float,0,1> training_label_type;
+        typedef matrix<float,0,1> output_label_type;
+
+        template <
+            typename SUB_TYPE,
+            typename label_iterator
+            >
+        void to_label (
+            const tensor& input_tensor,
+            const SUB_TYPE& sub,
+            label_iterator iter
+        ) const;
+        /*!
+            This function has the same interface as EXAMPLE_LOSS_LAYER_::to_label() except
+            it has the additional calling requirements that:
+                - sub.get_output().num_samples() == input_tensor.num_samples()
+                - sub.sample_expansion_factor() == 1
+            and the output labels are simply the final network outputs stuffed into a
+            vector.  To be very specific, the output is the following for all valid i:
+                *(iter+i) == trans(rowm(mat(sub.get_output()),i))
+        !*/
+
+
+        template <
+            typename const_label_iterator,
+            typename SUBNET
+            >
+        double compute_loss_value_and_gradient (
+            const tensor& input_tensor,
+            const_label_iterator truth, 
+            SUBNET& sub
+        ) const;
+        /*!
+            This function has the same interface as EXAMPLE_LOSS_LAYER_::compute_loss_value_and_gradient()
+            except it has the additional calling requirements that:
+                - sub.get_output().num_samples() == input_tensor.num_samples()
+                - sub.sample_expansion_factor() == 1
+                - Let NETWORK_OUTPUT_DIMS == sub.get_output().size()/sub.get_output().num_samples()
+                - for all idx such that 0 <= idx < sub.get_output().num_samples():
+                    - NETWORK_OUTPUT_DIMS == (*(truth + idx)).size()
+        !*/
+    };
+
+    template <typename SUBNET>
+    using loss_dot = add_loss_layer<loss_dot_, SUBNET>;
 
 // ----------------------------------------------------------------------------------------
 

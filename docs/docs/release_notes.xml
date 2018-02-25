@@ -12,6 +12,135 @@
 
 <current>
 New Features and Improvements:
+   - Switched the Python API from Boost.Python to pybind11.  This means Python
+     users don't need to install Boost anymore, making building dlib's Python API
+     much easier.
+   - Made the sparse version of svd_fast() use multiple CPU cores.
+   - Changed the behavior of imglab's --flip option.  It will now attempt to
+     adjust any object part labels so that the flipped dataset has the same
+     average part layout as the source dataset. There is also a new --flip-basic 
+     option that behaves like the old --flip. However, most people flipping a
+     dataset with part annotations will want to use --flip.  For more details
+     see: http://blog.dlib.net/2018/01/correctly-mirroring-datasets.html
+
+Non-Backwards Compatible Changes:
+   - Removed std::auto_ptr from dlib's old (and depreciated) smart pointers. 
+
+Bug fixes:
+   - Fixed global_optimization.py not working in Python 3.
+
+</current>
+
+<!-- **************************************************************************************  -->
+
+<old name="19.8" date="Dec 19, 2017">
+New Features and Improvements:
+   - Added a global optimizer, find_max_global(), which is suitable for
+     optimizing expensive functions with many local optima.  For example, you
+     can use it for hyperparameter optimization.  See model_selection_ex.cpp
+     for an example.
+   - Updates to the deep learning tooling:
+      - Added semantic segmentation examples: dnn_semantic_segmentation_ex.cpp
+        and dnn_semantic_segmentation_train_ex.cpp
+      - New layers: loss_ranking, loss_epsilon_insensitive, softmax_all, and loss_dot.
+      - Made log loss layers more numerically stable.
+      - Upgraded the con layer so you can set the number of rows or columns to
+        0 in the layer specification. Doing this means "make the filter cover
+        the whole input image dimension".  This provides an easy way to make a
+        filter sized so it will have one output along that dimension,
+        effectively making it like a fully connected layer operating on a row
+        or column.
+      - Added support for non-scale-invariant MMOD.
+      - Added an optional parameter to dnn_trainer::get_net() that allows you
+        to call the function without forcing a state flush to disk.
+      - Sometimes the loss_mmod layer could experience excessively long runtime
+        during early training iterations.  This has been optimized and is now
+        much faster.
+      - Optimized the tensor's management of GPU memory.  It now uses less memory
+        in some cases.  It will also not perform a reallocation if resized to a
+        smaller size.  Instead, tensors now behave like std::vector in that
+        they just change their nominal size but keep the same memory, only
+        reallocating if they are resized to something larger than their
+        underlying memory block. This change makes some uses of dlib faster, in
+        particular, running networks on a large set of images of differing
+        sizes will now run faster since there won't be any GPU reallocations,
+        which are notoriously slow.
+      - Upgraded the input layer so you can give
+        input&lt;std::array&lt;matrix&lt;T&gt;,K&gt;&gt; types as input. Doing
+        this will create input tensors with K channels.
+   - Added disjoint_subsets_sized
+   - Added Python APIs: get_face_chips(), count_steps_without_decrease(),
+     count_steps_without_decrease_robust(), and jitter_image().
+   - Various improvements to CMake scripts: e.g. improved warning and error
+     messages, added USE_NEON_INSTRUCTIONS option.
+   - chol() will use a banded Cholesky algorithm for banded matrices, making it
+     much faster in these cases.
+   - Changed the timing code to use the C++11 high resolution clock and
+     atomics. This makes the timing code a lot more precise.
+
+Non-Backwards Compatible Changes:
+   - Changed the random_cropper's set_min_object_size() routine to take min box
+     dimensions in the same format as the mmod_options object (i.e. two lengths
+     measured in pixels). This should make defining random_cropping strategies
+     that are consistent with MMOD settings more straightforward since you can
+     simply take the mmod_options settings and give them to the random_cropper
+     and it will do the right thing.
+   - Changed the mean squared loss layers to return a loss that's the MSE, not
+     0.5*MSE. The only thing this effects is the logging messages that print
+     during training, which were confusing since the reported loss was half the
+     size you might naively expect.
+   - Changed the outputs of test_regression_function() and cross_validate_regression_trainer().
+     These functions now output 4D rather than 2D vectors.  The new output is:
+     mean squared error, correlation, mean absolute error, and standard
+     deviation of absolute error.  I also made test_regression_function() take
+     a non-const reference to the regression function so that DNN objects can
+     be tested.
+   - Fixed shape_predictor_trainer padding so it behaves as it used to. In
+     dlib 19.7 the padding code was changed and accidentally doubled the size
+     of the applied padding in some cases. It's not a huge deal either way, but
+     this change reverts back to the previous behavior.
+
+Bug fixes:
+   - Fixed toMat() not compiling in some cases.
+   - Significantly reduced the compile time of the DNN example programs in
+     visual studio.
+   - Fixed a few image processing functions that weren't using the generic
+     image interface.
+   - Fixed a bug in the random_cropper where it might crash due to division by
+     0 if small images were given as input.
+   - Fixed a bug in how the mmod_options automatically determines detection
+     window sizes. It would pick a bad size in some cases.
+   - Fixed load_image_dataset()'s skip_empty_images() option. It wasn't
+     skipping images that only have ignore boxes when you load into mmod_rect
+     objects.
+   - Fixed a bug where chinese_whispers(), when called from python, would
+     sometimes return a labels array that didn't include labels for all the
+     inputs.
+   - Fixed a bug in dlib's MS Windows GUI code that was introduced a little
+     while back when we switched everything to std::shared_ptr.  This change
+     fixes a bug where the program crashes or hangs sometimes during program
+     shutdown.
+   - Fixed error in TIME_THIS() introduced in dlib 19.7. It was printing
+     seconds when it said minutes in the output.
+   - Adding missing implementation of tabbed_display::selected_tab.
+   - Changed the windows signaler and mutex code to use the C++11 thread
+     library instead of the old win32 functions. I did this to work around how
+     windows unloads dlls. In particular, during dll unload windows will kill
+     all threads, THEN it will destruct global objects. So this can lead to
+     problems when a global object that owns threads tries to tell them to
+     shutdown, since the threads have already vanished.  The new code mitigates
+     some of these problems, in particular, there were some cases where
+     unloading dlib's python extension would deadlock.  This should now be
+     fixed.
+   - Fixed compile time errors when either of these macros were enabled:
+     DLIB_STACK_TRACE, DLIB_ISO_CPP_ONLY.
+
+</old>
+
+<!-- **************************************************************************************  -->
+
+<old name="19.7" date="Sep 17, 2017">
+New Features and Improvements:
    - Deep Learning:
       - The CNN+MMOD detector is now a multi-class detector.  In particular,
         the mmod_rect object now has a string label field which you can use to
@@ -50,7 +179,7 @@ Bug fixes:
      exactly right when boxes were auto-ignored.  There weren't any practical
      user facing problems due to this, but it has nevertheless been fixed. 
 
-</current>
+</old>
 
 <!-- **************************************************************************************  -->
 
