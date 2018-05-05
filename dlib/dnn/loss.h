@@ -1344,7 +1344,7 @@ namespace dlib
                 {
                     for (long c = 0; c < output_tensor.nc(); ++c)
                     {
-                        double score = out_data[(k*output_tensor.nr() + r)*output_tensor.nc() + c] + gain_offset;
+                        double score = out_data[(k*output_tensor.nr() + r)*output_tensor.nc() + c] + gain;
                         if (score > adjust_threshold)
                         {
                             dpoint p = output_tensor_to_input_tensor(net, point(c,r));
