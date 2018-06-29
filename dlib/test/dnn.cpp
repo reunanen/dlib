@@ -3237,6 +3237,20 @@ namespace
             DLIB_TEST_MSG(threshold7 > 0.8, "threshold7 must be greater than 0.8");
             DLIB_TEST_MSG(threshold7 < 0.9, "threshold7 must be less than 0.9");
         }
+
+        { // A bunch of detections overlapping the truth
+            const std::vector<std::vector<mmod_rect>> truth8 = { {
+                    mmod_rect(rectangle(10, 10, 20, 20)),
+                } };
+            const std::vector<std::vector<mmod_rect>> detections8 = { {
+                    mmod_rect(rectangle(10, 10, 20, 20), 1.0),
+                    mmod_rect(rectangle(10, 10, 20, 20), 0.9),
+                    mmod_rect(rectangle(10, 10, 20, 20), 0.8)
+                } };
+            const double threshold8 = find_optimal_threshold(truth8, detections8);
+            DLIB_TEST_MSG(threshold8 > 0.9, "threshold8 must be greater than 0.9");
+            DLIB_TEST_MSG(threshold8 < 1.0, "threshold8 must be less than 1.0");
+        }
     }
 
 // ----------------------------------------------------------------------------------------
