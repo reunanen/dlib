@@ -82,9 +82,21 @@ namespace dlib
                     const mmod_rect& candidate_truth = truth_i[k];
                     const double truth_match_iou = box_intersection_over_union(detection.rect, candidate_truth.rect);
 
-                    const auto accept_with_correct_label = [&]()
+                    const auto accept_truth_hit = [&]()
                     {
-                        return truth_match_iou >= truth_match_iou_threshold_for_correct_label && detection.label == candidate_truth.label;
+                        if (candidate_truth.ignore)
+                        {
+                            return false;
+                        }
+                        if (truth_match_iou >= truth_match_iou_threshold_for_correct_label && detection.label == candidate_truth.label)
+                        {
+                            return true; // accept with correct label
+                        }
+                        if (truth_match_iou >= truth_match_iou_threshold_for_incorrect_label)
+                        {
+                            return true; // accept with incorrect label
+                        }
+                        return false;
                     };
 
                     const auto accept_ignore = [&]()
@@ -92,7 +104,7 @@ namespace dlib
                         return candidate_truth.ignore && truth_match_iou >= truth_match_iou_threshold_for_ignore;
                     };
 
-                    if (accept_with_correct_label() || truth_match_iou >= truth_match_iou_threshold_for_incorrect_label)
+                    if (accept_truth_hit())
                     {
                         const auto truth_match_iou_and_detection_index = [&]() { return std::make_pair(truth_match_iou, j); };
                         const auto i = best_matching_truths.find(k);
