@@ -17,7 +17,7 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
-    double find_optimal_threshold(const std::vector<roc_point>& roc_curve)
+    double find_optimal_threshold(const std::vector<roc_point>& roc_curve, double max_margin_if_single_optimal_point)
     {
         DLIB_CASSERT(!roc_curve.empty());
 
@@ -27,17 +27,45 @@ namespace dlib
             return roc_point.true_positive_rate - roc_point.false_positive_rate;
         };
 
-        const auto point1 = std::max_element(roc_curve.begin(), roc_curve.end(),
+        const auto first_point = std::max_element(roc_curve.begin(), roc_curve.end(),
             [youden_index](const roc_point& lhs, const roc_point& rhs) {
                 return youden_index(lhs) < youden_index(rhs);
             });
 
-        const auto point2 = point1 + 1;
-        if (point2 == roc_curve.end()) {
-            return point1->detection_threshold;
+        const auto first_point_youden_index = youden_index(*first_point);
+        auto last_point = first_point;
+
+        const auto next_point_exists_and_is_as_good_as_first_point = [&]()
+        {
+            const auto next_point = std::next(last_point);
+            return next_point != roc_curve.end()
+                && youden_index(*next_point) == first_point_youden_index;
+        };
+
+        while (next_point_exists_and_is_as_good_as_first_point()) {
+            ++last_point;
         }
-        DLIB_CASSERT(point1->detection_threshold >= point2->detection_threshold);
-        return (point1->detection_threshold + point2->detection_threshold) / 2.0;
+
+        DLIB_CASSERT(youden_index(*first_point) == youden_index(*last_point));
+
+        if (first_point->detection_threshold == last_point->detection_threshold)
+        {
+            // Single optimal point: subtract a margin.
+            const auto next_point = std::next(last_point);
+            if (next_point == roc_curve.end())
+            {
+                return first_point->detection_threshold - max_margin_if_single_optimal_point;
+            }
+            DLIB_CASSERT(first_point->detection_threshold > next_point->detection_threshold);
+            const auto distance = first_point->detection_threshold - next_point->detection_threshold;
+            const auto margin = std::min(max_margin_if_single_optimal_point, distance / 2.0);
+            return first_point->detection_threshold - margin;
+        }
+        else
+        {
+            // More than one optimal point: take the middle ground.
+            return (first_point->detection_threshold + last_point->detection_threshold) / 2.0;
+        }
     }
 
     double find_optimal_threshold(
@@ -183,7 +211,7 @@ namespace dlib
 
         const auto roc_curve = compute_roc_curve(true_detections, false_detections);
 
-        return find_optimal_threshold(roc_curve);
+        return find_optimal_threshold(roc_curve, epsilon);
     }
 // ----------------------------------------------------------------------------------------
 
