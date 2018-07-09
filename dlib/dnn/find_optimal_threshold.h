@@ -56,7 +56,8 @@ namespace dlib
             {
                 return first_point->detection_threshold - max_margin_if_single_optimal_point;
             }
-            DLIB_CASSERT(first_point->detection_threshold > next_point->detection_threshold);
+            DLIB_CASSERT(youden_index(*first_point) > youden_index(*next_point));
+            DLIB_CASSERT(first_point->detection_threshold >= next_point->detection_threshold);
             const auto distance = first_point->detection_threshold - next_point->detection_threshold;
             const auto margin = std::min(max_margin_if_single_optimal_point, distance / 2.0);
             return first_point->detection_threshold - margin;
