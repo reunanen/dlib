@@ -579,6 +579,19 @@ namespace dlib
             return test_one_step_calls;
         }
 
+        const std::deque<double>& get_previous_loss_values(
+        ) const
+        {
+            return previous_loss_values;
+        }
+
+        void set_previous_loss_values(
+            const std::deque<double>& previous_values
+        )
+        {
+            previous_loss_values = previous_values;
+        }
+
     private:
 
         void record_test_loss(double loss)
