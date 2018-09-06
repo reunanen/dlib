@@ -592,6 +592,19 @@ namespace dlib
             previous_loss_values = previous_values;
         }
 
+        const std::chrono::time_point<std::chrono::system_clock>& get_last_sync_time(
+        ) const
+        {
+            return last_sync_time;
+        }
+
+        void set_last_sync_time(
+            const std::chrono::time_point<std::chrono::system_clock>& time
+        )
+        {
+            last_sync_time = time;
+        }
+
     private:
 
         void record_test_loss(double loss)
