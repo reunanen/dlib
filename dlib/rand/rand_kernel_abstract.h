@@ -149,6 +149,29 @@ namespace dlib
                         - returns begin
             !*/
 
+            long long get_integer_in_range(
+                long long begin,
+                long long end
+            );
+            /*!
+                requires
+                    - begin <= end
+                ensures
+                    - returns a random integer N selected from the range: begin <= N < end
+                      The integer is selected uniformly at random.  If begin==end then
+                      begin is returned.
+            !*/
+
+            long long get_integer(
+                long long end
+            );
+            /*!
+                requires
+                    - 0 <= end
+                ensures
+                    - returns get_integer_in_range(0,end)
+            !*/
+
             double get_random_gaussian (
             );
             /*!

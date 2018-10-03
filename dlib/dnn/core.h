@@ -4,7 +4,7 @@
 #define DLIB_DNn_CORE_H_
 
 #include "core_abstract.h"
-#include "tensor.h"
+#include "../cuda/tensor.h"
 #include <iterator>
 #include <memory>
 #include <sstream>
@@ -16,8 +16,9 @@
 #include <tuple>
 #include <cmath>
 #include <vector>
-#include "tensor_tools.h"
+#include "../cuda/tensor_tools.h"
 #include <type_traits>
+#include "../metaprogramming.h"
 
 #ifdef _MSC_VER
 // Tell Visual Studio not to recursively inline functions very much because otherwise it
@@ -149,33 +150,10 @@ namespace dlib
 
     namespace impl
     {
-        template <size_t... n>
-        struct ct_integers_list {
-            template <size_t m>
-            struct push_back
-            {
-                typedef ct_integers_list<n..., m> type;
-            };
-        };
-
-        template <size_t max>
-        struct ct_make_integer_range
-        {
-            // recursively call push_back on ct_integers_list to build a range from 1 to max
-            // inclusive.
-            typedef typename ct_make_integer_range<max-1>::type::template push_back<max>::type type;
-        };
-
-        template <>
-        struct ct_make_integer_range<0>
-        {
-            typedef ct_integers_list<> type;
-        };
-
         template <size_t... indices, typename Tuple>
         auto tuple_subset(
             const Tuple& item, 
-            ct_integers_list<indices...>
+            compile_time_integer_list<indices...>
         ) -> decltype(std::make_tuple(std::get<indices>(item)...))
         {
             return std::make_tuple(std::get<indices>(item)...);
@@ -186,7 +164,7 @@ namespace dlib
             const std::tuple<Head, Tail...>& item
         )
         {
-            return tuple_subset(item, typename ct_make_integer_range<sizeof...(Tail)>::type());
+            return tuple_subset(item, typename make_compile_time_integer_range<sizeof...(Tail)>::type());
         }
 
         template <typename T>
@@ -198,15 +176,15 @@ namespace dlib
         template <typename... T>
         auto tuple_flatten(
             const std::tuple<T...>& item
-        ) -> decltype(tuple_flatten(item, typename ct_make_integer_range<sizeof...(T)>::type()))
+        ) -> decltype(tuple_flatten(item, typename make_compile_time_integer_range<sizeof...(T)>::type()))
         {
-            return tuple_flatten(item, typename ct_make_integer_range<sizeof...(T)>::type());
+            return tuple_flatten(item, typename make_compile_time_integer_range<sizeof...(T)>::type());
         }
 
         template <size_t... indices, typename... T>
         auto tuple_flatten(
             const std::tuple<T...>& item, 
-            ct_integers_list<indices...>
+            compile_time_integer_list<indices...>
         ) -> decltype(std::tuple_cat(tuple_flatten(std::get<indices-1>(item))...))
         {
             return std::tuple_cat(tuple_flatten(std::get<indices-1>(item))...);

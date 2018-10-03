@@ -1,30 +1,31 @@
 // Copyright (C) 2014  Davis E. King (davis@dlib.net)
 // License: Boost Software License   See LICENSE.txt for the full license.
 
+#include "opaque_types.h"
 #include <dlib/python.h>
 #include <dlib/geometry.h>
-#include <boost/python/args.hpp>
 #include <dlib/image_processing.h>
 
 using namespace dlib;
 using namespace std;
-using namespace boost::python;
+
+namespace py = pybind11;
 
 // ----------------------------------------------------------------------------------------
 
 void start_track (
     correlation_tracker& tracker,
-    object img,
+    py::array img,
     const drectangle& bounding_box
 )
 {
-    if (is_gray_python_image(img))
+    if (is_image<unsigned char>(img))
     {
-        tracker.start_track(numpy_gray_image(img), bounding_box);
+        tracker.start_track(numpy_image<unsigned char>(img), bounding_box);
     }
-    else if (is_rgb_python_image(img))
+    else if (is_image<rgb_pixel>(img))
     {
-        tracker.start_track(numpy_rgb_image(img), bounding_box);
+        tracker.start_track(numpy_image<rgb_pixel>(img), bounding_box);
     }
     else
     {
@@ -34,7 +35,7 @@ void start_track (
 
 void start_track_rec (
     correlation_tracker& tracker,
-    object img,
+    py::array img,
     const rectangle& bounding_box
 )
 {
@@ -44,16 +45,16 @@ void start_track_rec (
 
 double update (
     correlation_tracker& tracker,
-    object img
+    py::array img
 )
 {
-    if (is_gray_python_image(img))
+    if (is_image<unsigned char>(img))
     {
-        return tracker.update(numpy_gray_image(img));
+        return tracker.update(numpy_image<unsigned char>(img));
     }
-    else if (is_rgb_python_image(img))
+    else if (is_image<rgb_pixel>(img))
     {
-        return tracker.update(numpy_rgb_image(img));
+        return tracker.update(numpy_image<rgb_pixel>(img));
     }
     else
     {
@@ -63,17 +64,17 @@ double update (
 
 double update_guess (
     correlation_tracker& tracker,
-    object img,
+    py::array img,
     const drectangle& bounding_box
 )
 {
-    if (is_gray_python_image(img))
+    if (is_image<unsigned char>(img))
     {
-        return tracker.update(numpy_gray_image(img), bounding_box);
+        return tracker.update(numpy_image<unsigned char>(img), bounding_box);
     }
-    else if (is_rgb_python_image(img))
+    else if (is_image<rgb_pixel>(img))
     {
-        return tracker.update(numpy_rgb_image(img), bounding_box);
+        return tracker.update(numpy_image<rgb_pixel>(img), bounding_box);
     }
     else
     {
@@ -83,7 +84,7 @@ double update_guess (
 
 double update_guess_rec (
     correlation_tracker& tracker,
-    object img,
+    py::array img,
     const rectangle& bounding_box
 )
 {
@@ -95,18 +96,18 @@ drectangle get_position (const correlation_tracker& tracker) { return tracker.ge
 
 // ----------------------------------------------------------------------------------------
 
-void bind_correlation_tracker()
+void bind_correlation_tracker(py::module &m)
 {
-    using boost::python::arg;
     {
     typedef correlation_tracker type;
-    class_<type>("correlation_tracker", "This is a tool for tracking moving objects in a video stream.  You give it \n\
+    py::class_<type>(m, "correlation_tracker", "This is a tool for tracking moving objects in a video stream.  You give it \n\
             the bounding box of an object in the first frame and it attempts to track the \n\
             object in the box from frame to frame.  \n\
             This tool is an implementation of the method described in the following paper: \n\
                 Danelljan, Martin, et al. 'Accurate scale estimation for robust visual \n\
                 tracking.' Proceedings of the British Machine Vision Conference BMVC. 2014.")
-        .def("start_track", &::start_track, (arg("image"), arg("bounding_box")), "\
+        .def(py::init())
+        .def("start_track", &::start_track, py::arg("image"), py::arg("bounding_box"), "\
             requires \n\
                 - image is a numpy ndarray containing either an 8bit grayscale or RGB image. \n\
                 - bounding_box.is_empty() == false \n\
@@ -115,7 +116,7 @@ void bind_correlation_tracker()
                   given image.  That is, if you call update() with subsequent video frames \n\
                   then it will try to keep track of the position of the object inside bounding_box. \n\
                 - #get_position() == bounding_box")
-        .def("start_track", &::start_track_rec, (arg("image"), arg("bounding_box")), "\
+        .def("start_track", &::start_track_rec, py::arg("image"), py::arg("bounding_box"), "\
             requires \n\
                 - image is a numpy ndarray containing either an 8bit grayscale or RGB image. \n\
                 - bounding_box.is_empty() == false \n\
@@ -124,14 +125,14 @@ void bind_correlation_tracker()
                   given image.  That is, if you call update() with subsequent video frames \n\
                   then it will try to keep track of the position of the object inside bounding_box. \n\
                 - #get_position() == bounding_box")
-        .def("update", &::update, arg("image"), "\
+        .def("update", &::update, py::arg("image"), "\
             requires \n\
                 - image is a numpy ndarray containing either an 8bit grayscale or RGB image. \n\
                 - get_position().is_empty() == false \n\
                   (i.e. you must have started tracking by calling start_track()) \n\
             ensures \n\
                 - performs: return update(img, get_position())")
-        .def("update", &::update_guess, (arg("image"), arg("guess")), "\
+        .def("update", &::update_guess, py::arg("image"), py::arg("guess"), "\
             requires \n\
                 - image is a numpy ndarray containing either an 8bit grayscale or RGB image. \n\
                 - get_position().is_empty() == false \n\
@@ -146,7 +147,7 @@ void bind_correlation_tracker()
                 - Returns the peak to side-lobe ratio.  This is a number that measures how \n\
                   confident the tracker is that the object is inside #get_position(). \n\
                   Larger values indicate higher confidence.")
-        .def("update", &::update_guess_rec, (arg("image"), arg("guess")), "\
+        .def("update", &::update_guess_rec, py::arg("image"), py::arg("guess"), "\
             requires \n\
                 - image is a numpy ndarray containing either an 8bit grayscale or RGB image. \n\
                 - get_position().is_empty() == false \n\
