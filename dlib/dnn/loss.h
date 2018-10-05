@@ -1247,12 +1247,11 @@ namespace dlib
                             // added for it in the code above.
                             loss -= options.loss_per_missed_target - get_limited_out_data(idx);
                             g[idx] = 0;
-
                             std::cout << "Warning, ignoring object.  We encountered a truth rectangle located at " << (*truth)[i].rect;
                             std::cout << " that is suppressed by non-max-suppression ";
                             std::cout << "because it is overlapped by another truth rectangle located at " << best_matching_truth_box 
-                                        << " (IoU:"<< box_intersection_over_union(best_matching_truth_box,(*truth)[i]) <<", Percent covered:" 
-                                        << box_percent_covered(best_matching_truth_box,(*truth)[i]) << ")." << std::endl;
+                                      << " (IoU:"<< box_intersection_over_union(best_matching_truth_box,(*truth)[i]) <<", Percent covered:" 
+                                      << box_percent_covered(best_matching_truth_box,(*truth)[i]) << ")." << std::endl;
                         }
                     }
                 }
