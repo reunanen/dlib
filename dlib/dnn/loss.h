@@ -2644,20 +2644,7 @@ namespace dlib
     class loss_multiclass_log_per_pixel_weighted_
     {
     public:
-
-        struct weighted_label
-        {
-            weighted_label()
-            {}
-
-            weighted_label(uint16_t label, float weight = 1.f)
-                : label(label), weight(weight)
-            {}
-
-            // In semantic segmentation, 65536 classes ought to be enough for anybody.
-            uint16_t label = 0;
-            float weight = 1.f;
-        };
+        typedef dlib::weighted_label weighted_label;
 
         typedef matrix<weighted_label> training_label_type;
         typedef matrix<uint16_t> output_label_type;
@@ -2707,6 +2694,12 @@ namespace dlib
                              "output size = " << output_tensor.nr() << " x " << output_tensor.nc());
             }
 
+#ifdef DLIB_USE_CUDA
+            double loss;
+            cuda_compute(truth, output_tensor, grad, loss);
+            return loss;
+#else
+
             tt::softmax(grad, output_tensor);
 
             // The loss we output is the weighted average loss over the mini-batch, and also over each element of the matrix output.
@@ -2743,6 +2736,7 @@ namespace dlib
                 }
             }
             return loss;
+#endif // DLIB_USE_CUDA
         }
 
         friend void serialize(const loss_multiclass_log_per_pixel_weighted_& , std::ostream& out)
@@ -2776,6 +2770,9 @@ namespace dlib
             return ((sample * t.k() + k) * t.nr() + row) * t.nc() + column;
         }
 
+#ifdef DLIB_USE_CUDA
+        cuda::compute_loss_multiclass_log_per_pixel_weighted cuda_compute;
+#endif
     };
 
     template <typename SUBNET>
