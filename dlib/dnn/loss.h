@@ -2644,6 +2644,13 @@ namespace dlib
     class loss_multiclass_log_per_pixel_weighted_
     {
     public:
+#ifdef DLIB_USE_CUDA
+        void set_use_cuda_compute(bool use_cuda_compute)
+        {
+            this->use_cuda_compute = use_cuda_compute;
+        }
+#endif
+
         typedef dlib::weighted_label weighted_label;
 
         typedef matrix<weighted_label> training_label_type;
@@ -2695,11 +2702,12 @@ namespace dlib
             }
 
 #ifdef DLIB_USE_CUDA
-            double loss;
-            cuda_compute(truth, output_tensor, grad, loss);
-            return loss;
-#else
-
+            if (use_cuda_compute) {
+                double loss;
+                cuda_compute(truth, output_tensor, grad, loss);
+                return loss;
+            }
+#endif // DLIB_USE_CUDA
             tt::softmax(grad, output_tensor);
 
             // The loss we output is the weighted average loss over the mini-batch, and also over each element of the matrix output.
@@ -2736,7 +2744,6 @@ namespace dlib
                 }
             }
             return loss;
-#endif // DLIB_USE_CUDA
         }
 
         friend void serialize(const loss_multiclass_log_per_pixel_weighted_& , std::ostream& out)
@@ -2771,6 +2778,7 @@ namespace dlib
         }
 
 #ifdef DLIB_USE_CUDA
+        bool use_cuda_compute = true;
         cuda::compute_loss_multiclass_log_per_pixel_weighted cuda_compute;
 #endif
     };
