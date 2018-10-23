@@ -1,4 +1,4 @@
-
+sudo: required
 
 matrix:
   include:
@@ -35,6 +35,19 @@ matrix:
       os: linux
       env:
         - VARIANT=tools
+      script:
+        - dlib/travis/build-and-test.sh
+
+    ###################
+    - language: cpp
+      compiler: gcc
+      os: linux
+      env:
+        - VARIANT=old-cmake
+      before_install:
+        - dlib/travis/get-old-cmakes.sh
+      cache:
+        - directories: cmake
       script:
         - dlib/travis/build-and-test.sh
 
@@ -104,4 +117,3 @@ matrix:
     #    - dlib/travis/build-and-test.sh
          
           
-

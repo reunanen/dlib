@@ -5,7 +5,98 @@
    <title>Frequently Asked Questions</title>
 
    <!-- ************************************************************************* -->
+
+   <questions group="Python">
+
+      <question text="I compiled dlib's Python interface with CUDA enabled, why isn't it using CUDA?">
+         Either you are using a part of dlib that just doesn't use CUDA, of which there
+         are many parts, or you are mistaken about compiling dlib with CUDA enabled.
+         In particular, many users report that "dlib isn't using CUDA even though 
+         I definitely compiled it with CUDA" and in every case either they are not using part of dlib that uses CUDA or they 
+         have installed multiple copies of dlib on their computer, some with CUDA disabled, and
+         they are using a non-CUDA build. 
+         <p>
+            You can check if dlib is compiled to use CUDA by looking at the <tt>dlib.DLIB_USE_CUDA</tt>
+            boolean.  <b>If dlib.DLIB_USE_CUDA is false then you didn't compile it with CUDA enabled, but if it's true then
+            dlib is using all the CUDA it's going to use</b>.
+         </p>
+      </question>
+
+      <question text="Why is dlib.image_window missing from the Python module?">
+         If you are getting the error <tt>module 'dlib' has no attribute 'image_window'</tt>
+         it is because you compiled dlib without GUI support (or you are using a copy of
+         dlib someone else compiled and they built it without GUI support).  So note that
+         it is possible to compile dlib with any GUI tools.  Some people want to do this because
+         they run dlib on systems that don't have any kind of GUI framework installed.
+         <p>
+            But since you are reading this you obviously want to use the GUI tools.  The solution
+            is to get a copy of dlib and <tt>python setup.py install</tt> it yourself.  It's easy.
+            Note that you might get a warning in the build output about X11 not being installed. Maybe that's
+            why you are getting this error in the first place.  <b>READ THAT MESSAGE AND FOLLOW ITS INSTRUCTIONS</b>
+            since it tells you what to do to fix this.
+         </p>
+      </question>
+
+      <question text="Why is some function missing from the dlib Python module?">
+         If you are missing dlib.image_window then read <a href="#Whyisdlib.imagewindowmissing">the FAQ about that</a>.
+         If you are missing any other function then <b>it's because you are using an old version of dlib
+         that just doesn't have that function</b>.  You need to install a newer version
+         of dlib.  Please don't post questions about this on any of dlib's forums or
+         email me about it.  Just install a new dlib.  The only way to use features in 
+         a new version of dlib is to get the new version of dlib.  Often people think they have the
+         new version of dlib installed when really they have some old version installed.  
+         You can see what version of dlib you are using by checking <tt>dlib.__version__</tt>.
+      </question>
+
+   </questions>
+
+
+
+
+
    <questions group="General">
+
+      <question text="Why do I get USER_ERROR__inconsistent_build_configuration__see_dlib_faq_1?">
+         You are getting this error because you are not compiling all the C++
+         code in your program with consistent settings. This is a violation of
+         <a href="https://en.wikipedia.org/wiki/One_Definition_Rule">C++'s One Definition Rule</a>. 
+         In this case, you are compiling some translation units with dlib's
+         assert macros enabled and others with them disabled.
+         <p>
+            For reference, the code that generates this error is: 
+            <a href="dlib/test_for_odr_violations.h.html">dlib/test_for_odr_violations.h</a> and 
+            <a href="dlib/test_for_odr_violations.cpp.html">dlib/test_for_odr_violations.cpp</a>.
+         </p>
+      </question>
+
+
+      <question text="Why do I get USER_ERROR__inconsistent_build_configuration__see_dlib_faq_2?">
+         You are getting this error because you are not compiling all the C++
+         code in your program with consistent settings. This is a violation of
+         <a href="https://en.wikipedia.org/wiki/One_Definition_Rule">C++'s One Definition Rule</a>. 
+         In this case, you compiled a standalone copy of dlib with CMake and instead of using <tt>make install</tt>
+         or <tt>cmake --build . --target install</tt> to copy the resulting build files somewhere you went
+         and cherry picked files manually and messed it up.  In particular, CMake compiled dlib 
+         with a bunch of settings recorded in the CMake generated config.h file but you instead
+         are now trying to build more dlib related code with the 
+         <a href="dlib/config.h.html">dlib/config.h</a> from source control. 
+         <p>
+            For reference, the code that generates this error is: 
+            <a href="dlib/test_for_odr_violations.h.html">dlib/test_for_odr_violations.h</a> and 
+            <a href="dlib/test_for_odr_violations.cpp.html">dlib/test_for_odr_violations.cpp</a>.
+         </p>
+
+         <p> 
+            Finally, most users who get this error are using Visual Studio.
+            You probably compiled dlib and then went into Visual Studio's
+            output folder, grabbed the .lib file, and then tried to
+            create a project using that .lib file and dlib's .h files from
+            github.  THIS IS WRONG, DO NOT DO THIS.  Instead, <a href="compile.html#Using%20dlib%20from%20C++">read the
+            instructions for using dlib and follow them</a>.  I promise they are
+            much simpler than any process that involves manually copying files
+            around in the file explorer.
+         </p>
+      </question>
 
       <question text="It doesn't work?">
          Do not post a question like "I'm using dlib, and it doesn't work?" or
@@ -166,10 +257,22 @@ row_vect.set_size(5);
       <!-- ****************************************** -->
 
       <question text="Where is the documentation for &lt;object/function&gt;?">
+         Every class and function in dlib is documented in detail.  
          If you can't find something then check the <a href="term_index.html">index</a>.
          <br/><br/>
-         Also, the bulk of the documentation can be found by following the 
-         <more_details/> links.   
+         Also, the bulk of the documentation can be found by clicking the 
+         <more_details/> buttons.  <b>So you should click on the "more details" buttons and read the documentation</b>.  
+         
+         <p>A lot of people
+         post questions like "There is no documentation for some_random_function(), how do I use it?", when
+         in reality the function is documented in detail.  Between the index, site search, and main website which 
+         breaks down functions/classes into topical categories there is no excuse for not being able to find 
+         the documentation for a function or class.  This is especially true if you know its name because you can
+         jump right to it using the <a href="term_index.html">index</a> or even a simple google search.  
+         So if you are posting a question like "I don't understand how something works" and obviously haven't read the
+         documentation then you are just going to get referred to this FAQ.  So please read the documentation before
+         asking questions.
+         </p>
       </question>
 
 
@@ -371,6 +474,7 @@ cross_validate_trainer_threaded(trainer,
                   options are discussed in great detail in parts of <a href="#Whereisthedocumentationforobjectfunction">dlib's documentation</a>.
                </p>
             </li>
+
             <li><h3>Using training images that don't look like the testing images</h3>
                This should be obvious, but needs to be pointed out.  If there
                is some clear difference between your training and testing
@@ -391,7 +495,26 @@ cross_validate_trainer_threaded(trainer,
                      <li>A training dataset where objects appear only on a perfectly white background with nothing else present, but testing images where objects appear in a normal environment like living rooms or in natural scenes.</li>
                   </ul>
                </p>
+
+               <p>
+                  Another way you can mess this up is when using the <a
+                  href="imaging.html#random_cropper">random_cropper</a> to jitter your training data, which is
+                  common when training a CNN or other deep model.  In general, the random_cropper finds images
+                  that are more or less centered on your objects of interest and it also scales the images so
+                  the object has some user specified minimum size.  That's all fine.  But what can happen is
+                  you train a model that gets 0 training error but when you go and use it it doesn't detect
+                  any objects.  Why is that?  It's probably because all the objects in your normal images, the
+                  ones you give to the random_cropper, are really small.  Smaller than the min size you told
+                  the cropper to make them. So now your testing images are really different from your training
+                  images.  Moreover, in general object detectors have some minimum size they scan and if
+                  objects are smaller than that they will never be found.  Another related issue is all your
+                  uncropped images might show objects at the very border of the image. But the random_cropper
+                  will center the objects in the crops, by padding with zeros if necessary.  Again, <b>make your
+                  testing images look like the training images</b>.  Pad the edges of your images with zeros if
+                  needed.
+               </p>
             </li>
+
             <li><h3>Using a HOG based detector but not understanding the limits of HOG templates</h3>
                The <a href="fhog_object_detector_ex.cpp.html">HOG detector</a> is very fast and generally easy to train.  However, you
                have to be aware that HOG detectors are essentially rigid templates that are scanned over an image.  So a single HOG detector

@@ -171,12 +171,30 @@ namespace dlib
 
     class serialization_error : public error 
     {
+        /*!
+            WHAT THIS OBJECT REPRESENTS
+                This is the exception object.  It is thrown if serialization or
+                deserialization fails.
+        !*/
+
     public: 
         serialization_error(const std::string& e):error(e) {}
     };
 
+
+    void check_serialized_version(
+        const std::string& expected_version, 
+        std::istream& in
+    );
+    /*!
+        ensures
+            - Deserializes a string from in and if it doesn't match expected_version we
+              throw serialization_error.
+    !*/
+
 // ----------------------------------------------------------------------------------------
 
+    /*!A ramdump information !*/
     template <typename T>
     struct ramdump_t
     {
@@ -206,7 +224,10 @@ namespace dlib
 
     // This function just makes a ramdump that wraps an object.
     template <typename T>
-    ramdump_t<typename std::remove_reference<T>::type> ramdump(T&& item) { return ramdump_t<typename std::remove_reference<T>::type>(item); }
+    ramdump_t<typename std::remove_reference<T>::type> ramdump(T&& item) 
+    { 
+        return ramdump_t<typename std::remove_reference<T>::type>(item); 
+    }
 
 
     template <
@@ -576,7 +597,7 @@ namespace dlib
     )
     {
         std::ios::fmtflags oldflags = in.flags();  
-        in.flags(); 
+        in.flags(static_cast<std::ios_base::fmtflags>(0));
         std::streamsize ss = in.precision(35); 
         if (in.peek() == 'i')
         {
@@ -1734,6 +1755,19 @@ namespace dlib
         if (!in || !item.ParseFromString(temp))
         {
             throw dlib::serialization_error("Error while deserializing a Google Protocol Buffer object.");
+        }
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    inline void check_serialized_version(const std::string& expected_version, std::istream& in)
+    {
+        std::string version;
+        deserialize(version, in);
+        if (version != expected_version)
+        {
+            throw serialization_error("Unexpected version '"+version+
+                "' found while deserializing object. Expected version to be '"+expected_version+"'.");
         }
     }
 

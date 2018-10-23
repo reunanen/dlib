@@ -33,6 +33,18 @@
 // warning off and then turning it back on at the end of the file.
 #pragma warning(disable : 4355)
 
+// "warning C4723: potential divide by 0" - This warning is triggered in
+// matrix(const std::initializer_list<T>& l) where the compiler can see that
+// matrix<> was templated in a way making NR ending up 0, but division by 0 at runtime
+// is not possible because the division operation is inside "if (NR!=0)" block.
+#pragma warning(disable : 4723)
+
+// "warning C4724: potential mod by 0" - This warning is triggered in
+// matrix(const std::initializer_list<T>& l) where the compiler can see that
+// matrix<> was templated in a way making NR ending up 0, but mod by 0 at runtime
+// is not possible because the mod operation is inside "if (NR!=0)" block.
+#pragma warning(disable : 4724)
+
 #endif
 
 namespace dlib
@@ -1163,6 +1175,12 @@ namespace dlib
 
         }
 
+        std::unique_ptr<T[]> steal_memory(
+        )
+        {
+            return data.steal_memory();
+        }
+
         matrix& operator=(const std::initializer_list<T>& l)
         {
             matrix temp(l);
@@ -1631,8 +1649,8 @@ namespace dlib
             const T val
         )
         {
-            const long size = nr()*nc();
-            for (long i = 0; i < size; ++i)
+            const size_t size = nr()*(size_t)nc();
+            for (size_t i = 0; i < size; ++i)
                 data(i) += val;
 
             return *this;
@@ -1642,8 +1660,8 @@ namespace dlib
             const T val
         )
         {
-            const long size = nr()*nc();
-            for (long i = 0; i < size; ++i)
+            const size_t size = nr()*(size_t)nc();
+            for (size_t i = 0; i < size; ++i)
                 data(i) -= val;
 
             return *this;
@@ -1812,8 +1830,8 @@ namespace dlib
         ) 
         {  
             // assign the given value to every spot in this matrix
-            const long size = nr()*nc();
-            for (long i = 0; i < size; ++i)
+            const size_t size = nr()*(size_t)nc();
+            for (size_t i = 0; i < size; ++i)
                 data(i) = val;
 
             // Now return the literal_assign_helper so that the user
@@ -2147,8 +2165,10 @@ namespace dlib
 }
 
 #ifdef _MSC_VER
-// put that warning back to its default setting
+// put warnings back to their default settings
 #pragma warning(default : 4355)
+#pragma warning(default : 4723)
+#pragma warning(default : 4724)
 #endif
 
 #endif // DLIB_MATRIx_

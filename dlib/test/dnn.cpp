@@ -1660,6 +1660,24 @@ namespace
         }
         {
             print_spinner();
+            resize_to_<1,1> l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {
+            print_spinner();
+            resize_to_<2,1> l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {
+            print_spinner();
+            resize_to_<2,2> l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {
+            print_spinner();
             l2normalize_ l;
             auto res = test_layer(l);
             DLIB_TEST_MSG(res, res);
@@ -3253,6 +3271,24 @@ namespace
             dlog << LINFO << "NOW RUNNING TESTS WITH set_dnn_prefer_smallest_algorithms()";
             set_dnn_prefer_smallest_algorithms();
             run_tests();
+
+
+            {
+                resizable_tensor a(2,3,4,5);
+                resizable_tensor b(2,3,4,5);
+                DLIB_TEST(have_same_dimensions(a,b));
+
+                a.set_size(2,3,4,4);
+                DLIB_TEST(!have_same_dimensions(a,b));
+                a.set_size(2,3,3,5);
+                DLIB_TEST(!have_same_dimensions(a,b));
+                a.set_size(2,2,4,5);
+                DLIB_TEST(!have_same_dimensions(a,b));
+                a.set_size(1,3,4,5);
+                DLIB_TEST(!have_same_dimensions(a,b));
+
+                static_assert(!is_image_type<resizable_tensor>::value, "should be false");
+            }
         }
     } a;
 }

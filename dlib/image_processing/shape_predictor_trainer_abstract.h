@@ -33,6 +33,7 @@ namespace dlib
                 - #get_num_trees_per_cascade_level() == 500
                 - #get_nu() == 0.1
                 - #get_oversampling_amount() == 20
+                - #get_oversampling_translation_jitter() == 0
                 - #get_feature_pool_size() == 400
                 - #get_lambda() == 0.1
                 - #get_num_test_splits() == 20
@@ -160,6 +161,34 @@ namespace dlib
                 - amount > 0
             ensures
                 - #get_oversampling_amount() == amount
+        !*/
+
+        unsigned long get_oversampling_translation_jitter (
+        ) const; 
+        /*!
+            ensures
+                - When generating the get_oversampling_amount() factor of extra training
+                  samples you can also jitter the bounding box by adding random small
+                  translational shifts.  You can tell the shape_predictor_trainer to do
+                  this by setting get_oversampling_translation_jitter() to some non-zero
+                  value.  For instance, if you set it to 0.1 then it would randomly
+                  translate the bounding boxes by between 0% and 10% their width and
+                  height in the x and y directions respectively.  Doing this is essentially
+                  equivalent to randomly jittering the bounding boxes in the training data
+                  (i.e. the boxes given by full_object_detection::get_rect()).  This is
+                  useful because the seed shape is determined by the bounding box position,
+                  so doing this kind of jittering can help make the learned model more
+                  robust against slightly misplaced bounding boxes.
+        !*/
+
+        void set_oversampling_translation_jitter (
+            double amount
+        );
+        /*!
+            requires
+                - amount >= 0
+            ensures
+                - #get_oversampling_translation_jitter() == amount
         !*/
 
         unsigned long get_feature_pool_size (
@@ -388,17 +417,24 @@ namespace dlib
               positional accuracy is going to be, at best, +/-8 pixels.  
               
               If you want to get better positional accuracy one easy thing to do is train a
-              shape_predictor to give you the corners of the object.  The
+              shape_predictor to give you the location of the object's box.  The
               make_bounding_box_regression_training_data() routine helps you do this by
               creating an appropriate training dataset.  It does this by taking the dataset
-              you used to train your detector (the truth object), and combining that with
-              the output of your detector on each image in the training dataset (the
-              detections object).  In particular, it will create a new annotated dataset
-              where each object box is one of the rectangles from detections and that
-              object has 4 part annotations, the corners of the truth rectangle
-              corresponding to that detection rectangle.  You can then take the returned
-              dataset and train a shape_predictor on it.  The resulting shape_predictor can
-              then be used to do bounding box regression.
+              you used to train your detector (given by the truth object), and combining
+              that with the output of your detector on each image in the training dataset
+              (given by the detections object).  In particular, it will create a new
+              annotated dataset where each object box is one of the rectangles from
+              detections and that object has 5 part annotations.  These annotations
+              identify the sides and middle of the truth rectangle corresponding to the
+              detection rectangle.  You can then take the returned dataset and train a
+              shape_predictor on it.  The resulting shape_predictor can then be used to do
+              bounding box regression.  
+              
+              As an aside, the reason we create 5 part annotations in this way is because
+              it gives the best shape_predictor when trained.  If instead you used the 4
+              corners it wouldn't work as well, due to tedious vagaries of the shape_predictor 
+              training process.
+
             - We assume that detections[i] contains object detections corresponding to 
               the image truth.images[i].
     !*/

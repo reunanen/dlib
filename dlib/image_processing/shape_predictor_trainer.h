@@ -37,6 +37,7 @@ namespace dlib
             _num_trees_per_cascade_level = 500;
             _nu = 0.1;
             _oversampling_amount = 20;
+            _oversampling_translation_jitter = 0;
             _feature_pool_size = 400;
             _lambda = 0.1;
             _num_test_splits = 20;
@@ -116,6 +117,7 @@ namespace dlib
 
         unsigned long get_oversampling_amount (
         ) const { return _oversampling_amount; }
+
         void set_oversampling_amount (
             unsigned long amount
         )
@@ -127,6 +129,22 @@ namespace dlib
             );
 
             _oversampling_amount = amount;
+        }
+
+        unsigned long get_oversampling_translation_jitter (
+        ) const { return _oversampling_translation_jitter; }
+
+        void set_oversampling_translation_jitter (
+            double amount
+        )
+        {
+            DLIB_CASSERT(amount >= 0, 
+                "\t void shape_predictor_trainer::set_oversampling_translation_jitter()"
+                << "\n\t Invalid inputs were given to this function. "
+                << "\n\t amount: " << amount 
+            );
+
+            _oversampling_translation_jitter = amount;
         }
 
         unsigned long get_feature_pool_size (
@@ -523,15 +541,18 @@ namespace dlib
         {
             const double lambda = get_lambda(); 
             impl::split_feature feat;
-            double accept_prob;
-            do 
+            const size_t max_iters = get_feature_pool_size()*get_feature_pool_size();
+            for (size_t i = 0; i < max_iters; ++i)
             {
-                feat.idx1   = rnd.get_random_32bit_number()%get_feature_pool_size();
-                feat.idx2   = rnd.get_random_32bit_number()%get_feature_pool_size();
+                feat.idx1   = rnd.get_integer(get_feature_pool_size());
+                feat.idx2   = rnd.get_integer(get_feature_pool_size());
+                while (feat.idx1 == feat.idx2)
+                    feat.idx2   = rnd.get_integer(get_feature_pool_size());
                 const double dist = length(pixel_coordinates[feat.idx1]-pixel_coordinates[feat.idx2]);
-                accept_prob = std::exp(-dist/lambda);
+                const double accept_prob = std::exp(-dist/lambda);
+                if (accept_prob > rnd.get_random_double())
+                    break;
             }
-            while(feat.idx1 == feat.idx2 || !(accept_prob > rnd.get_random_double()));
 
             feat.thresh = (rnd.get_random_double()*256 - 128)/2.0;
 
@@ -703,6 +724,18 @@ namespace dlib
                         hits += alpha*samples[rand_idx].present;
                     }
                     samples[i].current_shape = pointwise_multiply(samples[i].current_shape, reciprocal(hits));
+
+                    if (_oversampling_translation_jitter != 0)
+                    {
+                        dpoint off;
+                        off.x() = rnd.get_double_in_range(-_oversampling_translation_jitter,_oversampling_translation_jitter);
+                        off.y() = rnd.get_double_in_range(-_oversampling_translation_jitter,_oversampling_translation_jitter);
+                        for (long j = 0; j < samples[i].current_shape.size()/2; ++j)
+                        {
+                            samples[i].current_shape(2*j) += off.x();
+                            samples[i].current_shape(2*j+1) += off.y();
+                        }
+                    }
                 }
 
             }
@@ -792,6 +825,7 @@ namespace dlib
         bool _verbose;
         unsigned long _num_threads;
         padding_mode_t _padding_mode;
+        double _oversampling_translation_jitter;
     };
 
 // ----------------------------------------------------------------------------------------
@@ -824,10 +858,12 @@ namespace dlib
                 {
                     // Remove any existing parts and replace them with the truth_box corners.
                     truth_box.parts.clear();
-                    truth_box.parts["top_left"]     = truth_box.rect.tl_corner();
-                    truth_box.parts["top_right"]    = truth_box.rect.tr_corner();
-                    truth_box.parts["bottom_left"]  = truth_box.rect.bl_corner();
-                    truth_box.parts["bottom_right"] = truth_box.rect.br_corner();
+                    auto b = truth_box.rect;
+                    truth_box.parts["left"]     = (b.tl_corner()+b.bl_corner())/2;
+                    truth_box.parts["right"]    = (b.tr_corner()+b.br_corner())/2;
+                    truth_box.parts["top"]      = (b.tl_corner()+b.tr_corner())/2;
+                    truth_box.parts["bottom"]   = (b.bl_corner()+b.br_corner())/2;
+                    truth_box.parts["middle"]   = center(b);
 
                     // Now replace the bounding truth_box with the detector's bounding truth_box.
                     truth_box.rect = det.first;

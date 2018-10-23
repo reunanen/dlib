@@ -118,7 +118,7 @@ namespace dlib
             - k1 <= n1
             - k2 <= n2
         ensures
-            - Given two Binomially distributed random variables, X1 and X2, we want to know
+            - Given two binomially distributed random variables, X1 and X2, we want to know
               if these variables have the same parameter (i.e. the chance of "success").
               So assume that:
                 - You observed X1 to give k1 successes out of n1 trials.
@@ -570,7 +570,7 @@ namespace dlib
         ) const;
         /*!
             requires
-                - current_n() > 0
+                - current_n() > 1
             ensures
                 - returns the covariance between all the x and y samples presented
                   to this object via add()
@@ -580,7 +580,7 @@ namespace dlib
         ) const;
         /*!
             requires
-                - current_n() > 0
+                - current_n() > 1
             ensures
                 - returns the correlation coefficient between all the x and y samples 
                   presented to this object via add()
@@ -590,7 +590,7 @@ namespace dlib
         ) const;
         /*!
             requires
-                - current_n() > 0
+                - current_n() > 1
             ensures
                 - returns the sample variance value of all x samples presented 
                   to this object via add().
@@ -600,7 +600,7 @@ namespace dlib
         ) const;
         /*!
             requires
-                - current_n() > 0
+                - current_n() > 1
             ensures
                 - returns the sample variance value of all y samples presented 
                   to this object via add().
@@ -610,7 +610,7 @@ namespace dlib
         ) const;
         /*!
             requires
-                - current_n() > 0
+                - current_n() > 1
             ensures
                 - returns the sample standard deviation of all x samples
                   presented to this object via add().
@@ -620,7 +620,7 @@ namespace dlib
         ) const;
         /*!
             requires
-                - current_n() > 0
+                - current_n() > 1
             ensures
                 - returns the sample standard deviation of all y samples
                   presented to this object via add().
@@ -703,7 +703,7 @@ namespace dlib
         ) const;
         /*!
             requires
-                - current_n() > 0
+                - current_n() > 1
             ensures
                 - returns the sample variance value of all x samples presented to this
                   object via add().
@@ -713,7 +713,7 @@ namespace dlib
         ) const;
         /*!
             requires
-                - current_n() > 0
+                - current_n() > 1
             ensures
                 - returns the sample standard deviation of all x samples presented to this
                   object via add().
