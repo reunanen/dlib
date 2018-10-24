@@ -2319,6 +2319,10 @@ namespace dlib
 
             if (t1.nr() != t2.nr() || t1.nc() != t2.nc())
             {
+                // the matrix sizes should differ only very little (if at all)
+                DLIB_CASSERT(std::abs(t1.nr() - t2.nr()) <= 1);
+                DLIB_CASSERT(std::abs(t1.nc() - t2.nc()) <= 1);
+
                 // resize t1 to size of t2 - TODO: try to optimize this maybe?
                 dlib::resizable_tensor temp;
                 temp.set_size(t1.num_samples(), t1.k(), t2.nr(), t2.nc());
