@@ -11,6 +11,7 @@
 #include "../image_processing/box_overlap_testing.h"
 #include "../image_processing/full_object_detection.h"
 #include "../svm/ranking_tools.h"
+#include "../memory_manager_stateless.h"
 #include <sstream>
 #include <map>
 
@@ -1442,7 +1443,7 @@ namespace dlib
                 {
                     for (long c = 0; c < output_tensor.nc(); ++c)
                     {
-                        double score = out_data[(k*output_tensor.nr() + r)*output_tensor.nc() + c] + gain_offset;
+                        double score = out_data[(k*output_tensor.nr() + r)*output_tensor.nc() + c] + gain;
                         if (score > adjust_threshold)
                         {
                             dpoint p = output_tensor_to_input_tensor(net, point(c,r));
@@ -2632,23 +2633,12 @@ namespace dlib
     class loss_multiclass_log_per_pixel_weighted_
     {
     public:
+        typedef dlib::weighted_label weighted_label;
 
-        struct weighted_label
-        {
-            weighted_label()
-            {}
-
-            weighted_label(uint16_t label, float weight = 1.f)
-                : label(label), weight(weight)
-            {}
-
-            // In semantic segmentation, 65536 classes ought to be enough for anybody.
-            uint16_t label = 0;
-            float weight = 1.f;
-        };
-
-        typedef matrix<weighted_label> training_label_type;
-        typedef matrix<uint16_t> output_label_type;
+        // TODO: Do not define the memory manager here. Either pass it as a template parameter, or move the definition
+        //       of this whole loss class to the application code.
+        typedef matrix<weighted_label,0,0,memory_manager_stateless<weighted_label>::kernel_2_3e> training_label_type;
+        typedef matrix<uint16_t,0,0,memory_manager_stateless<uint16_t>::kernel_2_3e> output_label_type;
 
         template <
             typename SUB_TYPE,
@@ -2696,6 +2686,12 @@ namespace dlib
                              "output size = " << output_tensor.nr() << " x " << output_tensor.nc());
             }
 
+#ifdef DLIB_USE_CUDA
+            double loss;
+            cuda_compute(truth, output_tensor, grad, loss);
+            return loss;
+#else
+
             tt::softmax(grad, output_tensor);
 
             // The loss we output is the weighted average loss over the mini-batch, and also over each element of the matrix output.
@@ -2732,6 +2728,7 @@ namespace dlib
                 }
             }
             return loss;
+#endif // DLIB_USE_CUDA
         }
 
         friend void serialize(const loss_multiclass_log_per_pixel_weighted_& , std::ostream& out)
@@ -2765,6 +2762,9 @@ namespace dlib
             return ((sample * t.k() + k) * t.nr() + row) * t.nc() + column;
         }
 
+#ifdef DLIB_USE_CUDA
+        cuda::compute_loss_multiclass_log_per_pixel_weighted cuda_compute;
+#endif
     };
 
     template <typename SUBNET>

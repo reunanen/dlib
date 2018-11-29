@@ -2290,6 +2290,156 @@ namespace dlib
     template <
         template<typename> class tag
         >
+    class concat_prev_
+    {
+    public:
+        const static unsigned long id = tag_id<tag>::id;
+
+        concat_prev_() 
+        {
+        }
+
+        template <typename SUBNET>
+        void setup (const SUBNET& /*sub*/)
+        {
+        }
+
+        template <typename SUBNET>
+        void forward(const SUBNET& sub, resizable_tensor& output)
+        {
+            auto&& t1 = sub.get_output();
+            auto&& t2 = layer<tag>(sub).get_output();
+
+            DLIB_CASSERT(t1.num_samples() == t2.num_samples());
+
+            output.set_size(t2.num_samples(),
+                            t1.k() + t2.k(),
+                            t2.nr(),
+                            t2.nc());
+
+            tt::copy_tensor(false, output, 0, resize_if_needed(t1, t2.nr(), t2.nc(), direction::forward), 0, t1.k());
+            tt::copy_tensor(false, output, t1.k(), t2, 0, t2.k());
+        }
+
+        template <typename SUBNET>
+        void backward(const tensor& gradient_input, SUBNET& sub, tensor& /*params_grad*/)
+        {
+            auto& t1 = sub.get_gradient_input();
+            auto& t2 = layer<tag>(sub).get_gradient_input();
+
+            DLIB_CASSERT(t1.k() + t2.k() == gradient_input.k());
+
+            const auto nr = gradient_input.nr();
+            const auto nc = gradient_input.nc();
+
+            tt::copy_tensor(true, resize_if_needed(t1, nr, nc, direction::backward), 0, gradient_input, 0, t1.k());
+            tt::copy_tensor(true, resize_if_needed(t2, nr, nc, direction::backward), 0, gradient_input, t1.k(), t2.k());
+        }
+
+        const tensor& get_layer_params() const { return params; }
+        tensor& get_layer_params() { return params; }
+
+        inline dpoint map_input_to_output (const dpoint& p) const { return p; }
+        inline dpoint map_output_to_input (const dpoint& p) const { return p; }
+
+        friend void serialize(const concat_prev_& , std::ostream& out)
+        {
+            serialize("concat_prev_", out);
+        }
+
+        friend void deserialize(concat_prev_& , std::istream& in)
+        {
+            std::string version;
+            deserialize(version, in);
+            if (version != "concat_prev_")
+                throw serialization_error("Unexpected version '"+version+"' found while deserializing dlib::concat_prev_.");
+        }
+
+        friend std::ostream& operator<<(std::ostream& out, const concat_prev_& item)
+        {
+            out << "concat_prev"<<id;
+            return out;
+        }
+
+        friend void to_xml(const concat_prev_& item, std::ostream& out)
+        {
+            out << "<concat_prev tag='"<<id<<"'/>\n";
+        }
+
+    private:
+        resizable_tensor params;
+
+        enum class direction { forward, backward };
+
+        // Handle both tensor& and const tensor& inputs and outputs using this template function.
+        template <typename TENSOR>
+        TENSOR& resize_if_needed(TENSOR& input, int nr, int nc, direction direction)
+        {
+            if (input.nr() == nr && input.nc() == nc) {
+                // Great - we don't need to do anything at all!
+                return input;
+            }
+
+            // In U-net style usage, the matrix sizes should differ only very little, if at all.
+            // In other possible applications however, this requirement may need to be relaxed.
+            DLIB_CASSERT(std::abs(input.nr() - nr) <= 1);
+            DLIB_CASSERT(std::abs(input.nc() - nc) <= 1);
+
+            resize_temp.set_size(input.num_samples(), input.k(), nr, nc);
+
+            if (direction == direction::forward) {
+                tt::resize_bilinear(resize_temp, input);
+            }
+            else if (direction == direction::backward) {
+                std::fill(resize_temp.begin(), resize_temp.end(), 0.f);
+                tt::resize_bilinear_gradient(resize_temp, input);
+            }
+            else {
+                DLIB_CASSERT(direction == direction::forward
+                          || direction == direction::backward);
+            }
+
+            return resize_temp;
+        }
+
+        resizable_tensor resize_temp;
+    };
+
+    template <
+        template<typename> class tag,
+        typename SUBNET
+        >
+    using concat_prev = add_layer<concat_prev_<tag>, SUBNET>;
+
+    template <typename SUBNET> using concat_prev1  = concat_prev<tag1, SUBNET>;
+    template <typename SUBNET> using concat_prev2  = concat_prev<tag2, SUBNET>;
+    template <typename SUBNET> using concat_prev3  = concat_prev<tag3, SUBNET>;
+    template <typename SUBNET> using concat_prev4  = concat_prev<tag4, SUBNET>;
+    template <typename SUBNET> using concat_prev5  = concat_prev<tag5, SUBNET>;
+    template <typename SUBNET> using concat_prev6  = concat_prev<tag6, SUBNET>;
+    template <typename SUBNET> using concat_prev7  = concat_prev<tag7, SUBNET>;
+    template <typename SUBNET> using concat_prev8  = concat_prev<tag8, SUBNET>;
+    template <typename SUBNET> using concat_prev9  = concat_prev<tag9, SUBNET>;
+    template <typename SUBNET> using concat_prev10 = concat_prev<tag10, SUBNET>;
+
+#if 0
+    using concat_prev1_  = concat_prev_<tag1>;
+    using concat_prev2_  = concat_prev_<tag2>;
+    using concat_prev3_  = concat_prev_<tag3>;
+    using concat_prev4_  = concat_prev_<tag4>;
+    using concat_prev5_  = concat_prev_<tag5>;
+    using concat_prev6_  = concat_prev_<tag6>;
+    using concat_prev7_  = concat_prev_<tag7>;
+    using concat_prev8_  = concat_prev_<tag8>;
+    using concat_prev9_  = concat_prev_<tag9>;
+    using concat_prev10_ = concat_prev_<tag10>;
+#endif
+
+// ----------------------------------------------------------------------------------------
+
+    template <
+        template<typename> class tag
+        >
     class mult_prev_
     {
     public:
