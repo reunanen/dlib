@@ -6,12 +6,13 @@
 #include "loss_abstract.h"
 #include "core.h"
 #include "../matrix.h"
-#include "tensor_tools.h"
+#include "../cuda/tensor_tools.h"
 #include "../geometry.h"
 #include "../image_processing/box_overlap_testing.h"
 #include "../image_processing/full_object_detection.h"
 #include "../svm/ranking_tools.h"
 #include <sstream>
+#include <map>
 
 namespace dlib
 {
@@ -366,6 +367,288 @@ namespace dlib
     using loss_multiclass_log = add_loss_layer<loss_multiclass_log_, SUBNET>;
 
 // ----------------------------------------------------------------------------------------
+
+    class loss_multimulticlass_log_ 
+    {
+
+    public:
+
+        loss_multimulticlass_log_ () = default;
+
+        loss_multimulticlass_log_ (
+            const std::map<std::string,std::vector<std::string>>& labels
+        )
+        {
+            for (auto& l : labels)
+            {
+                possible_labels[l.first] = std::make_shared<decltype(l.second)>(l.second);
+                DLIB_CASSERT(l.second.size() >= 2, "Each classifier must have at least two possible labels.");
+
+                for (size_t i = 0; i < l.second.size(); ++i)
+                {
+                    label_idx_lookup[l.first][l.second[i]] = i;
+                    ++total_num_labels;
+                }
+            }
+        }
+
+        unsigned long number_of_labels() const { return total_num_labels; }
+
+        unsigned long number_of_classifiers() const { return possible_labels.size(); }
+
+        std::map<std::string,std::vector<std::string>> get_labels ( 
+        ) const 
+        {
+            std::map<std::string,std::vector<std::string>> info; 
+            for (auto& i : possible_labels)
+            {
+                for (auto& label : *i.second)
+                    info[i.first].emplace_back(label);
+            }
+            return info;
+        }
+
+        class classifier_output
+        {
+
+        public:
+            classifier_output() = default;
+
+            size_t num_classes() const { return class_probs.size(); }
+
+            double probability_of_class (
+                size_t i
+            ) const 
+            { 
+                DLIB_CASSERT(i < num_classes());
+                return class_probs(i); 
+            }
+
+            const std::string& label(
+                size_t i
+            ) const 
+            { 
+                DLIB_CASSERT(i < num_classes()); 
+                return (*_labels)[i]; 
+            }
+
+            operator std::string(
+            ) const
+            {
+                DLIB_CASSERT(num_classes() != 0); 
+                return (*_labels)[index_of_max(class_probs)];
+            }
+
+            friend std::ostream& operator<< (std::ostream& out, const classifier_output& item)
+            {
+                DLIB_ASSERT(item.num_classes() != 0); 
+                out << static_cast<std::string>(item);
+                return out;
+            }
+
+        private:
+
+            friend class loss_multimulticlass_log_;
+
+            template <typename EXP>
+            classifier_output(
+                const matrix_exp<EXP>& class_probs,
+                const std::shared_ptr<std::vector<std::string>>& _labels
+            ) : 
+                class_probs(class_probs), 
+                _labels(_labels)
+            {
+            }
+
+            matrix<float,1,0> class_probs;
+            std::shared_ptr<std::vector<std::string>> _labels;
+        };
+
+        typedef std::map<std::string,std::string> training_label_type;
+        typedef std::map<std::string,classifier_output> output_label_type;
+
+
+        template <
+            typename SUB_TYPE,
+            typename label_iterator
+            >
+        void to_label (
+            const tensor& input_tensor,
+            const SUB_TYPE& sub,
+            label_iterator iter_begin
+        ) const
+        {
+            const tensor& output_tensor = sub.get_output();
+            DLIB_CASSERT(sub.sample_expansion_factor() == 1);
+            DLIB_CASSERT(output_tensor.nr() == 1 && 
+                         output_tensor.nc() == 1 );
+            DLIB_CASSERT(input_tensor.num_samples() == output_tensor.num_samples());
+
+            DLIB_CASSERT(number_of_labels() != 0, "You must give the loss_multimulticlass_log_'s constructor label data before you can use it!");
+            DLIB_CASSERT(output_tensor.k() == (long)number_of_labels(), "The output tensor must have " << number_of_labels() << " channels.");
+
+
+            long k_offset = 0;
+            for (auto& l : possible_labels)
+            {
+                auto iter = iter_begin;
+                const std::string& classifier_name = l.first;
+                const auto& labels = (*l.second); 
+                scratch.set_size(output_tensor.num_samples(), labels.size());
+                tt::copy_tensor(false, scratch, 0, output_tensor, k_offset, labels.size());
+
+                tt::softmax(scratch, scratch);
+
+                for (long i = 0; i < scratch.num_samples(); ++i)
+                    (*iter++)[classifier_name] = classifier_output(rowm(mat(scratch),i), l.second);
+
+                k_offset += labels.size();
+            }
+        }
+
+
+        template <
+            typename const_label_iterator,
+            typename SUBNET
+            >
+        double compute_loss_value_and_gradient (
+            const tensor& input_tensor,
+            const_label_iterator truth_begin, 
+            SUBNET& sub
+        ) const
+        {
+            const tensor& output_tensor = sub.get_output();
+            tensor& grad = sub.get_gradient_input();
+
+            DLIB_CASSERT(sub.sample_expansion_factor() == 1);
+            DLIB_CASSERT(input_tensor.num_samples() != 0);
+            DLIB_CASSERT(input_tensor.num_samples()%sub.sample_expansion_factor() == 0);
+            DLIB_CASSERT(input_tensor.num_samples() == grad.num_samples());
+            DLIB_CASSERT(input_tensor.num_samples() == output_tensor.num_samples());
+            DLIB_CASSERT(output_tensor.nr() == 1 && 
+                         output_tensor.nc() == 1);
+            DLIB_CASSERT(grad.nr() == 1 && 
+                         grad.nc() == 1);
+            DLIB_CASSERT(number_of_labels() != 0, "You must give the loss_multimulticlass_log_'s constructor label data before you can use it!");
+            DLIB_CASSERT(output_tensor.k() == (long)number_of_labels(), "The output tensor must have " << number_of_labels() << " channels.");
+
+            // The loss we output is the average loss over the mini-batch.
+            const double scale = 1.0/output_tensor.num_samples();
+            double loss = 0;
+            long k_offset = 0;
+            for (auto& l : label_idx_lookup)
+            {
+                const std::string& classifier_name = l.first;
+                const auto& int_labels = l.second; 
+                scratch.set_size(output_tensor.num_samples(), int_labels.size());
+                tt::copy_tensor(false, scratch, 0, output_tensor, k_offset, int_labels.size());
+
+                tt::softmax(scratch, scratch);
+
+
+                auto truth = truth_begin;
+                float* g = scratch.host();
+                for (long i = 0; i < scratch.num_samples(); ++i)
+                {
+                    const long y = int_labels.at(truth->at(classifier_name));
+                    ++truth;
+
+                    for (long k = 0; k < scratch.k(); ++k)
+                    {
+                        const unsigned long idx = i*scratch.k()+k;
+                        if (k == y)
+                        {
+                            loss += scale*-std::log(g[idx]);
+                            g[idx] = scale*(g[idx]-1);
+                        }
+                        else
+                        {
+                            g[idx] = scale*g[idx];
+                        }
+                    }
+                }
+
+                tt::copy_tensor(false, grad, k_offset, scratch, 0, int_labels.size());
+
+                k_offset += int_labels.size();
+            }
+            return loss;
+        }
+
+
+        friend void serialize(const loss_multimulticlass_log_& item, std::ostream& out)
+        {
+            serialize("loss_multimulticlass_log_", out);
+            serialize(item.get_labels(), out);
+        }
+
+        friend void deserialize(loss_multimulticlass_log_& item, std::istream& in)
+        {
+            std::string version;
+            deserialize(version, in);
+            if (version != "loss_multimulticlass_log_")
+                throw serialization_error("Unexpected version found while deserializing dlib::loss_multimulticlass_log_.");
+
+            std::map<std::string,std::vector<std::string>> info; 
+            deserialize(info, in);
+            item = loss_multimulticlass_log_(info);
+        }
+
+        friend std::ostream& operator<<(std::ostream& out, const loss_multimulticlass_log_& item)
+        {
+            out << "loss_multimulticlass_log, labels={";
+            for (auto i = item.possible_labels.begin(); i != item.possible_labels.end(); )
+            {
+                auto& category = i->first;
+                auto& labels = *(i->second);
+                out << category << ":(";
+                for (size_t j = 0; j < labels.size(); ++j)
+                {
+                    out << labels[j];
+                    if (j+1 < labels.size())
+                        out << ",";
+                }
+
+                out << ")";
+                if (++i != item.possible_labels.end())
+                    out << ", ";
+            }
+            out << "}";
+            return out;
+        }
+
+        friend void to_xml(const loss_multimulticlass_log_& item, std::ostream& out)
+        {
+            out << "<loss_multimulticlass_log>\n";
+            out << item;
+            out << "\n</loss_multimulticlass_log>";
+        }
+
+    private:
+
+        std::map<std::string,std::shared_ptr<std::vector<std::string>>> possible_labels;
+        unsigned long total_num_labels = 0;
+
+        // We make it true that: possible_labels[classifier][label_idx_lookup[classifier][label]] == label
+        std::map<std::string, std::map<std::string,long>> label_idx_lookup;
+
+
+        // Scratch doesn't logically contribute to the state of this object.  It's just
+        // temporary scratch space used by this class.  
+        mutable resizable_tensor scratch;
+
+
+    };
+
+    template <typename SUBNET>
+    using loss_multimulticlass_log = add_loss_layer<loss_multimulticlass_log_, SUBNET>;
+
+    inline bool operator== (const std::string& lhs, const loss_multimulticlass_log_::classifier_output& rhs)
+    { return lhs == static_cast<const std::string&>(rhs); }
+    inline bool operator== (const loss_multimulticlass_log_::classifier_output& lhs, const std::string& rhs)
+    { return rhs == static_cast<const std::string&>(lhs); }
+
+// ----------------------------------------------------------------------------------------
 // ----------------------------------------------------------------------------------------
 
     enum class use_image_pyramid : uint8_t
@@ -423,6 +706,8 @@ namespace dlib
         double truth_match_iou_threshold = 0.5;
         test_box_overlap overlaps_nms = test_box_overlap(0.4);
         test_box_overlap overlaps_ignore;
+        bool use_bounding_box_regression = false; 
+        double bbr_lambda = 100; 
 
         use_image_pyramid assume_image_pyramid = use_image_pyramid::yes;
 
@@ -658,7 +943,7 @@ namespace dlib
 
     inline void serialize(const mmod_options& item, std::ostream& out)
     {
-        int version = 3;
+        int version = 4;
 
         serialize(version, out);
         serialize(item.detector_windows, out);
@@ -668,13 +953,15 @@ namespace dlib
         serialize(item.overlaps_nms, out);
         serialize(item.overlaps_ignore, out);
         serialize(static_cast<uint8_t>(item.assume_image_pyramid), out);
+        serialize(item.use_bounding_box_regression, out);
+        serialize(item.bbr_lambda, out);
     }
 
     inline void deserialize(mmod_options& item, std::istream& in)
     {
         int version = 0;
         deserialize(version, in);
-        if (version != 3 && version != 2 && version != 1)
+        if (!(1 <= version && version <= 4))
             throw serialization_error("Unexpected version found while deserializing dlib::mmod_options");
         if (version == 1)
         {
@@ -700,6 +987,13 @@ namespace dlib
             deserialize(assume_image_pyramid, in);
             item.assume_image_pyramid = static_cast<use_image_pyramid>(assume_image_pyramid);
         }
+        item.use_bounding_box_regression = mmod_options().use_bounding_box_regression; // use default value since this wasn't provided
+        item.bbr_lambda = mmod_options().bbr_lambda; // use default value since this wasn't provided
+        if (version >= 4)
+        {
+            deserialize(item.use_bounding_box_regression, in);
+            deserialize(item.bbr_lambda, in);
+        }
     }
 
 // ----------------------------------------------------------------------------------------
@@ -712,19 +1006,30 @@ namespace dlib
 
             intermediate_detection(
                 rectangle rect_
-            ) : rect(rect_) {}
+            ) : rect(rect_), rect_bbr(rect_) {}
 
             intermediate_detection(
                 rectangle rect_,
                 double detection_confidence_,
                 size_t tensor_offset_,
                 long channel
-            ) : rect(rect_), detection_confidence(detection_confidence_), tensor_offset(tensor_offset_), tensor_channel(channel) {}
+            ) : rect(rect_), detection_confidence(detection_confidence_), tensor_offset(tensor_offset_), tensor_channel(channel), rect_bbr(rect_) {}
 
+            // rect is the rectangle you get without any bounding box regression.  So it's
+            // the basic sliding window box (aka, the "anchor box").
             rectangle rect;
             double detection_confidence = 0;
             size_t tensor_offset = 0;
             long tensor_channel = 0;
+
+            // rect_bbr = rect + bounding box regression.  So more accurate.  Or if bbr is off then
+            // this is just rect.  The important thing about rect_bbr is that its the
+            // rectangle we use for doing NMS.
+            drectangle rect_bbr; 
+            size_t tensor_offset_dx = 0;
+            size_t tensor_offset_dy = 0;
+            size_t tensor_offset_dw = 0;
+            size_t tensor_offset_dh = 0;
 
             bool operator<(const intermediate_detection& item) const { return detection_confidence < item.detection_confidence; }
         };
@@ -754,7 +1059,14 @@ namespace dlib
         ) const
         {
             const tensor& output_tensor = sub.get_output();
-            DLIB_CASSERT(output_tensor.k() == (long)options.detector_windows.size());
+            if (options.use_bounding_box_regression)
+            {
+                DLIB_CASSERT(output_tensor.k() == (long)options.detector_windows.size()*5);
+            }
+            else
+            {
+                DLIB_CASSERT(output_tensor.k() == (long)options.detector_windows.size());
+            }
             DLIB_CASSERT(input_tensor.num_samples() == output_tensor.num_samples());
             DLIB_CASSERT(sub.sample_expansion_factor() == 1,  sub.sample_expansion_factor());
 
@@ -768,10 +1080,10 @@ namespace dlib
                 final_dets.clear();
                 for (unsigned long i = 0; i < dets_accum.size(); ++i)
                 {
-                    if (overlaps_any_box_nms(final_dets, dets_accum[i].rect))
+                    if (overlaps_any_box_nms(final_dets, dets_accum[i].rect_bbr))
                         continue;
 
-                    final_dets.push_back(mmod_rect(dets_accum[i].rect,
+                    final_dets.push_back(mmod_rect(dets_accum[i].rect_bbr,
                                                    dets_accum[i].detection_confidence,
                                                    options.detector_windows[dets_accum[i].tensor_channel].label));
                 }
@@ -797,13 +1109,19 @@ namespace dlib
             DLIB_CASSERT(sub.sample_expansion_factor() == 1);
             DLIB_CASSERT(input_tensor.num_samples() == grad.num_samples());
             DLIB_CASSERT(input_tensor.num_samples() == output_tensor.num_samples());
-            DLIB_CASSERT(output_tensor.k() == (long)options.detector_windows.size());
+            if (options.use_bounding_box_regression)
+            {
+                DLIB_CASSERT(output_tensor.k() == (long)options.detector_windows.size()*5);
+            }
+            else
+            {
+                DLIB_CASSERT(output_tensor.k() == (long)options.detector_windows.size());
+            }
 
             double det_thresh_speed_adjust = 0;
 
-
             // we will scale the loss so that it doesn't get really huge
-            const double scale = 1.0/output_tensor.size();
+            const double scale = 1.0/(output_tensor.nr()*output_tensor.nc()*output_tensor.num_samples()*options.detector_windows.size());
             double loss = 0;
 
             float* g = grad.host_write_only();
@@ -952,6 +1270,59 @@ namespace dlib
                                 hit_truth_table[hittruth.second] = true;
                                 final_dets.push_back(dets[i]);
                                 loss -= options.loss_per_missed_target;
+
+                                // Now account for BBR loss and gradient if appropriate.
+                                if (options.use_bounding_box_regression)
+                                {
+                                    double dx = out_data[dets[i].tensor_offset_dx];
+                                    double dy = out_data[dets[i].tensor_offset_dy];
+                                    double dw = out_data[dets[i].tensor_offset_dw];
+                                    double dh = out_data[dets[i].tensor_offset_dh];
+
+                                    dpoint p = dcenter(dets[i].rect_bbr); 
+                                    double w = dets[i].rect_bbr.width()-1;
+                                    double h = dets[i].rect_bbr.height()-1;
+                                    drectangle truth_box = (*truth)[hittruth.second].rect;
+                                    dpoint p_truth = dcenter(truth_box); 
+
+                                    DLIB_CASSERT(w > 0);
+                                    DLIB_CASSERT(h > 0);
+
+                                    double target_dx = (p_truth.x() - p.x())/w;
+                                    double target_dy = (p_truth.y() - p.y())/h;
+                                    double target_dw = std::log((truth_box.width()-1)/w);
+                                    double target_dh = std::log((truth_box.height()-1)/h);
+
+
+                                    // compute smoothed L1 loss on BBR outputs.  This loss
+                                    // is just the MSE loss when the loss is small and L1
+                                    // when large.
+                                    dx = dx-target_dx;
+                                    dy = dy-target_dy;
+                                    dw = dw-target_dw;
+                                    dh = dh-target_dh;
+
+                                    // use smoothed L1 
+                                    double ldx = std::abs(dx)<1 ? 0.5*dx*dx : std::abs(dx)-0.5;
+                                    double ldy = std::abs(dy)<1 ? 0.5*dy*dy : std::abs(dy)-0.5;
+                                    double ldw = std::abs(dw)<1 ? 0.5*dw*dw : std::abs(dw)-0.5;
+                                    double ldh = std::abs(dh)<1 ? 0.5*dh*dh : std::abs(dh)-0.5;
+
+                                    loss += options.bbr_lambda*(ldx + ldy + ldw + ldh);
+      
+                                    // now compute the derivatives of the smoothed L1 loss
+                                    ldx = put_in_range(-1,1, dx);
+                                    ldy = put_in_range(-1,1, dy);
+                                    ldw = put_in_range(-1,1, dw);
+                                    ldh = put_in_range(-1,1, dh);
+
+
+                                    // also smoothed L1 gradient goes to gradient output
+                                    g[dets[i].tensor_offset_dx] += scale*options.bbr_lambda*ldx;
+                                    g[dets[i].tensor_offset_dy] += scale*options.bbr_lambda*ldy;
+                                    g[dets[i].tensor_offset_dw] += scale*options.bbr_lambda*ldw;
+                                    g[dets[i].tensor_offset_dh] += scale*options.bbr_lambda*ldh;
+                                }
                             }
                             else
                             {
@@ -1021,6 +1392,9 @@ namespace dlib
             out << ", loss per FA:" << opts.loss_per_false_alarm;
             out << ", loss per miss:" << opts.loss_per_missed_target;
             out << ", truth match IOU thresh:" << opts.truth_match_iou_threshold;
+            out << ", use_bounding_box_regression:" << opts.use_bounding_box_regression;
+            if (opts.use_bounding_box_regression)
+                out << ", bbr_lambda:" << opts.bbr_lambda;
             out << ", overlaps_nms:("<<opts.overlaps_nms.get_iou_thresh()<<","<<opts.overlaps_nms.get_percent_covered_thresh()<<")";
             out << ", overlaps_ignore:("<<opts.overlaps_ignore.get_iou_thresh()<<","<<opts.overlaps_ignore.get_percent_covered_thresh()<<")";
 
@@ -1048,12 +1422,20 @@ namespace dlib
         ) const
         {
             DLIB_CASSERT(net.sample_expansion_factor() == 1,net.sample_expansion_factor());
-            DLIB_CASSERT(output_tensor.k() == (long)options.detector_windows.size());
+            if (options.use_bounding_box_regression)
+            {
+                DLIB_CASSERT(output_tensor.k() == (long)options.detector_windows.size()*5);
+            }
+            else
+            {
+                DLIB_CASSERT(output_tensor.k() == (long)options.detector_windows.size());
+            }
+
             DLIB_CASSERT(gains.empty() || gains.size() == options.detector_windows.size());
             const float* out_data = output_tensor.host() + output_tensor.k()*output_tensor.nr()*output_tensor.nc()*i;
             // scan the final layer and output the positive scoring locations
             dets_accum.clear();
-            for (long k = 0; k < output_tensor.k(); ++k)
+            for (long k = 0; k < (long)options.detector_windows.size(); ++k)
             {
                 const double gain = gains.empty() ? options.detector_windows[k].gain : gains[k];
                 for (long r = 0; r < output_tensor.nr(); ++r)
@@ -1068,6 +1450,28 @@ namespace dlib
                             rect = input_layer(net).tensor_space_to_image_space(input_tensor,rect);
 
                             dets_accum.push_back(intermediate_detection(rect, score, (k*output_tensor.nr() + r)*output_tensor.nc() + c, k));
+
+                            if (options.use_bounding_box_regression)
+                            {
+                                const auto offset = options.detector_windows.size() + k*4;
+                                dets_accum.back().tensor_offset_dx = ((offset+0)*output_tensor.nr() + r)*output_tensor.nc() + c;
+                                dets_accum.back().tensor_offset_dy = ((offset+1)*output_tensor.nr() + r)*output_tensor.nc() + c;
+                                dets_accum.back().tensor_offset_dw = ((offset+2)*output_tensor.nr() + r)*output_tensor.nc() + c;
+                                dets_accum.back().tensor_offset_dh = ((offset+3)*output_tensor.nr() + r)*output_tensor.nc() + c;
+
+                                // apply BBR to dets_accum.back()
+                                double dx = out_data[dets_accum.back().tensor_offset_dx];
+                                double dy = out_data[dets_accum.back().tensor_offset_dy];
+                                double dw = out_data[dets_accum.back().tensor_offset_dw];
+                                double dh = out_data[dets_accum.back().tensor_offset_dh];
+                                dw = std::exp(dw);
+                                dh = std::exp(dh);
+                                double w = rect.width()-1;
+                                double h = rect.height()-1;
+                                rect = translate_rect(rect, dpoint(dx*w,dy*h));
+                                rect = centered_drect(rect, w*dw+1, h*dh+1);
+                                dets_accum.back().rect_bbr = rect;
+                            }
                         }
                     }
                 }
@@ -2135,6 +2539,13 @@ namespace dlib
                              "output size = " << output_tensor.nr() << " x " << output_tensor.nc());
             }
 
+
+#ifdef DLIB_USE_CUDA
+            double loss;
+            cuda_compute(truth, output_tensor, grad, loss);
+            return loss;
+#else
+
             tt::softmax(grad, output_tensor);
 
             // The loss we output is the average loss over the mini-batch, and also over each element of the matrix output.
@@ -2173,6 +2584,7 @@ namespace dlib
                 }
             }
             return loss;
+#endif
         }
 
         friend void serialize(const loss_multiclass_log_per_pixel_& , std::ostream& out)
@@ -2206,6 +2618,10 @@ namespace dlib
             return ((sample * t.k() + k) * t.nr() + row) * t.nc() + column;
         }
 
+
+#ifdef DLIB_USE_CUDA
+        cuda::compute_loss_multiclass_log_per_pixel cuda_compute;
+#endif
     };
 
     template <typename SUBNET>

@@ -17,7 +17,7 @@ import sys, os
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 sys.path.insert(0, os.path.abspath('.'))
-sys.path.insert(0, os.path.abspath('../../../python_examples'))
+sys.path.insert(0, os.path.abspath('../../../build/lib.linux-x86_64-2.7'))
 
 import generate_dlib_listing
 generate_dlib_listing.make_listing_files()
@@ -244,3 +244,14 @@ texinfo_documents = [
 
 # How to display URL addresses: 'footnote', 'no', or 'inline'.
 #texinfo_show_urls = 'footnote'
+
+
+
+# Make sphinx document constructors and __call__
+def skip(app, what, name, obj, skip, options):
+    if name == "__init__" or name == "__call__":
+        return False
+    return skip
+
+def setup(app):
+    app.connect("autodoc-skip-member", skip)

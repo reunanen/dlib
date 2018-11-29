@@ -49,6 +49,7 @@ set (tests
    directed_graph.cpp
    discriminant_pca.cpp
    disjoint_subsets.cpp
+   disjoint_subsets_sized.cpp
    ekm_and_lisf.cpp
    empirical_kernel_map.cpp
    entropy_coder.cpp
@@ -72,6 +73,7 @@ set (tests
    image.cpp
    iosockstream.cpp
    is_same_object.cpp
+   isotonic_regression.cpp
    kcentroid.cpp
    kernel_matrix.cpp
    kmeans.cpp
@@ -117,6 +119,7 @@ set (tests
    read_write_mutex.cpp
    reference_counter.cpp
    rls.cpp
+   random_forest.cpp
    sammon.cpp
    scan_image.cpp
    sequence.cpp
@@ -176,5 +179,3 @@ if (NOT DLIB_NO_GUI_SUPPORT)
    add_subdirectory(examples)
    add_subdirectory(tools)
 endif()
-
-

@@ -168,7 +168,9 @@ namespace dlib
             DLIB_CASSERT(x.size() > 0);
             for (size_t i = 0; i < x.size(); ++i)
                 DLIB_CASSERT(anchor.size() == x[i].size());
-            DLIB_CASSERT(anchor.size()+1 <= x.size() && x.size() <= (anchor.size()+1)*(anchor.size()+2)/2);
+
+            const long x_size = static_cast<long>(x.size());
+            DLIB_CASSERT(anchor.size()+1 <= x_size && x_size <= (anchor.size()+1)*(anchor.size()+2)/2);
 
 
             matrix<double> X(anchor.size(), x.size());
@@ -214,7 +216,7 @@ namespace dlib
             // their best observed value and use the QP to optimize the real variables.  So the
             // number of dimensions, as far as the QP is concerned, is the number of non-integer
             // variables.
-            long dims = 0;
+            size_t dims = 0;
             for (auto is_int : is_integer_variable)
             {
                 if (!is_int)
@@ -225,7 +227,7 @@ namespace dlib
 
             // Use enough points to fill out a quadratic model or the max available if we don't
             // have quite enough.
-            const long N = std::min((long)samples.size(), (dims+1)*(dims+2)/2); 
+            const long N = std::min(samples.size(), (dims+1)*(dims+2)/2); 
 
 
             // first find the best sample;
@@ -376,7 +378,7 @@ namespace dlib
         lower(std::move(bound1)), upper(std::move(bound2))
     {
         DLIB_CASSERT(lower.size() == upper.size());
-        for (size_t i = 0; i < lower.size(); ++i)
+        for (long i = 0; i < lower.size(); ++i)
         {
             if (upper(i) < lower(i))
                 std::swap(lower(i), upper(i));
@@ -626,6 +628,13 @@ namespace dlib
         for (size_t i = 0; i < initial_function_evals.size(); ++i)
         {
             functions[i]->ub = upper_bound_function(initial_function_evals[i], relative_noise_magnitude);
+
+            if (initial_function_evals.size() != 0)
+            {
+                auto best = max_scoring_element(initial_function_evals[i], [](const function_evaluation& e) { return e.y; }).first;
+                functions[i]->best_objective_value = best.y;
+                functions[i]->best_x = best.x;
+            }
         }
     }
 
@@ -702,7 +711,24 @@ namespace dlib
         for (auto& info : functions)
         {
             const long dims = info->spec.lower.size();
-            if (info->ub.num_points() < std::max<long>(3,dims))
+            // If this is the very beginning of the optimization process
+            if (info->ub.num_points()+info->outstanding_evals.size() < 1)
+            {
+                outstanding_function_eval_request new_req;
+                new_req.request_id = next_request_id++;
+                // Pick the point right in the center of the bounds to evaluate first since
+                // people will commonly center the bound on a location they think is good.
+                // So might as well try there first.
+                new_req.x = (info->spec.lower + info->spec.upper)/2.0;
+                for (long i = 0; i < new_req.x.size(); ++i)
+                {
+                    if (info->spec.is_integer_variable[i])
+                        new_req.x(i) = std::round(new_req.x(i));
+                }
+                info->outstanding_evals.emplace_back(new_req);
+                return function_evaluation_request(new_req,info);
+            }
+            else if (info->ub.num_points() < std::max<long>(3,dims))
             {
                 outstanding_function_eval_request new_req;
                 new_req.request_id = next_request_id++;

@@ -4,7 +4,7 @@
 #define DLIB_DNn_CORE_H_
 
 #include "core_abstract.h"
-#include "tensor.h"
+#include "../cuda/tensor.h"
 #include <iterator>
 #include <memory>
 #include <sstream>
@@ -16,10 +16,16 @@
 #include <tuple>
 #include <cmath>
 #include <vector>
-#include "tensor_tools.h"
+#include "../cuda/tensor_tools.h"
 #include <type_traits>
 #include "../metaprogramming.h"
 
+#ifdef _MSC_VER
+// Tell Visual Studio not to recursively inline functions very much because otherwise it
+// takes hours to compile the DNN code sometimes.  It's crazy.  Hopefully we can remove
+// this some day when the visual studio compiler is more efficient.
+#pragma inline_depth(2)
+#endif
 
 
 namespace dlib

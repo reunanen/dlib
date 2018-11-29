@@ -65,17 +65,17 @@ target_link_libraries(assignment_learning_ex dlib::dlib)
 #   cmake --build . --config Release
 #
 # The cmake .. command looks in the parent folder for a file named
-# CMakeLists.txt, reads it, sets up everything needed to build program.  Also,
-# note that CMake can generate Visual Studio or XCode project files.  So
+# CMakeLists.txt, reads it, and sets up everything needed to build program.
+# Also, note that CMake can generate Visual Studio or XCode project files.  So
 # if instead you had written:
-#   mkdir build
-#   cmake .. -G "Visual Studio 14 2015 Win64" ..
+#   cd build
+#   cmake .. -G Xcode
 #
-# You would be able to open the resulting visual studio project and compile and
-# edit the example programs within the visual studio IDE.  CMake can generate a
-# lot of different types of IDE projects.  Run the cmake -h command to see a list
-# of arguments to -G to see what kinds of projects cmake can generate for you.
-# It probably includes your favorite IDE in the list.
+# You would be able to open the resulting Xcode project and compile and edit
+# the example programs within the Xcode IDE.  CMake can generate a lot of
+# different types of IDE projects.  Run the cmake -h command to see a list of
+# arguments to -G to see what kinds of projects cmake can generate for you.  It
+# probably includes your favorite IDE in the list.
 
 
 
@@ -89,7 +89,7 @@ target_link_libraries(assignment_learning_ex dlib::dlib)
 #################################################################################
 
 
-# Since there are a lot of examples I'm going to use a macro to simply this
+# Since there are a lot of examples I'm going to use a macro to simplify this
 # CMakeLists.txt file.  However, usually you will create only one executable in
 # your cmake projects and use the syntax shown above.
 macro(add_example name)
@@ -109,7 +109,19 @@ endmacro()
 # The deep learning toolkit requires a compiler with essentially complete C++11
 # support.  However, versions of Visual Studio prior to October 2016 didn't
 # provide enough C++11 support to compile the DNN tooling, but were good enough
-# to compile the rest of dlib.  
+# to compile the rest of dlib.  So new versions of Visual Studio 2015 will
+# work.  However, Visual Studio 2017 had some C++11 support regressions, so it
+# wasn't until December 2017 that Visual Studio 2017 had good enough C++11
+# support to compile the DNN examples.  So if you are using Visual Studio, make
+# sure you have an updated version if you want to compile the DNN code.
+#
+# Also note that Visual Studio users should give the -T host=x64 option so that
+# CMake will instruct Visual Studio to use its 64bit toolchain.  If you don't
+# do this then by default Visual Studio uses a 32bit toolchain, WHICH RESTRICTS
+# THE COMPILER TO ONLY 2GB OF RAM, causing it to run out of RAM and crash when
+# compiling some of the DNN examples.  So generate your project with a statement
+# like this:
+#   cmake .. -G "Visual Studio 14 2015 Win64" -T host=x64 
 if (NOT USING_OLD_VISUAL_STUDIO_COMPILER)
    add_example(dnn_metric_learning_ex)
    add_gui_example(dnn_face_recognition_ex)
@@ -125,24 +137,9 @@ if (NOT USING_OLD_VISUAL_STUDIO_COMPILER)
    add_gui_example(dnn_mmod_find_cars2_ex)
    add_example(dnn_mmod_train_find_cars_ex)
    add_gui_example(dnn_semantic_segmentation_ex)
-   add_gui_example(dnn_semantic_segmentation_anno_ex)
-   add_example(dnn_semantic_segmentation_anno_train_ex)
-   if (NOT MSVC)
-      # Don't try to compile these programs using Visual Studio since it causes the
-      # compiler to run out of RAM and to crash.  Maybe someday Visual Studio
-      # won't be broken :(
-      # (NB: While the 32-bit VC++ compiler launched by the Visual Studio IDE will
-      #  run out of memory, running a 64-bit MSBuild.exe on the Command Prompt
-      #  seems to work fine. So you can try something like this:
-      #  "C:\Program Files (x86)\MSBuild\14.0\Bin\amd64\MSBuild.exe" C:\path\to\examples.sln /p:Configuration=Release /p:Platform=x64 /t:dnn_imagenet_train_ex
-      #  It does take quite a while to build these examples, though!
-      #  Note that you may additionally need to set Debug Information Format to
-      #  C7 compatible (/Z7), in case you get compiler error "cannot update
-      #  program database".)
-      add_example(dnn_imagenet_train_ex)
-      add_example(dnn_metric_learning_on_images_ex)
-      add_example(dnn_semantic_segmentation_train_ex)
-   endif()
+   add_example(dnn_imagenet_train_ex)
+   add_example(dnn_semantic_segmentation_train_ex)
+   add_example(dnn_metric_learning_on_images_ex)
 endif()
 
 
