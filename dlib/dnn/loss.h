@@ -2829,8 +2829,7 @@ namespace dlib
             DLIB_CASSERT(input_tensor.num_samples() % sub.sample_expansion_factor() == 0);
             DLIB_CASSERT(input_tensor.num_samples() == grad.num_samples());
             DLIB_CASSERT(input_tensor.num_samples() == output_tensor.num_samples());
-            DLIB_CASSERT(output_tensor.k() >= 1);
-            DLIB_CASSERT(output_tensor.k() < std::numeric_limits<uint16_t>::max());
+            DLIB_CASSERT(output_tensor.k() == 1, "output k = " << output_tensor.k());
             DLIB_CASSERT(output_tensor.nr() == grad.nr() &&
                 output_tensor.nc() == grad.nc() &&
                 output_tensor.k() == grad.k());
