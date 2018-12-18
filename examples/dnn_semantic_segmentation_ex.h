@@ -37,6 +37,10 @@
 
 // ----------------------------------------------------------------------------------------
 
+static const char* semantic_segmentation_net_filename = "semantic_segmentation_voc2012net_v2.dnn";
+
+// ----------------------------------------------------------------------------------------
+
 inline bool operator == (const dlib::rgb_pixel& a, const dlib::rgb_pixel& b)
 {
     return a.red == b.red && a.green == b.green && a.blue == b.blue;
@@ -115,64 +119,30 @@ const Voc2012class& find_voc2012_class(Predicate predicate)
 // ----------------------------------------------------------------------------------------
 
 // Introduce the building blocks used to define the segmentation network.
-// The network first does residual downsampling (similar to the dnn_imagenet_(train_)ex
-// example program), and then residual upsampling. In addition, U-Net style skip
-// connections are used, so that not every simple detail needs to reprented on the low
-// levels. (See Ronneberger et al. (2015), U-Net: Convolutional Networks for Biomedical
-// Image Segmentation, https://arxiv.org/pdf/1505.04597.pdf)
+// The network first does downsampling, and then upsampling. In addition, U-Net style
+// skip connections are used, so that not every simple detail needs to reprented on
+// the low levels. (See Ronneberger et al. (2015), U-Net: Convolutional Networks for
+// Biomedical Image Segmentation, https://arxiv.org/pdf/1505.04597.pdf)
 
-template <int N, template <typename> class BN, int stride, typename SUBNET>
-using block = BN<dlib::con<N,3,3,1,1,dlib::relu<BN<dlib::con<N,3,3,stride,stride,SUBNET>>>>>;
+template <int num_filters, int window_size, template <typename> class BN, typename SUBNET>
+using down = BN<dlib::con<num_filters,3,3,1,1,dlib::relu<BN<dlib::con<num_filters,window_size,window_size,2,2,SUBNET>>>>>;
 
-template <int N, template <typename> class BN, int stride, typename SUBNET>
-using blockt = BN<dlib::cont<N,3,3,1,1,dlib::relu<BN<dlib::cont<N,3,3,stride,stride,SUBNET>>>>>;
-
-template <template <int,template<typename>class,int,typename> class block, int N, template<typename>class BN, typename SUBNET>
-using residual = dlib::add_prev1<block<N,BN,1,dlib::tag1<SUBNET>>>;
-
-template <template <int,template<typename>class,int,typename> class block, int N, template<typename>class BN, typename SUBNET>
-using residual_down = dlib::add_prev2<dlib::avg_pool<2,2,2,2,dlib::skip1<dlib::tag2<block<N,BN,2,dlib::tag1<SUBNET>>>>>>;
-
-template <template <int,template<typename>class,int,typename> class block, int N, template<typename>class BN, typename SUBNET>
-using residual_up = dlib::add_prev2<dlib::cont<N,2,2,2,2,dlib::skip1<dlib::tag2<blockt<N,BN,2,dlib::tag1<SUBNET>>>>>>;
-
-template <int N, typename SUBNET> using res       = dlib::relu<residual<block,N,dlib::bn_con,SUBNET>>;
-template <int N, typename SUBNET> using ares      = dlib::relu<residual<block,N,dlib::affine,SUBNET>>;
-template <int N, typename SUBNET> using res_down  = dlib::relu<residual_down<block,N,dlib::bn_con,SUBNET>>;
-template <int N, typename SUBNET> using ares_down = dlib::relu<residual_down<block,N,dlib::affine,SUBNET>>;
-template <int N, typename SUBNET> using res_up    = dlib::relu<residual_up<block,N,dlib::bn_con,SUBNET>>;
-template <int N, typename SUBNET> using ares_up   = dlib::relu<residual_up<block,N,dlib::affine,SUBNET>>;
+template <int num_filters, int window_size, template <typename> class BN, typename SUBNET>
+using up = BN<dlib::cont<num_filters,3,3,1,1,dlib::relu<BN<dlib::cont<num_filters,window_size,window_size,2,2,SUBNET>>>>>;
 
 // ----------------------------------------------------------------------------------------
 
-template <typename SUBNET> using res64 = res<64,SUBNET>;
-template <typename SUBNET> using res128 = res<128,SUBNET>;
-template <typename SUBNET> using res256 = res<256,SUBNET>;
-template <typename SUBNET> using res512 = res<512,SUBNET>;
-template <typename SUBNET> using ares64 = ares<64,SUBNET>;
-template <typename SUBNET> using ares128 = ares<128,SUBNET>;
-template <typename SUBNET> using ares256 = ares<256,SUBNET>;
-template <typename SUBNET> using ares512 = ares<512,SUBNET>;
+template <int num_filters, int window_size, typename SUBNET>
+using adown = down<num_filters,window_size,dlib::affine,SUBNET>;
 
-template <typename SUBNET> using level1 = dlib::repeat<2,res64,res<64,SUBNET>>;
-template <typename SUBNET> using level2 = dlib::repeat<2,res128,res_down<128,SUBNET>>;
-template <typename SUBNET> using level3 = dlib::repeat<2,res256,res_down<256,SUBNET>>;
-template <typename SUBNET> using level4 = dlib::repeat<2,res512,res_down<512,SUBNET>>;
+template <int num_filters, int window_size, typename SUBNET>
+using bdown = down<num_filters,window_size,dlib::bn_con,SUBNET>;
 
-template <typename SUBNET> using alevel1 = dlib::repeat<2,ares64,ares<64,SUBNET>>;
-template <typename SUBNET> using alevel2 = dlib::repeat<2,ares128,ares_down<128,SUBNET>>;
-template <typename SUBNET> using alevel3 = dlib::repeat<2,ares256,ares_down<256,SUBNET>>;
-template <typename SUBNET> using alevel4 = dlib::repeat<2,ares512,ares_down<512,SUBNET>>;
+template <int num_filters, int window_size, typename SUBNET>
+using aup = up<num_filters,window_size,dlib::affine,SUBNET>;
 
-template <typename SUBNET> using level1t = dlib::repeat<2,res64,res_up<64,SUBNET>>;
-template <typename SUBNET> using level2t = dlib::repeat<2,res128,res_up<128,SUBNET>>;
-template <typename SUBNET> using level3t = dlib::repeat<2,res256,res_up<256,SUBNET>>;
-template <typename SUBNET> using level4t = dlib::repeat<2,res512,res_up<512,SUBNET>>;
-
-template <typename SUBNET> using alevel1t = dlib::repeat<2,ares64,ares_up<64,SUBNET>>;
-template <typename SUBNET> using alevel2t = dlib::repeat<2,ares128,ares_up<128,SUBNET>>;
-template <typename SUBNET> using alevel3t = dlib::repeat<2,ares256,ares_up<256,SUBNET>>;
-template <typename SUBNET> using alevel4t = dlib::repeat<2,ares512,ares_up<512,SUBNET>>;
+template <int num_filters, int window_size, typename SUBNET>
+using bup = up<num_filters,window_size,dlib::bn_con,SUBNET>;
 
 // ----------------------------------------------------------------------------------------
 
@@ -205,87 +175,62 @@ template <typename SUBNET> using concat_utag4 = resize_and_concat<utag4,utag4_,S
 
 // ----------------------------------------------------------------------------------------
 
-// Microsoft Visual C++ compilers choke when trying to build networks that are too deep.
-// So let's limit the depth a little. On the PASCAL VOC 2012 data, the accuracy hit is
-// not even very significant.
+#if 0
+template <template <typename> class BN>
+using net_type = dlib::loss_multiclass_log_per_pixel<
+                              dlib::cont<class_count,1,1,1,1,
+                              dlib::relu<BN<dlib::con<32,3,3,1,1,
+                              concat_utag0<up<64,7,BN,
+                              concat_utag1<up<64,3,BN,
+                              concat_utag2<up<128,3,BN,
+                              concat_utag3<up<256,3,BN,
+                              concat_utag4<up<512,3,BN,
+                              down<512,3,BN,utag4<
+                              down<256,3,BN,utag3<
+                              down<128,3,BN,utag2<
+                              down<64,3,BN,utag1<
+                              down<64,7,BN,utag0<
+                              dlib::relu<BN<dlib::con<16,3,3,1,1,
+                              dlib::input<dlib::matrix<dlib::rgb_pixel>>
+                              >>>>>>>>>>>>>>>>>>>>>>>>>>>>;
 
-#ifdef _MSC_VER
-#define LIMIT_LAYER_COUNT_BECAUSE_OF_COMPILER_ISSUES 1
-static const char* semantic_segmentation_net_filename = "semantic_segmentation_voc2012net_v2_limited_layer_count.dnn";
-#else
-#define LIMIT_LAYER_COUNT_BECAUSE_OF_COMPILER_ISSUES 0
-static const char* semantic_segmentation_net_filename = "semantic_segmentation_voc2012net_v2.dnn";
+using bnet_type = net_type<dlib::bn_con>; // training network type
+using anet_type = net_type<dlib::affine>; // inference network type
 #endif
 
-// training network type
 using bnet_type = dlib::loss_multiclass_log_per_pixel<
                               dlib::cont<class_count,1,1,1,1,
-#if LIMIT_LAYER_COUNT_BECAUSE_OF_COMPILER_ISSUES == 0
-                              dlib::relu<dlib::bn_con<dlib::cont<32,3,3,1,1,concat_utag0<
-#endif
-                              dlib::relu<dlib::bn_con<dlib::cont<64,7,7,2,2,concat_utag1<
-                              level1t<
-#if LIMIT_LAYER_COUNT_BECAUSE_OF_COMPILER_ISSUES == 0
-                              concat_utag2<
-#endif
-                              level2t<concat_utag3<level3t<
-#if LIMIT_LAYER_COUNT_BECAUSE_OF_COMPILER_ISSUES == 0
-                              concat_utag4<
-#endif
-                              level4t<level4<
-#if LIMIT_LAYER_COUNT_BECAUSE_OF_COMPILER_ISSUES == 0
-                              utag4<
-#endif
-                              level3<utag3<level2<
-#if LIMIT_LAYER_COUNT_BECAUSE_OF_COMPILER_ISSUES == 0
-                              utag2<
-#endif
-                              level1<dlib::max_pool<3,3,2,2,utag1<
-                              dlib::relu<dlib::bn_con<dlib::con<64,7,7,2,2,
-#if LIMIT_LAYER_COUNT_BECAUSE_OF_COMPILER_ISSUES == 0
-                              utag0<dlib::relu<dlib::bn_con<dlib::cont<16,3,3,1,1,
-#endif
+                              dlib::relu<dlib::bn_con<dlib::con<32,3,3,1,1,
+                              concat_utag0<bup<64,7,
+                              concat_utag1<bup<64,3,
+                              concat_utag2<bup<128,3,
+                              concat_utag3<bup<256,3,
+                              concat_utag4<bup<512,3,
+                              bdown<512,3,utag4<
+                              bdown<256,3,utag3<
+                              bdown<128,3,utag2<
+                              bdown<64,3,utag1<
+                              bdown<64,7,utag0<
+                              dlib::relu<dlib::bn_con<dlib::con<16,3,3,1,1,
                               dlib::input<dlib::matrix<dlib::rgb_pixel>>
-                              >>>>>>>>>>>>>>>>>>>>>
-#if LIMIT_LAYER_COUNT_BECAUSE_OF_COMPILER_ISSUES == 0
-                              >>>>>>>>>>>>
-#endif
-                              ;
+                              >>>>>>>>>>>>>>>>>>>>>>>>>>>>;
 
-// testing network type (replaced batch normalization with fixed affine transforms)
 using anet_type = dlib::loss_multiclass_log_per_pixel<
                               dlib::cont<class_count,1,1,1,1,
-#if LIMIT_LAYER_COUNT_BECAUSE_OF_COMPILER_ISSUES == 0
-                              dlib::relu<dlib::affine<dlib::cont<32,3,3,1,1,concat_utag0<
-#endif
-                              dlib::relu<dlib::affine<dlib::cont<64,7,7,2,2,concat_utag1<
-                              alevel1t<
-#if LIMIT_LAYER_COUNT_BECAUSE_OF_COMPILER_ISSUES == 0
-                              concat_utag2<
-#endif
-                              alevel2t<concat_utag3<alevel3t<
-#if LIMIT_LAYER_COUNT_BECAUSE_OF_COMPILER_ISSUES == 0
-                              concat_utag4<
-#endif
-                              alevel4t<alevel4<
-#if LIMIT_LAYER_COUNT_BECAUSE_OF_COMPILER_ISSUES == 0
-                              utag4<
-#endif
-                              alevel3<utag3<alevel2<
-#if LIMIT_LAYER_COUNT_BECAUSE_OF_COMPILER_ISSUES == 0
-                              utag2<
-#endif
-                              alevel1<dlib::max_pool<3,3,2,2,utag1<
-                              dlib::relu<dlib::affine<dlib::con<64,7,7,2,2,
-#if LIMIT_LAYER_COUNT_BECAUSE_OF_COMPILER_ISSUES == 0
-                              utag0<dlib::relu<dlib::affine<dlib::cont<16,3,3,1,1,
-#endif
+                              dlib::relu<dlib::affine<dlib::con<32,3,3,1,1,
+                              concat_utag0<aup<64,7,
+                              concat_utag1<aup<64,3,
+                              concat_utag2<aup<128,3,
+                              concat_utag3<aup<256,3,
+                              concat_utag4<aup<512,3,
+                              adown<512,3,utag4<
+                              adown<256,3,utag3<
+                              adown<128,3,utag2<
+                              adown<64,3,utag1<
+                              adown<64,7,utag0<
+                              dlib::relu<dlib::affine<dlib::con<16,3,3,1,1,
                               dlib::input<dlib::matrix<dlib::rgb_pixel>>
-                              >>>>>>>>>>>>>>>>>>>>>
-#if LIMIT_LAYER_COUNT_BECAUSE_OF_COMPILER_ISSUES == 0
-                              >>>>>>>>>>>>
-#endif
-                              ;
+                              >>>>>>>>>>>>>>>>>>>>>>>>>>>>;
 
 // ----------------------------------------------------------------------------------------
 
