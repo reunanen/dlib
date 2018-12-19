@@ -125,10 +125,10 @@ const Voc2012class& find_voc2012_class(Predicate predicate)
 // Biomedical Image Segmentation, https://arxiv.org/pdf/1505.04597.pdf)
 
 template <int num_filters, int window_size, template <typename> class BN, typename SUBNET>
-using down = dlib::relu<BN<dlib::con<num_filters,window_size,window_size,2,2,SUBNET>>>;
+using down = BN<dlib::con<num_filters,3,3,1,1,dlib::relu<BN<dlib::con<num_filters,window_size,window_size,2,2,SUBNET>>>>>;
 
 template <int num_filters, int window_size, template <typename> class BN, typename SUBNET>
-using up = dlib::relu<BN<dlib::cont<num_filters,window_size,window_size,2,2,SUBNET>>>;
+using up = BN<dlib::cont<num_filters,3,3,1,1,dlib::relu<BN<dlib::cont<num_filters,window_size,window_size,2,2,SUBNET>>>>>;
 
 // ----------------------------------------------------------------------------------------
 
@@ -159,16 +159,19 @@ template <typename SUBNET> using utag0 = dlib::add_tag_layer<2100+0,SUBNET>;
 template <typename SUBNET> using utag1 = dlib::add_tag_layer<2100+1,SUBNET>;
 template <typename SUBNET> using utag2 = dlib::add_tag_layer<2100+2,SUBNET>;
 template <typename SUBNET> using utag3 = dlib::add_tag_layer<2100+3,SUBNET>;
+template <typename SUBNET> using utag4 = dlib::add_tag_layer<2100+4,SUBNET>;
 
 template <typename SUBNET> using utag0_ = dlib::add_tag_layer<2110+0,SUBNET>;
 template <typename SUBNET> using utag1_ = dlib::add_tag_layer<2110+1,SUBNET>;
 template <typename SUBNET> using utag2_ = dlib::add_tag_layer<2110+2,SUBNET>;
 template <typename SUBNET> using utag3_ = dlib::add_tag_layer<2110+3,SUBNET>;
+template <typename SUBNET> using utag4_ = dlib::add_tag_layer<2110+4,SUBNET>;
 
 template <typename SUBNET> using concat_utag0 = resize_and_concat<utag0,utag0_,SUBNET>;
 template <typename SUBNET> using concat_utag1 = resize_and_concat<utag1,utag1_,SUBNET>;
 template <typename SUBNET> using concat_utag2 = resize_and_concat<utag2,utag2_,SUBNET>;
 template <typename SUBNET> using concat_utag3 = resize_and_concat<utag3,utag3_,SUBNET>;
+template <typename SUBNET> using concat_utag4 = resize_and_concat<utag4,utag4_,SUBNET>;
 
 // ----------------------------------------------------------------------------------------
 
@@ -202,15 +205,15 @@ using bnet_type = dlib::loss_multiclass_log_per_pixel<
                               concat_utag1<bup<64,3,
                               concat_utag2<bup<128,3,
                               concat_utag3<bup<256,3,
-                              bup<512,3,
-                              bdown<512,3,
+                              concat_utag4<bup<512,3,
+                              bdown<512,3,utag4<
                               bdown<256,3,utag3<
                               bdown<128,3,utag2<
                               bdown<64,3,utag1<
                               bdown<64,7,utag0<
                               dlib::relu<dlib::bn_con<dlib::con<16,3,3,1,1,
                               dlib::input<dlib::matrix<dlib::rgb_pixel>>
-                              >>>>>>>>>>>>>>>>>>>>>>>>>>;
+                              >>>>>>>>>>>>>>>>>>>>>>>>>>>>;
 
 using anet_type = dlib::loss_multiclass_log_per_pixel<
                               dlib::cont<class_count,1,1,1,1,
@@ -219,15 +222,15 @@ using anet_type = dlib::loss_multiclass_log_per_pixel<
                               concat_utag1<aup<64,3,
                               concat_utag2<aup<128,3,
                               concat_utag3<aup<256,3,
-                              aup<512,3,
-                              adown<512,3,
+                              concat_utag4<aup<512,3,
+                              adown<512,3,utag4<
                               adown<256,3,utag3<
                               adown<128,3,utag2<
                               adown<64,3,utag1<
                               adown<64,7,utag0<
                               dlib::relu<dlib::affine<dlib::con<16,3,3,1,1,
                               dlib::input<dlib::matrix<dlib::rgb_pixel>>
-                              >>>>>>>>>>>>>>>>>>>>>>>>>>;
+                              >>>>>>>>>>>>>>>>>>>>>>>>>>>>;
 
 // ----------------------------------------------------------------------------------------
 
