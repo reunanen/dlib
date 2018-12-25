@@ -68,7 +68,7 @@ void randomly_crop_image (
 {
     const auto rect = make_random_cropping_rect(input_image, rnd);
 
-    const chip_details chip_details(rect, chip_dims(227, 227));
+    const chip_details chip_details(rect, chip_dims(257, 257));
 
     // Crop the input image.
     extract_image_chip(input_image, chip_details, crop.input_image, interpolate_bilinear());
@@ -279,7 +279,7 @@ int main(int argc, char** argv) try
     }
 
     // a mini-batch smaller than the default can be used with GPUs having less memory
-    const int minibatch_size = argc == 3 ? std::stoi(argv[2]) : 27;
+    const int minibatch_size = argc == 3 ? std::stoi(argv[2]) : 12;
     cout << "mini-batch size: " << minibatch_size << endl;
 
     const double initial_learning_rate = 0.1;

@@ -124,25 +124,33 @@ const Voc2012class& find_voc2012_class(Predicate predicate)
 // the low levels. (See Ronneberger et al. (2015), U-Net: Convolutional Networks for
 // Biomedical Image Segmentation, https://arxiv.org/pdf/1505.04597.pdf)
 
-template <int num_filters, int window_size, template <typename> class BN, typename SUBNET>
-using down = BN<dlib::con<num_filters,3,3,1,1,dlib::relu<BN<dlib::con<num_filters,window_size,window_size,2,2,SUBNET>>>>>;
+template <int num_filters, template <typename> class BN, typename SUBNET>
+using con3 = dlib::relu<BN<dlib::con<num_filters,3,3,1,1,SUBNET>>>;
 
-template <int num_filters, int window_size, template <typename> class BN, typename SUBNET>
-using up = BN<dlib::cont<num_filters,3,3,1,1,dlib::relu<BN<dlib::cont<num_filters,window_size,window_size,2,2,SUBNET>>>>>;
+template <int num_filters, template <typename> class BN, typename SUBNET>
+using level = con3<num_filters,BN,con3<num_filters,BN,SUBNET>>;
+
+template <typename SUBNET>
+using down = dlib::max_pool<3,3,2,2,SUBNET>;
+
+template <int num_filters, typename SUBNET>
+using up = dlib::cont<num_filters,3,3,2,2,SUBNET>;
 
 // ----------------------------------------------------------------------------------------
 
-template <int num_filters, int window_size, typename SUBNET>
-using adown = down<num_filters,window_size,dlib::affine,SUBNET>;
+#if 0
+template <int num_filters, typename SUBNET>
+using adown = down<num_filters,dlib::affine,SUBNET>;
 
-template <int num_filters, int window_size, typename SUBNET>
-using bdown = down<num_filters,window_size,dlib::bn_con,SUBNET>;
+template <int num_filters, typename SUBNET>
+using bdown = down<num_filters,dlib::bn_con,SUBNET>;
 
-template <int num_filters, int window_size, typename SUBNET>
-using aup = up<num_filters,window_size,dlib::affine,SUBNET>;
+template <int num_filters, typename SUBNET>
+using aup = up<num_filters,dlib::affine,SUBNET>;
 
-template <int num_filters, int window_size, typename SUBNET>
-using bup = up<num_filters,window_size,dlib::bn_con,SUBNET>;
+template <int num_filters, typename SUBNET>
+using bup = up<num_filters,dlib::bn_con,SUBNET>;
+#endif
 
 // ----------------------------------------------------------------------------------------
 
@@ -160,44 +168,54 @@ template <typename SUBNET> using utag1 = dlib::add_tag_layer<2100+1,SUBNET>;
 template <typename SUBNET> using utag2 = dlib::add_tag_layer<2100+2,SUBNET>;
 template <typename SUBNET> using utag3 = dlib::add_tag_layer<2100+3,SUBNET>;
 template <typename SUBNET> using utag4 = dlib::add_tag_layer<2100+4,SUBNET>;
+template <typename SUBNET> using utag5 = dlib::add_tag_layer<2100+5,SUBNET>;
+template <typename SUBNET> using utag6 = dlib::add_tag_layer<2100+6, SUBNET>;
 
 template <typename SUBNET> using utag0_ = dlib::add_tag_layer<2110+0,SUBNET>;
 template <typename SUBNET> using utag1_ = dlib::add_tag_layer<2110+1,SUBNET>;
 template <typename SUBNET> using utag2_ = dlib::add_tag_layer<2110+2,SUBNET>;
 template <typename SUBNET> using utag3_ = dlib::add_tag_layer<2110+3,SUBNET>;
 template <typename SUBNET> using utag4_ = dlib::add_tag_layer<2110+4,SUBNET>;
+template <typename SUBNET> using utag5_ = dlib::add_tag_layer<2110+5,SUBNET>;
+template <typename SUBNET> using utag6_ = dlib::add_tag_layer<2110+6,SUBNET>;
 
 template <typename SUBNET> using concat_utag0 = resize_and_concat<utag0,utag0_,SUBNET>;
 template <typename SUBNET> using concat_utag1 = resize_and_concat<utag1,utag1_,SUBNET>;
 template <typename SUBNET> using concat_utag2 = resize_and_concat<utag2,utag2_,SUBNET>;
 template <typename SUBNET> using concat_utag3 = resize_and_concat<utag3,utag3_,SUBNET>;
 template <typename SUBNET> using concat_utag4 = resize_and_concat<utag4,utag4_,SUBNET>;
+template <typename SUBNET> using concat_utag5 = resize_and_concat<utag5,utag5_,SUBNET>;
+template <typename SUBNET> using concat_utag6 = resize_and_concat<utag6,utag6_,SUBNET>;
 
 // ----------------------------------------------------------------------------------------
 
-#if 0
+#if 1
 template <template <typename> class BN>
 using net_type = dlib::loss_multiclass_log_per_pixel<
-                              dlib::cont<class_count,1,1,1,1,
-                              dlib::relu<BN<dlib::con<32,3,3,1,1,
-                              concat_utag0<up<64,7,BN,
-                              concat_utag1<up<64,3,BN,
-                              concat_utag2<up<128,3,BN,
-                              concat_utag3<up<256,3,BN,
-                              concat_utag4<up<512,3,BN,
-                              down<512,3,BN,utag4<
-                              down<256,3,BN,utag3<
-                              down<128,3,BN,utag2<
-                              down<64,3,BN,utag1<
-                              down<64,7,BN,utag0<
-                              dlib::relu<BN<dlib::con<16,3,3,1,1,
+                              dlib::con<class_count,1,1,1,1,
+                              level<64,BN,concat_utag0<up<64,
+                              level<96,BN,concat_utag1<up<96,
+                              level<128,BN,concat_utag2<up<128,
+                              level<256,BN,concat_utag3<up<256,
+                              level<384,BN,concat_utag4<up<384,
+                              level<512,BN,concat_utag5<up<512,
+                              level<768,BN,concat_utag6<up<768,
+                              level<1024,BN,
+                              down<utag6<level<768,BN,
+                              down<utag5<level<512,BN,
+                              down<utag4<level<384,BN,
+                              down<utag3<level<256,BN,
+                              down<utag2<level<128,BN,
+                              down<utag1<level<96,BN,
+                              down<utag0<level<64,BN,
                               dlib::input<dlib::matrix<dlib::rgb_pixel>>
-                              >>>>>>>>>>>>>>>>>>>>>>>>>>>>;
+                              >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
 
 using bnet_type = net_type<dlib::bn_con>; // training network type
 using anet_type = net_type<dlib::affine>; // inference network type
 #endif
 
+#if 0
 using bnet_type = dlib::loss_multiclass_log_per_pixel<
                               dlib::cont<class_count,1,1,1,1,
                               dlib::relu<dlib::bn_con<dlib::con<32,3,3,1,1,
@@ -231,6 +249,7 @@ using anet_type = dlib::loss_multiclass_log_per_pixel<
                               dlib::relu<dlib::affine<dlib::con<16,3,3,1,1,
                               dlib::input<dlib::matrix<dlib::rgb_pixel>>
                               >>>>>>>>>>>>>>>>>>>>>>>>>>>>;
+#endif
 
 // ----------------------------------------------------------------------------------------
 
