@@ -410,6 +410,8 @@ int main(int argc, char** argv) try
         }
     };
 
+    std::string error;
+
     // The main training loop.  Keep making mini-batches and giving them to the trainer.
     // We will run until the learning rate has dropped by a factor of 1e-4.
     while(trainer.get_learning_rate() >= 1e-4)
@@ -427,7 +429,15 @@ int main(int argc, char** argv) try
             labels.push_back(std::move(temp.label_image));
         }
 
-        train_one_step_and_maybe_adjust_minibatch_size();
+        try
+        {
+            train_one_step_and_maybe_adjust_minibatch_size();
+        }
+        catch (const std::exception& e)
+        {
+            error = e.what();
+            break;
+        }
     }
 
     // Training done, tell threads to stop and make sure to wait for them to finish before
@@ -440,6 +450,11 @@ int main(int argc, char** argv) try
 
     // also wait for threaded processing to stop in the trainer.
     trainer.get_net();
+
+    if (!error.empty())
+    {
+        throw std::runtime_error(error);
+    }
 
     bnet.clean();
     cout << "saving network" << endl;
