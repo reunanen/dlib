@@ -361,23 +361,25 @@ int main(int argc, char** argv) try
     {
         if (max_optimal_minibatch_size == 0) // upper bound found already?
         {
+            // At first, crank the minibatch size up by a factor of 2.
             minibatch_size *= 2;
             std::cout << "New minibatch size: " << minibatch_size << " (upper bound not found yet)" << std::endl;
         }
         else
         {
+            // Once the upper bound is known, use binary search to find the optimum.
             minibatch_size = (min_optimal_minibatch_size + max_optimal_minibatch_size + 1) / 2;
             std::cout << "New minibatch size: " << minibatch_size << " [" << min_optimal_minibatch_size << ", " << max_optimal_minibatch_size << "]" << std::endl;
         }
     };
 
-    const auto minibatch_trained_successfully = [&]()
+    const auto on_minibatch_trained_successfully = [&]()
     {
         min_optimal_minibatch_size = minibatch_size;
         set_new_minibatch_size_halfway_between_min_and_max();
     };
 
-    const auto minibatch_out_of_memory_error = [&]()
+    const auto on_minibatch_out_of_memory_error = [&]()
     {
         if (minibatch_size <= 2)
         {
@@ -404,14 +406,14 @@ int main(int argc, char** argv) try
             if (min_optimal_minibatch_size < max_optimal_minibatch_size)
             {
                 trainer->get_net();
-                minibatch_trained_successfully();
+                on_minibatch_trained_successfully();
             }
         }
         catch (const dlib::cuda_error& e)
         {
             if (is_memory_allocation_error(e))
             {
-                minibatch_out_of_memory_error();
+                on_minibatch_out_of_memory_error();
             }
             else
             {
