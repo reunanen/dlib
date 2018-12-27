@@ -264,7 +264,7 @@ int main(int argc, char** argv) try
         cout << "To run this program you need a copy of the PASCAL VOC2012 dataset." << endl;
         cout << endl;
         cout << "You call this program like this: " << endl;
-        cout << "./dnn_semantic_segmentation_train_ex /path/to/VOC2012 [initial-minibatch-size]" << endl;
+        cout << "./dnn_semantic_segmentation_train_ex /path/to/VOC2012" << endl;
         return 1;
     }
 
@@ -277,10 +277,6 @@ int main(int argc, char** argv) try
         cout << "Didn't find the VOC2012 dataset. " << endl;
         return 1;
     }
-
-    // a mini-batch smaller than the default can be used with GPUs having less memory
-    const int initial_minibatch_size = argc == 3 ? std::stoi(argv[2]) : 23;
-    cout << "initial mini-batch size: " << initial_minibatch_size << endl;
 
     bnet_type bnet;
 
@@ -353,9 +349,11 @@ int main(int argc, char** argv) try
     // Automatically find the optimal mini-batch size for the GPU hardware that is available.
     // Start with a reasonable guess, and move up or down depending if training a mini-batch
     // results in an out-of-memory error or not.
-    int minibatch_size = initial_minibatch_size;
+    int minibatch_size = 16; // just about any smallish value >= 2 is good for initialization
     int min_optimal_minibatch_size = 2; // batch normalization requires at least 2
     int max_optimal_minibatch_size = 0; // max value not known yet
+
+    std::cout << "Initial mini-batch size: " << minibatch_size << std::endl;
 
     const auto set_new_minibatch_size_halfway_between_min_and_max = [&]()
     {
