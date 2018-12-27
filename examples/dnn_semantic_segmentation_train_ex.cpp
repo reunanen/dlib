@@ -264,7 +264,7 @@ int main(int argc, char** argv) try
         cout << "To run this program you need a copy of the PASCAL VOC2012 dataset." << endl;
         cout << endl;
         cout << "You call this program like this: " << endl;
-        cout << "./dnn_semantic_segmentation_train_ex /path/to/VOC2012 [minibatch-size]" << endl;
+        cout << "./dnn_semantic_segmentation_train_ex /path/to/VOC2012 [initial-minibatch-size]" << endl;
         return 1;
     }
 
@@ -279,8 +279,8 @@ int main(int argc, char** argv) try
     }
 
     // a mini-batch smaller than the default can be used with GPUs having less memory
-    const int minibatch_size = argc == 3 ? std::stoi(argv[2]) : 23;
-    cout << "mini-batch size: " << minibatch_size << endl;
+    const int initial_minibatch_size = argc == 3 ? std::stoi(argv[2]) : 23;
+    cout << "initial mini-batch size: " << initial_minibatch_size << endl;
 
     const double initial_learning_rate = 0.1;
     const double weight_decay = 0.0001;
@@ -341,6 +341,75 @@ int main(int argc, char** argv) try
     std::thread data_loader3([f](){ f(3); });
     std::thread data_loader4([f](){ f(4); });
 
+    // Automatically find the optimal mini-batch size for the GPU hardware that is available.
+    // Start with a reasonable guess, and move up or down depending if training a mini-batch
+    // results in an out-of-memory error or not.
+    int minibatch_size = initial_minibatch_size;
+    int min_optimal_minibatch_size = 2; // batch normalization requires at least 2
+    int max_optimal_minibatch_size = 0; // max value not known yet
+
+    const auto set_new_minibatch_size_halfway_between_min_and_max = [&]()
+    {
+        if (max_optimal_minibatch_size == 0) // upper bound found already?
+        {
+            minibatch_size *= 2;
+            std::cout << "New minibatch size: " << minibatch_size << " (upper bound not found yet)" << std::endl;
+        }
+        else
+        {
+            minibatch_size = (min_optimal_minibatch_size + max_optimal_minibatch_size + 1) / 2;
+            std::cout << "New minibatch size: " << minibatch_size << " [" << min_optimal_minibatch_size << ", " << max_optimal_minibatch_size << "]" << std::endl;
+        }
+    };
+
+    const auto minibatch_trained_successfully = [&]()
+    {
+        min_optimal_minibatch_size = minibatch_size;
+        set_new_minibatch_size_halfway_between_min_and_max();
+    };
+
+    const auto minibatch_out_of_memory_error = [&]()
+    {
+        if (minibatch_size <= 2)
+        {
+            throw std::runtime_error("Even a mini-batch size of " + std::to_string(minibatch_size) + " seems to be too much");
+        }
+        max_optimal_minibatch_size = minibatch_size - 1;
+        min_optimal_minibatch_size = std::min(min_optimal_minibatch_size, max_optimal_minibatch_size);
+        set_new_minibatch_size_halfway_between_min_and_max();
+    };
+
+    const auto is_memory_allocation_error = [](const dlib::cuda_error& e)
+    {
+        const std::string what = e.what();
+        return what.find("code: 2, reason: ") != std::string::npos;
+    };
+
+    const auto train_one_step_and_maybe_adjust_minibatch_size = [&]()
+    {
+        try
+        {
+            trainer.train_one_step(samples, labels);
+
+            if (min_optimal_minibatch_size < max_optimal_minibatch_size)
+            {
+                trainer.get_net();
+                minibatch_trained_successfully();
+            }
+        }
+        catch (const dlib::cuda_error& e)
+        {
+            if (is_memory_allocation_error(e))
+            {
+                minibatch_out_of_memory_error();
+            }
+            else
+            {
+                throw;
+            }
+        }
+    };
+
     // The main training loop.  Keep making mini-batches and giving them to the trainer.
     // We will run until the learning rate has dropped by a factor of 1e-4.
     while(trainer.get_learning_rate() >= 1e-4)
@@ -358,7 +427,7 @@ int main(int argc, char** argv) try
             labels.push_back(std::move(temp.label_image));
         }
 
-        trainer.train_one_step(samples, labels);
+        train_one_step_and_maybe_adjust_minibatch_size();
     }
 
     // Training done, tell threads to stop and make sure to wait for them to finish before
