@@ -282,23 +282,32 @@ int main(int argc, char** argv) try
     const int initial_minibatch_size = argc == 3 ? std::stoi(argv[2]) : 23;
     cout << "initial mini-batch size: " << initial_minibatch_size << endl;
 
-    const double initial_learning_rate = 0.1;
-    const double weight_decay = 0.0001;
-    const double momentum = 0.9;
-
     bnet_type bnet;
-    dnn_trainer<bnet_type> trainer(bnet,sgd(weight_decay, momentum));
-    trainer.be_verbose();
-    trainer.set_learning_rate(initial_learning_rate);
-    trainer.set_synchronization_file("pascal_voc2012_trainer_state_file.dat", std::chrono::minutes(10));
-    // This threshold is probably excessively large.
-    trainer.set_iterations_without_progress_threshold(5000);
-    // Since the progress threshold is so large might as well set the batch normalization
-    // stats window to something big too.
-    set_all_bn_running_stats_window_sizes(bnet, 1000);
+
+    const auto create_new_trainer = [&bnet]()
+    {
+        const double initial_learning_rate = 0.1;
+        const double weight_decay = 0.0001;
+        const double momentum = 0.9;
+
+        typedef dnn_trainer<bnet_type> trainer_t;
+        std::unique_ptr<trainer_t> trainer = std::make_unique<trainer_t>(bnet, sgd(weight_decay, momentum));
+        trainer->be_verbose();
+        trainer->set_learning_rate(initial_learning_rate);
+        trainer->set_synchronization_file("pascal_voc2012_trainer_state_file.dat", std::chrono::minutes(10));
+        // This threshold is probably excessively large.
+        trainer->set_iterations_without_progress_threshold(5000);
+        // Since the progress threshold is so large might as well set the batch normalization
+        // stats window to something big too.
+        set_all_bn_running_stats_window_sizes(bnet, 1000);
+
+        return trainer;
+    };
+
+    auto trainer = create_new_trainer();
 
     // Output training parameters.
-    cout << endl << trainer << endl;
+    cout << endl << *trainer << endl;
 
     std::vector<matrix<rgb_pixel>> samples;
     std::vector<matrix<uint16_t>> labels;
@@ -377,6 +386,7 @@ int main(int argc, char** argv) try
         max_optimal_minibatch_size = minibatch_size - 1;
         min_optimal_minibatch_size = std::min(min_optimal_minibatch_size, max_optimal_minibatch_size);
         set_new_minibatch_size_halfway_between_min_and_max();
+        trainer = create_new_trainer();
     };
 
     const auto is_memory_allocation_error = [](const dlib::cuda_error& e)
@@ -389,11 +399,11 @@ int main(int argc, char** argv) try
     {
         try
         {
-            trainer.train_one_step(samples, labels);
+            trainer->train_one_step(samples, labels);
 
             if (min_optimal_minibatch_size < max_optimal_minibatch_size)
             {
-                trainer.get_net();
+                trainer->get_net();
                 minibatch_trained_successfully();
             }
         }
@@ -414,7 +424,7 @@ int main(int argc, char** argv) try
 
     // The main training loop.  Keep making mini-batches and giving them to the trainer.
     // We will run until the learning rate has dropped by a factor of 1e-4.
-    while(trainer.get_learning_rate() >= 1e-4)
+    while(trainer->get_learning_rate() >= 1e-4)
     {
         samples.clear();
         labels.clear();
@@ -449,7 +459,7 @@ int main(int argc, char** argv) try
     data_loader4.join();
 
     // also wait for threaded processing to stop in the trainer.
-    trainer.get_net();
+    trainer->get_net();
 
     if (!error.empty())
     {
