@@ -403,7 +403,7 @@ int main(int argc, char** argv) try
         {
             trainer->train_one_step(samples, labels);
 
-            if (min_optimal_minibatch_size < max_optimal_minibatch_size)
+            if (min_optimal_minibatch_size != max_optimal_minibatch_size)
             {
                 trainer->get_net();
                 on_minibatch_trained_successfully();
