@@ -361,13 +361,13 @@ int main(int argc, char** argv) try
         {
             // At first, crank the minibatch size up by a factor of 2.
             minibatch_size *= 2;
-            std::cout << "New minibatch size: " << minibatch_size << " (upper bound not found yet)" << std::endl;
+            std::cout << "New mini-batch size: " << minibatch_size << " (upper bound not found yet)" << std::endl;
         }
         else
         {
             // Once the upper bound is known, use binary search to find the optimum.
             minibatch_size = (min_optimal_minibatch_size + max_optimal_minibatch_size + 1) / 2;
-            std::cout << "New minibatch size: " << minibatch_size << " [" << min_optimal_minibatch_size << ", " << max_optimal_minibatch_size << "]" << std::endl;
+            std::cout << "New mini-batch size: " << minibatch_size << " [" << min_optimal_minibatch_size << ", " << max_optimal_minibatch_size << "]" << std::endl;
         }
     };
 
