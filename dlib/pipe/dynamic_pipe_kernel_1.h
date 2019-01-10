@@ -374,7 +374,7 @@ namespace dlib
 
         bool timed_out = false;
         // wait until there is something in the pipe or we are disabled or we timeout.
-        while (data.empty() == 0 && enabled && dequeue_enabled)
+        while (data.empty() && enabled && dequeue_enabled)
         {
             if (timeout == 0 || dequeue_sig.wait_or_timeout(timeout) == false)
             {
