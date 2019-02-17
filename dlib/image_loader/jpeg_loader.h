@@ -41,48 +41,48 @@ namespace dlib
             image_view<T> t(t_);
             t.set_size( height_, width_ );
 
-            const auto for_each_pixel = [&](std::function<void(unsigned n, unsigned m, const unsigned char* v)> fun)
+            if ( is_gray() )
             {
                 for (unsigned n = 0; n < height_; n++)
                 {
                     const unsigned char* v = get_row(n);
                     for (unsigned m = 0; m < width_; m++)
                     {
-                        fun(n, m, v);
+                        unsigned char p = v[m];
+                        assign_pixel( t[n][m], p );
                     }
                 }
-            };
-
-            if ( is_gray() )
-            {
-                for_each_pixel([&t](unsigned n, unsigned m, const unsigned char* v)
-                {
-                    unsigned char p = v[m];
-                    assign_pixel( t[n][m], p );
-                });
             }
             else if ( is_rgba() )
             {
-                for_each_pixel([&t](unsigned n, unsigned m, const unsigned char* v)
+                for (unsigned n = 0; n < height_; n++)
                 {
-                    rgb_alpha_pixel p;
-                    p.red = v[m*4];
-                    p.green = v[m*4+1];
-                    p.blue = v[m*4+2];
-                    p.alpha = v[m*4+3];
-                    assign_pixel( t[n][m], p );
-                });
+                    const unsigned char* v = get_row(n);
+                    for (unsigned m = 0; m < width_; m++)
+                    {
+                        rgb_alpha_pixel p;
+                        p.red = v[m*4];
+                        p.green = v[m*4+1];
+                        p.blue = v[m*4+2];
+                        p.alpha = v[m*4+3];
+                        assign_pixel( t[n][m], p );
+                    }
+                }
             }
-            else
-            { // is_rgb()
-                for_each_pixel([&t](unsigned n, unsigned m, const unsigned char* v)
+            else // is_rgb()
+            {
+                for (unsigned n = 0; n < height_; n++)
                 {
-                    rgb_pixel p;
-                    p.red = v[m*3];
-                    p.green = v[m*3+1];
-                    p.blue = v[m*3+2];
-                    assign_pixel( t[n][m], p );
-                });
+                    const unsigned char* v = get_row(n);
+                    for (unsigned m = 0; m < width_; m++)
+                    {
+                        rgb_pixel p;
+                        p.red = v[m*3];
+                        p.green = v[m*3+1];
+                        p.blue = v[m*3+2];
+                        assign_pixel( t[n][m], p );
+                    }
+                }
             }
         }
 
