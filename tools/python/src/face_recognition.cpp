@@ -1,24 +1,26 @@
 // Copyright (C) 2017  Davis E. King (davis@dlib.net)
 // License: Boost Software License   See LICENSE.txt for the full license.
 
+#include "opaque_types.h"
 #include <dlib/python.h>
-#include <boost/shared_ptr.hpp>
 #include <dlib/matrix.h>
-#include <boost/python/slice.hpp>
 #include <dlib/geometry/vector.h>
 #include <dlib/dnn.h>
 #include <dlib/image_transforms.h>
 #include "indexing.h"
 #include <dlib/image_io.h>
 #include <dlib/clustering.h>
+#include <pybind11/stl_bind.h>
+#include <pybind11/stl.h>
 
 
 using namespace dlib;
 using namespace std;
-using namespace boost::python;
+
+namespace py = pybind11;
+
 
 typedef matrix<double,0,1> cv;
-
 
 class face_recognition_model_v1
 {
@@ -31,7 +33,7 @@ public:
     }
 
     matrix<double,0,1> compute_face_descriptor (
-        object img,
+        numpy_image<rgb_pixel> img,
         const full_object_detection& face,
         const int num_jitters
     )
@@ -41,40 +43,82 @@ public:
     }
 
     std::vector<matrix<double,0,1>> compute_face_descriptors (
-        object img,
+        numpy_image<rgb_pixel> img,
         const std::vector<full_object_detection>& faces,
         const int num_jitters
     )
     {
-        if (!is_rgb_python_image(img))
-            throw dlib::error("Unsupported image type, must be RGB image.");
+        std::vector<numpy_image<rgb_pixel>> batch_img(1, img);
+        std::vector<std::vector<full_object_detection>> batch_faces(1, faces);
+        return batch_compute_face_descriptors(batch_img, batch_faces, num_jitters)[0];
+    }
 
-        for (auto& f : faces)
+    std::vector<std::vector<matrix<double,0,1>>> batch_compute_face_descriptors (
+        const std::vector<numpy_image<rgb_pixel>>& batch_imgs,
+        const std::vector<std::vector<full_object_detection>>& batch_faces,
+        const int num_jitters
+    )
+    {
+
+        if (batch_imgs.size() != batch_faces.size())
+            throw dlib::error("The array of images and the array of array of locations must be of the same size");
+
+        int total_chips = 0;
+        for (auto& faces : batch_faces)
         {
-            if (f.num_parts() != 68 && f.num_parts() != 5)
-                throw dlib::error("The full_object_detection must use the iBUG 300W 68 point face landmark style or dlib's 5 point style.");
+            total_chips += faces.size();
+            for (auto& f : faces)
+            {
+                if (f.num_parts() != 68 && f.num_parts() != 5)
+                    throw dlib::error("The full_object_detection must use the iBUG 300W 68 point face landmark style or dlib's 5 point style.");
+            }
         }
 
 
-        std::vector<chip_details> dets;
-        for (auto& f : faces)
-            dets.push_back(get_face_chip_details(f, 150, 0.25));
         dlib::array<matrix<rgb_pixel>> face_chips;
-        extract_image_chips(numpy_rgb_image(img), dets, face_chips);
+        for (int i = 0; i < batch_imgs.size(); ++i)
+        {
+            auto& faces = batch_faces[i];
+            auto& img = batch_imgs[i];
 
-        std::vector<matrix<double,0,1>> face_descriptors;
-        face_descriptors.reserve(face_chips.size());
+            std::vector<chip_details> dets;
+            for (auto& f : faces)
+                dets.push_back(get_face_chip_details(f, 150, 0.25));
+            dlib::array<matrix<rgb_pixel>> this_img_face_chips;
+            extract_image_chips(img, dets, this_img_face_chips);
 
+            for (auto& chip : this_img_face_chips)
+                face_chips.push_back(chip);
+        }
+
+        std::vector<std::vector<matrix<double,0,1>>> face_descriptors(batch_imgs.size());
         if (num_jitters <= 1)
         {
             // extract descriptors and convert from float vectors to double vectors
-            for (auto& d : net(face_chips,16))
-                face_descriptors.push_back(matrix_cast<double>(d));
+            auto descriptors = net(face_chips, 16);
+            auto next = std::begin(descriptors);
+            for (int i = 0; i < batch_faces.size(); ++i)
+            {
+                for (int j = 0; j < batch_faces[i].size(); ++j)
+                {
+                    face_descriptors[i].push_back(matrix_cast<double>(*next++));
+                }
+            }
+            DLIB_ASSERT(next == std::end(descriptors));
         }
         else
         {
-            for (auto& fimg : face_chips)
-                face_descriptors.push_back(matrix_cast<double>(mean(mat(net(jitter_image(fimg,num_jitters),16)))));
+            // extract descriptors and convert from float vectors to double vectors
+            auto fimg = std::begin(face_chips);
+            for (int i = 0; i < batch_faces.size(); ++i)
+            {
+                for (int j = 0; j < batch_faces[i].size(); ++j)
+                {
+                    auto& r = mean(mat(net(jitter_image(*fimg++, num_jitters), 16)));
+                    face_descriptors[i].push_back(matrix_cast<double>(r));
+                }
+            }
+            DLIB_ASSERT(fimg == std::end(face_chips));
         }
 
         return face_descriptors;
@@ -128,11 +172,12 @@ private:
 
 // ----------------------------------------------------------------------------------------
 
-boost::python::list chinese_whispers_clustering(boost::python::list descriptors, float threshold)
+py::list chinese_whispers_clustering(py::list descriptors, float threshold)
 {
-    boost::python::list clusters;
+    DLIB_CASSERT(threshold > 0);
+    py::list clusters;
 
-    size_t num_descriptors = len(descriptors);
+    size_t num_descriptors = py::len(descriptors);
 
     // This next bit of code creates a graph of connected objects and then uses the Chinese
     // whispers graph clustering algorithm to identify how many objects there are and which
@@ -143,8 +188,8 @@ boost::python::list chinese_whispers_clustering(boost::python::list descriptors,
     {
         for (size_t j = i; j < num_descriptors; ++j)
         {
-            matrix<double,0,1>& first_descriptor = boost::python::extract<matrix<double,0,1>&>(descriptors[i]);
-            matrix<double,0,1>& second_descriptor = boost::python::extract<matrix<double,0,1>&>(descriptors[j]);
+            matrix<double,0,1>& first_descriptor = descriptors[i].cast<matrix<double,0,1>&>();
+            matrix<double,0,1>& second_descriptor = descriptors[j].cast<matrix<double,0,1>&>();
 
             if (length(first_descriptor-second_descriptor) < threshold)
                 edges.push_back(sample_pair(i,j));
@@ -159,22 +204,20 @@ boost::python::list chinese_whispers_clustering(boost::python::list descriptors,
 }
 
 void save_face_chips (
-    object img,
+    numpy_image<rgb_pixel> img,
     const std::vector<full_object_detection>& faces,
     const std::string& chip_filename,
     size_t size = 150,
     float padding = 0.25
 )
 {
-    if (!is_rgb_python_image(img))
-        throw dlib::error("Unsupported image type, must be RGB image.");
 
     int num_faces = faces.size();
     std::vector<chip_details> dets;
     for (auto& f : faces)
         dets.push_back(get_face_chip_details(f, size, padding));
     dlib::array<matrix<rgb_pixel>> face_chips;
-    extract_image_chips(numpy_rgb_image(img), dets, face_chips);
+    extract_image_chips(numpy_image<rgb_pixel>(img), dets, face_chips);
     int i=0;
     for (auto& chip : face_chips) 
     {
@@ -193,7 +236,7 @@ void save_face_chips (
 }
 
 void save_face_chip (
-    object img,
+    numpy_image<rgb_pixel> img,
     const full_object_detection& face,
     const std::string& chip_filename,
     size_t size = 150,
@@ -202,124 +245,47 @@ void save_face_chip (
 {
     std::vector<full_object_detection> faces(1, face);
     save_face_chips(img, faces, chip_filename, size, padding);
-    return;
 }
 
-BOOST_PYTHON_FUNCTION_OVERLOADS(save_face_chip_with_defaults, save_face_chip, 3, 5)
-BOOST_PYTHON_FUNCTION_OVERLOADS(save_face_chips_with_defaults, save_face_chips, 3, 5)
-
-// ----------------------------------------------------------------------------------------
-
-boost::python::list get_face_chips (
-    object img,
-    const std::vector<full_object_detection>& faces,
-    size_t size = 150,
-    float padding = 0.25
-)
+void bind_face_recognition(py::module &m)
 {
-    if (!is_rgb_python_image(img))
-        throw dlib::error("Unsupported image type, must be RGB image.");
-
-    if (faces.size() < 1) {
-        throw dlib::error("No face were specified in the faces array.");
-    }
-
-    boost::python::list chips_list;
-
-    std::vector<chip_details> dets;
-    for (auto& f : faces)
-        dets.push_back(get_face_chip_details(f, size, padding));
-    dlib::array<matrix<rgb_pixel>> face_chips;
-    extract_image_chips(numpy_rgb_image(img), dets, face_chips);
-
-    for (auto& chip : face_chips) 
     {
-        boost::python::list img;
-        
-        for(size_t row=0; row<size; row++) {
-            boost::python::list row_list;
-            for(size_t col=0; col<size; col++) {
-                rgb_pixel pixel = chip(row, col);
-                boost::python::list item;
-                
-                item.append(pixel.red);
-                item.append(pixel.green);
-                item.append(pixel.blue);
-                row_list.append(item);
-            }
-            img.append(row_list);
-        }
-
-        chips_list.append(img);
+    typedef std::vector<full_object_detection> type;
+    py::bind_vector<type>(m, "full_object_detections", "An array of full_object_detection objects.")
+        .def("clear", &type::clear)
+        .def("resize", resize<type>)
+        .def("extend", extend_vector_with_python_list<full_object_detection>)
+        .def(py::pickle(&getstate<type>, &setstate<type>));
     }
-    return chips_list;
-}
 
-boost::python::list get_face_chip (
-    object img,
-    const full_object_detection& face,
-    size_t size = 150,
-    float padding = 0.25
-)
-{
-    std::vector<full_object_detection> faces(1, face);
-    boost::python::list result = get_face_chips(img, faces, size, padding);
-    size_t num_images = boost::python::len(result);
-    if(num_images == 1) {
-        return boost::python::extract<boost::python::list>(result[0]); 
-    } else {
-        throw dlib::error("No face chips found!");
-    }
-}
-
-BOOST_PYTHON_FUNCTION_OVERLOADS(get_face_chip_with_defaults, get_face_chip, 2, 4)
-BOOST_PYTHON_FUNCTION_OVERLOADS(get_face_chips_with_defaults, get_face_chips, 2, 4)
-
-
-// ----------------------------------------------------------------------------------------
-
-void bind_face_recognition()
-{
-    using boost::python::arg;
     {
-    class_<face_recognition_model_v1>("face_recognition_model_v1", "This object maps human faces into 128D vectors where pictures of the same person are mapped near to each other and pictures of different people are mapped far apart.  The constructor loads the face recognition model from a file. The model file is available here: http://dlib.net/files/dlib_face_recognition_resnet_model_v1.dat.bz2", init<std::string>())
-        .def("compute_face_descriptor", &face_recognition_model_v1::compute_face_descriptor, (arg("img"),arg("face"),arg("num_jitters")=0),
+    py::class_<face_recognition_model_v1>(m, "face_recognition_model_v1", "This object maps human faces into 128D vectors where pictures of the same person are mapped near to each other and pictures of different people are mapped far apart.  The constructor loads the face recognition model from a file. The model file is available here: http://dlib.net/files/dlib_face_recognition_resnet_model_v1.dat.bz2")
+        .def(py::init<std::string>())
+        .def("compute_face_descriptor", &face_recognition_model_v1::compute_face_descriptor, py::arg("img"),py::arg("face"),py::arg("num_jitters")=0,
             "Takes an image and a full_object_detection that references a face in that image and converts it into a 128D face descriptor. "
             "If num_jitters>1 then each face will be randomly jittered slightly num_jitters times, each run through the 128D projection, and the average used as the face descriptor."
             )
-        .def("compute_face_descriptor", &face_recognition_model_v1::compute_face_descriptors, (arg("img"),arg("faces"),arg("num_jitters")=0),
+        .def("compute_face_descriptor", &face_recognition_model_v1::compute_face_descriptors, py::arg("img"),py::arg("faces"),py::arg("num_jitters")=0,
             "Takes an image and an array of full_object_detections that reference faces in that image and converts them into 128D face descriptors.  "
+            "If num_jitters>1 then each face will be randomly jittered slightly num_jitters times, each run through the 128D projection, and the average used as the face descriptor."
+            )
+        .def("compute_face_descriptor", &face_recognition_model_v1::batch_compute_face_descriptors, py::arg("batch_img"),py::arg("batch_faces"),py::arg("num_jitters")=0,
+            "Takes an array of images and an array of arrays of full_object_detections. `batch_faces[i]` must be an array of full_object_detections corresponding to the image `batch_img[i]`, "
+            "referencing faces in that image. Every face will be converting into 128D face descriptors.  "
             "If num_jitters>1 then each face will be randomly jittered slightly num_jitters times, each run through the 128D projection, and the average used as the face descriptor."
             );
     }
 
-    def("save_face_chip", &save_face_chip, save_face_chip_with_defaults(
+    m.def("save_face_chip", &save_face_chip, 
 	"Takes an image and a full_object_detection that references a face in that image and saves the face with the specified file name prefix.  The face will be rotated upright and scaled to 150x150 pixels or with the optional specified size and padding.", 
-	(arg("img"), arg("face"), arg("chip_filename"), arg("size"), arg("padding"))
-    ));
-    def("save_face_chips", &save_face_chips, save_face_chips_with_defaults(
+	py::arg("img"), py::arg("face"), py::arg("chip_filename"), py::arg("size")=150, py::arg("padding")=0.25
+    );
+    m.def("save_face_chips", &save_face_chips, 
 	"Takes an image and a full_object_detections object that reference faces in that image and saves the faces with the specified file name prefix.  The faces will be rotated upright and scaled to 150x150 pixels or with the optional specified size and padding.",
-	(arg("img"), arg("faces"), arg("chip_filename"), arg("size"), arg("padding"))
-    ));
-    def("get_face_chip", &get_face_chip, get_face_chip_with_defaults(
-	"Takes an image and a full_object_detection that references a face in that image and returns the face as a list of lists representing the image.  The face will be rotated upright and scaled to 150x150 pixels or with the optional specified size and padding.", 
-	(arg("img"), arg("face"), arg("size"), arg("padding"))
-    ));
-    def("get_face_chips", &get_face_chips, get_face_chips_with_defaults(
-	"Takes an image and a full_object_detections object that reference faces in that image and returns the faces as a list of list of lists representing the image.  The faces will be rotated upright and scaled to 150x150 pixels or with the optional specified size and padding.",
-	(arg("img"), arg("faces"), arg("size"), arg("padding"))
-    ));
-    def("chinese_whispers_clustering", &chinese_whispers_clustering, (arg("descriptors"), arg("threshold")),
+          py::arg("img"), py::arg("faces"), py::arg("chip_filename"), py::arg("size")=150, py::arg("padding")=0.25
+    );
+    m.def("chinese_whispers_clustering", &chinese_whispers_clustering, py::arg("descriptors"), py::arg("threshold"),
         "Takes a list of descriptors and returns a list that contains a label for each descriptor. Clustering is done using dlib::chinese_whispers."
         );
-
-    {   
-    typedef std::vector<full_object_detection> type;
-    class_<type>("full_object_detections", "An array of full_object_detection objects.")
-        .def(vector_indexing_suite<type>())
-        .def("clear", &type::clear)
-        .def("resize", resize<type>)
-        .def_pickle(serialize_pickle<type>());
-    }
 }
 

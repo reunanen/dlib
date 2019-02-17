@@ -10,7 +10,7 @@
 #include "../image_processing.h"
 #include <sstream>
 #include <array>
-#include "tensor_tools.h"
+#include "../cuda/tensor_tools.h"
 
 
 namespace dlib
@@ -28,13 +28,14 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
-    template <size_t NR, size_t NC=NR>
+    template <size_t NR, size_t NC=NR, typename mem_manager = default_memory_manager>
     class input_rgb_image_sized;
 
+    template <typename mem_manager = default_memory_manager>
     class input_rgb_image
     {
     public:
-        typedef matrix<rgb_pixel> input_type;
+        typedef matrix<rgb_pixel,0,0,mem_manager> input_type;
 
         input_rgb_image (
         ) : 
@@ -161,13 +162,13 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
-    template <size_t NR, size_t NC>
+    template <size_t NR, size_t NC, typename mem_manager>
     class input_rgb_image_sized
     {
     public:
         static_assert(NR != 0 && NC != 0, "The input image can't be empty.");
 
-        typedef matrix<rgb_pixel> input_type;
+        typedef matrix<rgb_pixel,0,0,mem_manager> input_type;
 
         input_rgb_image_sized (
         ) : 
@@ -293,22 +294,23 @@ namespace dlib
     };
 
 // ----------------------------------------------------------------------------------------
-
-    template <size_t NR, size_t NC>
-    input_rgb_image::
+#if 0
+    template <size_t NR, size_t NC, typename mem_manager>
+    input_rgb_image<mem_manager>::
     input_rgb_image (
-        const input_rgb_image_sized<NR,NC>& item
+        const input_rgb_image_sized<NR,NC,mem_manager>& item
     ) : avg_red(item.get_avg_red()),
         avg_green(item.get_avg_green()),
         avg_blue(item.get_avg_blue())
     {}
-
+#endif
 // ----------------------------------------------------------------------------------------
 
+    template <typename mem_manager = default_memory_manager>
     class input_grayscale_image
     {
     public:
-        typedef matrix<uint8_t> input_type;
+        typedef matrix<uint8_t,0,0,mem_manager> input_type;
 
         input_grayscale_image(
         ) : average(127.5f)

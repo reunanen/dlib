@@ -1,66 +1,119 @@
-language: cpp
-
-packages: &gcc5_pkgs
-  - gcc-5
-  - g++-5
-  - libstdc++6
+sudo: required
 
 matrix:
   include:
-    # build and run all tests
-    - compiler: gcc
+    ###################
+    - language: cpp
+      compiler: clang
+      os: linux
       env:
-        - GCC_VER=5
-        - ADDRESS_MODEL=64
-        - BUILD_SYSTEM=cmake
-        - PATH=$HOME/bin:$PATH
         - VARIANT=test
-      addons: &ao_gcc5
-        apt:
-          sources: 
-            - ubuntu-toolchain-r-test
-          packages: *gcc5_pkgs
-    # build all examples
-    - compiler: gcc
+      script:
+        - dlib/travis/build-and-test.sh
+
+    ###################
+    - language: cpp
+      compiler: clang
+      os: linux
       env:
-        - GCC_VER=5
-        - ADDRESS_MODEL=64
-        - BUILD_SYSTEM=cmake
-        - PATH=$HOME/bin:$PATH
         - VARIANT=examples
-      addons: *ao_gcc5
-    # build the python extension 
-    - compiler: gcc
+      script:
+        - dlib/travis/build-and-test.sh
+
+    ###################
+    - language: cpp
+      compiler: gcc
+      os: linux
       env:
-        - GCC_VER=5
-        - ADDRESS_MODEL=64
-        - BUILD_SYSTEM=cmake
-        - PATH=$HOME/bin:$PATH
-        - VARIANT=python-api
-      addons: &ao_gcc5
+        - VARIANT=test
+      script:
+        - dlib/travis/build-and-test.sh
+
+    ###################
+    - language: cpp
+      compiler: gcc
+      os: linux
+      env:
+        - VARIANT=tools
+      script:
+        - dlib/travis/build-and-test.sh
+
+    ###################
+    - language: cpp
+      compiler: gcc
+      os: linux
+      env:
+        - VARIANT=old-cmake
+      before_install:
+        - dlib/travis/get-old-cmakes.sh
+      cache:
+        - directories: cmake
+      script:
+        - dlib/travis/build-and-test.sh
+
+    ###################
+    - language: cpp
+      compiler: gcc
+      os: linux
+      env:
+        - VARIANT=dlib_all_source_cpp
+      script:
+        - dlib/travis/build-and-test.sh
+
+    ########### test with C++17 ########
+    - language: cpp
+      compiler: gcc
+      os: linux
+      env:
+        - VARIANT=test
+        - CXXFLAGS=-std=c++17
+          # Need to set MATRIX_EVAL to set CC and CXX env vars.  You would
+          # think you could just set them in the env area like any other, but
+          # travis is wonky about CC and CXX vars so you have to do it this way.
+        - MATRIX_EVAL="CC=gcc-7 && CXX=g++-7"
+      addons:
         apt:
-          sources: 
+          sources:
             - ubuntu-toolchain-r-test
-            - boost-latest
-          packages: 
-            - libboost-python1.55-dev
-            - *gcc5_pkgs
+          packages:
+            - g++-7
+      script:
+        - dlib/travis/build-and-test.sh
+
+    ###################
+    - language: cpp
+      compiler: gcc
+      os: linux
+      env:
+        - VARIANT=examples
+      script:
+        - dlib/travis/build-and-test.sh
+
+    ###################
+    - language: python
+      python: 2.7
+      env:
+        - VARIANT=python-api
+      script:
+        - dlib/travis/build-and-test.sh
+
+    ###################
+    - language: python
+      python: 3.5
+      env:
+        - VARIANT=python-api
+      script:
+        - dlib/travis/build-and-test.sh
+
+    ###################
+    # # Disabled because travis's OS X machines take hours (or days) to begin
+    # running.  Or maybe they are just broken entirely.  Who knows.
+    #- language: cpp
+    #  os: osx
+    #  osx_image: xcode9.2
+    #  env:
+    #    - VARIANT=test
+    #  script:
+    #    - dlib/travis/build-and-test.sh
+         
           
-cache:
-  directories:
-    - cmake
-
-before_install:
-  - dlib/travis/before-install.sh
-
-install:
-    - if [ "$CXX" == "g++" ]; then export CXX=g++-$GCC_VER; export CC=gcc-$GCC_VER; fi
-    - if [ "$CXX" == "clang++" ]; then export CXX=clang++-$CLANG_VER; export CC=clang-$CLANG_VER; fi
-
-script:
-  - dlib/travis/build-and-test.sh
-
-
-#notifications:
-#  email:
-#    false

@@ -51,6 +51,7 @@ Davis E. King. <a href="http://jmlr.csail.mit.edu/papers/volume10/king09a/king09
          <item>rvm_trainer</item> 
          <item>svm_pegasos</item> 
          <item>train_probabilistic_decision_function</item> 
+         <item>auto_train_rbf_classifier</item> 
       </section>
       <section>
          <name>Multiclass Classification</name>
@@ -69,6 +70,7 @@ Davis E. King. <a href="http://jmlr.csail.mit.edu/papers/volume10/king09a/king09
          <item>svr_linear_trainer</item> 
          <item>rvm_regression_trainer</item> 
          <item>rbf_network_trainer</item> 
+         <item>random_forest_regression_trainer</item> 
       </section>
       <section>
          <name>Structured Prediction</name>
@@ -150,6 +152,10 @@ Davis E. King. <a href="http://jmlr.csail.mit.edu/papers/volume10/king09a/king09
                   <link>dlib/dnn/layers_abstract.h.html#cont_</link>
                </item>
                <item>
+                  <name>scale</name>
+                  <link>dlib/dnn/layers_abstract.h.html#scale_</link>
+               </item>
+               <item>
                   <name>extract</name>
                   <link>dlib/dnn/layers_abstract.h.html#extract_</link>
                </item>
@@ -160,6 +166,10 @@ Davis E. King. <a href="http://jmlr.csail.mit.edu/papers/volume10/king09a/king09
                <item>
                   <name>upsample</name>
                   <link>dlib/dnn/layers_abstract.h.html#upsample_</link>
+               </item>
+               <item>
+                  <name>resize_to</name>
+                  <link>dlib/dnn/layers_abstract.h.html#resize_to_</link>
                </item>
                <item>
                   <name>l2normalize</name>
@@ -210,6 +220,10 @@ Davis E. King. <a href="http://jmlr.csail.mit.edu/papers/volume10/king09a/king09
                   <link>dlib/dnn/layers_abstract.h.html#htan_</link>
                </item>
                <item>
+                  <name>softmax_all</name>
+                  <link>dlib/dnn/layers_abstract.h.html#softmax_all_</link>
+               </item>
+               <item>
                   <name>softmax</name>
                   <link>dlib/dnn/layers_abstract.h.html#softmax_</link>
                </item>
@@ -231,12 +245,28 @@ Davis E. King. <a href="http://jmlr.csail.mit.edu/papers/volume10/king09a/king09
                   <link>dlib/dnn/loss_abstract.h.html#EXAMPLE_LOSS_LAYER_</link>
                </item>
                <item>
+                  <name>loss_dot</name>
+                  <link>dlib/dnn/loss_abstract.h.html#loss_dot_</link>
+               </item>
+               <item>
+                  <name>loss_epsilon_insensitive</name>
+                  <link>dlib/dnn/loss_abstract.h.html#loss_epsilon_insensitive_</link>
+               </item>
+               <item>
+                  <name>loss_ranking</name>
+                  <link>dlib/dnn/loss_abstract.h.html#loss_ranking_</link>
+               </item>
+               <item>
                   <name>loss_binary_hinge</name>
                   <link>dlib/dnn/loss_abstract.h.html#loss_binary_hinge_</link>
                </item>
                <item>
                   <name>loss_binary_log</name>
                   <link>dlib/dnn/loss_abstract.h.html#loss_binary_log_</link>
+               </item>
+               <item>
+                  <name>loss_multimulticlass_log</name>
+                  <link>dlib/dnn/loss_abstract.h.html#loss_multimulticlass_log_</link>
                </item>
                <item>
                   <name>loss_multiclass_log</name>
@@ -264,10 +294,10 @@ Davis E. King. <a href="http://jmlr.csail.mit.edu/papers/volume10/king09a/king09
                </item>
                <item>
                   <name>loss_mean_squared_per_pixel</name>
-                  <link>#loss_mean_squared_per_pixel_</link>
+                  <link>dlib/dnn/loss_abstract.h.html#loss_mean_squared_per_pixel_</link>
                </item>
                <item>
-                  <name>loss_mean_squared_multioutput_</name>
+                  <name>loss_mean_squared_multioutput</name>
                   <link>dlib/dnn/loss_abstract.h.html#loss_mean_squared_multioutput_</link>
                </item>
             </sub>
@@ -397,6 +427,7 @@ Davis E. King. <a href="http://jmlr.csail.mit.edu/papers/volume10/king09a/king09
 
       <section>
          <name>Function Objects</name>
+         <item>random_forest_regression_function</item>
          <item>decision_function</item>
          <item>projection_function</item>
          <item>distance_function</item>
@@ -422,6 +453,7 @@ Davis E. King. <a href="http://jmlr.csail.mit.edu/papers/volume10/king09a/king09
          <item>load_libsvm_formatted_data</item> 
          <item>save_libsvm_formatted_data</item> 
          <item>fix_nonzero_indexing</item>
+         <item>make_bounding_box_regression_training_data</item>
       </section>
 
       <section>
@@ -498,6 +530,8 @@ Davis E. King. <a href="http://jmlr.csail.mit.edu/papers/volume10/king09a/king09
             <example>dnn_metric_learning_ex.cpp.html</example>
             <example>dnn_metric_learning_on_images_ex.cpp.html</example>
             <example>dnn_face_recognition_ex.cpp.html</example>
+            <example>dnn_semantic_segmentation_ex.cpp.html</example>
+            <example>dnn_semantic_segmentation_train_ex.cpp.html</example>
          </examples>
       </component>
 
@@ -525,6 +559,7 @@ Davis E. King. <a href="http://jmlr.csail.mit.edu/papers/volume10/king09a/king09
             <example>dnn_mmod_train_find_cars_ex.cpp.html</example>
             <example>dnn_metric_learning_ex.cpp.html</example>
             <example>dnn_metric_learning_on_images_ex.cpp.html</example>
+            <example>dnn_semantic_segmentation_train_ex.cpp.html</example>
          </examples>
       </component>
 
@@ -552,6 +587,7 @@ Davis E. King. <a href="http://jmlr.csail.mit.edu/papers/volume10/king09a/king09
             <example>dnn_face_recognition_ex.cpp.html</example>
             <example>dnn_mmod_face_detection_ex.cpp.html</example>
             <example>dnn_mmod_dog_hipsterizer.cpp.html</example>
+            <example>dnn_semantic_segmentation_train_ex.cpp.html</example>
          </examples>
       </component>
 
@@ -803,8 +839,8 @@ Davis E. King. <a href="http://jmlr.csail.mit.edu/papers/volume10/king09a/king09
 
       <component>
          <name>resizable_tensor</name>
-         <file>dlib/dnn.h</file>
-         <spec_file link="true">dlib/dnn/tensor_abstract.h</spec_file>
+         <file>dlib/cuda/tensor.h</file>
+         <spec_file link="true">dlib/cuda/tensor_abstract.h</spec_file>
          <description>
                This object represents a 4D array of float values, all stored contiguously
                in memory.  Importantly, it keeps two copies of the floats, one on the host
@@ -842,8 +878,8 @@ Davis E. King. <a href="http://jmlr.csail.mit.edu/papers/volume10/king09a/king09
 
       <component>
          <name>alias_tensor</name>
-         <file>dlib/dnn.h</file>
-         <spec_file link="true">dlib/dnn/tensor_abstract.h</spec_file>
+         <file>dlib/cuda/tensor.h</file>
+         <spec_file link="true">dlib/cuda/tensor_abstract.h</spec_file>
          <description>
             This object is a <a href="#resizable_tensor">tensor</a> that
             aliases another tensor.  That is, it doesn't have its own block of
@@ -1204,6 +1240,7 @@ Davis E. King. <a href="http://jmlr.csail.mit.edu/papers/volume10/king09a/king09
          <examples>
             <example>svm_pegasos_ex.cpp.html</example>
             <example>svm_sparse_ex.cpp.html</example>
+            <example>svm_binary_classifier.py.html</example>
          </examples>
       </component>
       
@@ -1686,6 +1723,30 @@ Davis E. King. <a href="http://jmlr.csail.mit.edu/papers/volume10/king09a/king09
    <!-- ************************************************************************* -->
 
       <component>
+         <name>random_forest_regression_trainer</name>
+         <file>dlib/random_forest.h</file>
+         <spec_file link="true">dlib/random_forest/random_forest_regression_abstract.h</spec_file>
+         <description>
+            This object implements Breiman's classic random forest regression
+            algorithm.  
+         </description>
+      </component>
+      
+   <!-- ************************************************************************* -->
+
+      <component>
+         <name>random_forest_regression_function</name>
+         <file>dlib/random_forest.h</file>
+         <spec_file link="true">dlib/random_forest/random_forest_regression_abstract.h</spec_file>
+         <description>
+            This object represents a random forest that maps objects to real numbers.  You
+            can learn its parameters using the <a href="#random_forest_regression_trainer">random_forest_regression_trainer</a>.
+         </description>
+      </component>
+      
+   <!-- ************************************************************************* -->
+
+      <component>
          <name>rvm_regression_trainer</name>
          <file>dlib/svm.h</file>
          <spec_file link="true">dlib/svm/rvm_abstract.h</spec_file>
@@ -1934,6 +1995,23 @@ Davis E. King. <a href="http://jmlr.csail.mit.edu/papers/volume10/king09a/king09
       </component>
       
    <!-- ************************************************************************* -->
+      <component>
+         <name>auto_train_rbf_classifier</name>
+         <file>dlib/svm.h</file>
+         <spec_file link="true">dlib/svm/auto_abstract.h</spec_file>
+         <description>
+            This routine trains a radial basis function SVM on the given binary
+            classification training data.  It uses the <a
+            href="#svm_c_trainer">svm_c_trainer</a> to do this.  It also uses <a
+            href="optimization.html#global_function_search">global_function_search</a> and
+            6-fold cross-validation to automatically determine the best settings of the
+            SVM's hyper parameters.  Therefore, it takes no parameters. You just give it a dataset and it
+            returns a good binary classifier for that dataset.
+         </description>
+      </component>
+      
+   <!-- ************************************************************************* -->
+
 
       <component>
          <name>svm_c_linear_trainer</name>
@@ -2813,6 +2891,28 @@ Davis E. King. <a href="http://jmlr.csail.mit.edu/papers/volume10/king09a/king09
             This is actually a pair of overloaded functions.  Between the two of them
             they let you save <a href="dlib/svm/sparse_vector_abstract.h.html#sparse_vectors">sparse</a> 
             or dense data vectors to file using the LIBSVM format.  
+         </description>
+      </component>
+      
+   <!-- ************************************************************************* -->
+      
+      <component>
+         <name>make_bounding_box_regression_training_data</name>
+         <file>dlib/image_processing.h</file>
+         <spec_file link="true">dlib/image_processing/shape_predictor_trainer_abstract.h</spec_file>
+         <description>
+            Suppose you have an object detector that can roughly locate objects in an
+            image.  This means your detector draws boxes around objects, but these are
+            <i>rough</i> boxes in the sense that they aren't positioned super accurately.  For
+            instance, HOG based detectors usually have a stride of 8 pixels.  So the
+            positional accuracy is going to be, at best, +/-8 pixels.  
+              
+            <p>
+            If you want to get better positional accuracy one easy thing to do is train a
+            <a href="#shape_predictor_trainer">shape_predictor</a> to give you the location
+            of the object's box.  The make_bounding_box_regression_training_data() routine
+            helps you do this by creating an appropriate training dataset.  
+            </p>
          </description>
       </component>
       

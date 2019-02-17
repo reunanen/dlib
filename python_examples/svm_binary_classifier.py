@@ -14,20 +14,18 @@
 #   Alternatively, if you want to compile dlib yourself then go into the dlib
 #   root folder and run:
 #       python setup.py install
-#   or
-#       python setup.py install --yes USE_AVX_INSTRUCTIONS
-#   if you have a CPU that supports AVX instructions, since this makes some
-#   things run faster.  
 #
 #   Compiling dlib should work on any operating system so long as you have
-#   CMake and boost-python installed.  On Ubuntu, this can be done easily by
-#   running the command:
-#       sudo apt-get install libboost-python-dev cmake
+#   CMake installed.  On Ubuntu, this can be done easily by running the
+#   command:
+#       sudo apt-get install cmake
 #
 
 import dlib
-import pickle
-
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 x = dlib.vectors()
 y = dlib.array()
@@ -62,5 +60,5 @@ print("prediction for second sample: {}".format(classifier(x[1])))
 
 # classifier models can also be pickled in the same was as any other python object.
 with open('saved_model.pickle', 'wb') as handle:
-    pickle.dump(classifier, handle)
+    pickle.dump(classifier, handle, 2)
 
