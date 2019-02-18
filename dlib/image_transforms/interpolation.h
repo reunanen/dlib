@@ -220,6 +220,8 @@ namespace dlib
             }
         }
 
+        bool wants_to_sample_image_pyramid() const { return false; }
+
     };
 
 // ----------------------------------------------------------------------------------------
@@ -316,6 +318,9 @@ namespace dlib
             assign_pixel(result, temp);
             return true;
         }
+
+        bool wants_to_sample_image_pyramid() const { return true; }
+
     };
 
 // ----------------------------------------------------------------------------------------
@@ -416,6 +421,8 @@ namespace dlib
 
             return true;
         }
+
+        bool wants_to_sample_image_pyramid() const { return true; }
 
     private:
 
@@ -1892,7 +1899,7 @@ namespace dlib
             long depth = 0;
             double grow = 2;
             drectangle rect = pyr.rect_down(chip_locations[i].rect);
-            while (rect.area() > chip_locations[i].size())
+            while (rect.area() > chip_locations[i].size() && interp.wants_to_sample_image_pyramid())
             {
                 rect = pyr.rect_down(rect);
                 ++depth;
@@ -1940,7 +1947,7 @@ namespace dlib
                 // figure out which level in the pyramid to use to extract the chip
                 int level = -1;
                 drectangle rect = translate_rect(chip_locations[i].rect, -bounding_box.tl_corner());
-                while (pyr.rect_down(rect).area() > chip_locations[i].size())
+                while (pyr.rect_down(rect).area() > chip_locations[i].size() && interp.wants_to_sample_image_pyramid())
                 {
                     ++level;
                     rect = pyr.rect_down(rect);
