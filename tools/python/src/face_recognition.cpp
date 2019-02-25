@@ -35,28 +35,31 @@ public:
     matrix<double,0,1> compute_face_descriptor (
         numpy_image<rgb_pixel> img,
         const full_object_detection& face,
-        const int num_jitters
+        const int num_jitters,
+        float padding = 0.25
     )
     {
         std::vector<full_object_detection> faces(1, face);
-        return compute_face_descriptors(img, faces, num_jitters)[0];
+        return compute_face_descriptors(img, faces, num_jitters, padding)[0];
     }
 
     std::vector<matrix<double,0,1>> compute_face_descriptors (
         numpy_image<rgb_pixel> img,
         const std::vector<full_object_detection>& faces,
-        const int num_jitters
+        const int num_jitters,
+        float padding = 0.25
     )
     {
         std::vector<numpy_image<rgb_pixel>> batch_img(1, img);
         std::vector<std::vector<full_object_detection>> batch_faces(1, faces);
-        return batch_compute_face_descriptors(batch_img, batch_faces, num_jitters)[0];
+        return batch_compute_face_descriptors(batch_img, batch_faces, num_jitters, padding)[0];
     }
 
     std::vector<std::vector<matrix<double,0,1>>> batch_compute_face_descriptors (
         const std::vector<numpy_image<rgb_pixel>>& batch_imgs,
         const std::vector<std::vector<full_object_detection>>& batch_faces,
-        const int num_jitters
+        const int num_jitters,
+        float padding = 0.25
     )
     {
 
@@ -64,10 +67,10 @@ public:
             throw dlib::error("The array of images and the array of array of locations must be of the same size");
 
         int total_chips = 0;
-        for (auto& faces : batch_faces)
+        for (const auto& faces : batch_faces)
         {
             total_chips += faces.size();
-            for (auto& f : faces)
+            for (const auto& f : faces)
             {
                 if (f.num_parts() != 68 && f.num_parts() != 5)
                     throw dlib::error("The full_object_detection must use the iBUG 300W 68 point face landmark style or dlib's 5 point style.");
@@ -82,8 +85,8 @@ public:
             auto& img = batch_imgs[i];
 
             std::vector<chip_details> dets;
-            for (auto& f : faces)
-                dets.push_back(get_face_chip_details(f, 150, 0.25));
+            for (const auto& f : faces)
+                dets.push_back(get_face_chip_details(f, 150, padding));
             dlib::array<matrix<rgb_pixel>> this_img_face_chips;
             extract_image_chips(img, dets, this_img_face_chips);
 
@@ -203,6 +206,36 @@ py::list chinese_whispers_clustering(py::list descriptors, float threshold)
     return clusters;
 }
 
+py::list chinese_whispers_raw(py::list edges)
+{
+    py::list clusters;
+    size_t num_edges = py::len(edges);
+
+    std::vector<sample_pair> edges_pairs;
+    std::vector<unsigned long> labels;
+    for (size_t idx = 0; idx < num_edges; ++idx)
+    {
+        py::tuple t = edges[idx].cast<py::tuple>();
+        if ((len(t) != 2) && (len(t) != 3))
+        {
+            PyErr_SetString( PyExc_IndexError, "Input must be a list of tuples with 2 or 3 elements.");
+            throw py::error_already_set();
+        }
+        size_t i = t[0].cast<size_t>();
+        size_t j = t[1].cast<size_t>();
+        double distance = (len(t) == 3) ? t[2].cast<double>(): 1;
+
+        edges_pairs.push_back(sample_pair(i, j, distance));
+    }
+
+    chinese_whispers(edges_pairs, labels);
+    for (size_t i = 0; i < labels.size(); ++i)
+    {
+        clusters.append(labels[i]);
+    }
+    return clusters;
+}
+
 void save_face_chips (
     numpy_image<rgb_pixel> img,
     const std::vector<full_object_detection>& faces,
@@ -214,12 +247,12 @@ void save_face_chips (
 
     int num_faces = faces.size();
     std::vector<chip_details> dets;
-    for (auto& f : faces)
+    for (const auto& f : faces)
         dets.push_back(get_face_chip_details(f, size, padding));
     dlib::array<matrix<rgb_pixel>> face_chips;
     extract_image_chips(numpy_image<rgb_pixel>(img), dets, face_chips);
     int i=0;
-    for (auto& chip : face_chips) 
+    for (const auto& chip : face_chips) 
     {
         i++;
         if(num_faces > 1) 
@@ -261,18 +294,24 @@ void bind_face_recognition(py::module &m)
     {
     py::class_<face_recognition_model_v1>(m, "face_recognition_model_v1", "This object maps human faces into 128D vectors where pictures of the same person are mapped near to each other and pictures of different people are mapped far apart.  The constructor loads the face recognition model from a file. The model file is available here: http://dlib.net/files/dlib_face_recognition_resnet_model_v1.dat.bz2")
         .def(py::init<std::string>())
-        .def("compute_face_descriptor", &face_recognition_model_v1::compute_face_descriptor, py::arg("img"),py::arg("face"),py::arg("num_jitters")=0,
+        .def("compute_face_descriptor", &face_recognition_model_v1::compute_face_descriptor,
+            py::arg("img"), py::arg("face"), py::arg("num_jitters")=0, py::arg("padding")=0.25,
             "Takes an image and a full_object_detection that references a face in that image and converts it into a 128D face descriptor. "
-            "If num_jitters>1 then each face will be randomly jittered slightly num_jitters times, each run through the 128D projection, and the average used as the face descriptor."
+            "If num_jitters>1 then each face will be randomly jittered slightly num_jitters times, each run through the 128D projection, and the average used as the face descriptor. "
+            "Optionally allows to override default padding of 0.25 around the face."
             )
-        .def("compute_face_descriptor", &face_recognition_model_v1::compute_face_descriptors, py::arg("img"),py::arg("faces"),py::arg("num_jitters")=0,
+        .def("compute_face_descriptor", &face_recognition_model_v1::compute_face_descriptors,
+            py::arg("img"), py::arg("faces"), py::arg("num_jitters")=0, py::arg("padding")=0.25,
             "Takes an image and an array of full_object_detections that reference faces in that image and converts them into 128D face descriptors.  "
-            "If num_jitters>1 then each face will be randomly jittered slightly num_jitters times, each run through the 128D projection, and the average used as the face descriptor."
+            "If num_jitters>1 then each face will be randomly jittered slightly num_jitters times, each run through the 128D projection, and the average used as the face descriptor. "
+            "Optionally allows to override default padding of 0.25 around the face."
             )
-        .def("compute_face_descriptor", &face_recognition_model_v1::batch_compute_face_descriptors, py::arg("batch_img"),py::arg("batch_faces"),py::arg("num_jitters")=0,
+        .def("compute_face_descriptor", &face_recognition_model_v1::batch_compute_face_descriptors,
+            py::arg("batch_img"), py::arg("batch_faces"), py::arg("num_jitters")=0, py::arg("padding")=0.25,
             "Takes an array of images and an array of arrays of full_object_detections. `batch_faces[i]` must be an array of full_object_detections corresponding to the image `batch_img[i]`, "
             "referencing faces in that image. Every face will be converting into 128D face descriptors.  "
-            "If num_jitters>1 then each face will be randomly jittered slightly num_jitters times, each run through the 128D projection, and the average used as the face descriptor."
+            "If num_jitters>1 then each face will be randomly jittered slightly num_jitters times, each run through the 128D projection, and the average used as the face descriptor. "
+            "Optionally allows to override default padding of 0.25 around the face."
             );
     }
 
@@ -286,6 +325,11 @@ void bind_face_recognition(py::module &m)
     );
     m.def("chinese_whispers_clustering", &chinese_whispers_clustering, py::arg("descriptors"), py::arg("threshold"),
         "Takes a list of descriptors and returns a list that contains a label for each descriptor. Clustering is done using dlib::chinese_whispers."
+        );
+    m.def("chinese_whispers", &chinese_whispers_raw, py::arg("edges"),
+        "Given a graph with vertices represented as numbers indexed from 0, this algorithm takes a list of edges and returns back a list that contains a labels (found clusters) for each vertex. "
+        "Edges are tuples with either 2 elements (integers presenting indexes of connected vertices) or 3 elements, where additional one element is float which presents distance weight of the edge). "
+        "Offers direct access to dlib::chinese_whispers."
         );
 }
 
