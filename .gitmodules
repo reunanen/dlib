@@ -1,0 +1,3 @@
+[submodule "dlib/external/fmath"]
+	path = dlib/external/fmath
+	url = https://github.com/reunanen/fmath

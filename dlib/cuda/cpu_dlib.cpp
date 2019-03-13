@@ -10,6 +10,10 @@
 #include "../image_transforms/interpolation.h"
 #include "../threads.h"
 
+#ifdef DLIB_USE_FMATH
+#include "../external/fmath/fmath.hpp"
+#endif // DLIB_USE_FMATH
+
 namespace dlib
 {
     namespace cpu 
@@ -1331,6 +1335,14 @@ namespace dlib
             const auto d = dest.host();
             const auto s = src.host();
 
+            namespace exp =
+#ifdef DLIB_USE_FMATH
+                fmath
+#else // DLIB_USE_FMATH
+                std
+#endif // DLIB_USE_FMATH
+                ;
+
             // Note that we subtract out the max values in each channel before applying
             // exp() to avoid numeric overflow in the subsequent computations.  Doing this
             // doesn't change the resulting output, it just makes it more numerically
@@ -1346,7 +1358,7 @@ namespace dlib
                         max_val = std::max(max_val, ss[k*num_locations]);
 
                     for (long k = 0; k < num_channels; ++k)
-                        dd[k*num_locations] = std::exp(ss[k*num_locations]-max_val);
+                        dd[k*num_locations] = exp::exp(ss[k*num_locations]-max_val);
 
                     ++ss;
                     ++dd;
