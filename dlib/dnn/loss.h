@@ -1444,48 +1444,58 @@ namespace dlib
                 DLIB_CASSERT(output_tensor.k() == (long)options.detector_windows.size());
             }
 
+            const auto nr = output_tensor.nr();
+            const auto nc = output_tensor.nc();
+
             DLIB_CASSERT(gain_factors.empty() || gain_factors.size() == options.detector_windows.size());
             const float* out_data = output_tensor.host() + output_tensor.k()*output_tensor.nr()*output_tensor.nc()*i;
             // scan the final layer and output the positive scoring locations
             dets_accum.clear();
+            if (adjust_threshold == -std::numeric_limits<double>::infinity()) {
+                dets_accum.reserve(options.detector_windows.size() * nr * nc);
+            }
+
             for (long k = 0; k < (long)options.detector_windows.size(); ++k)
             {
                 const double gain_factor = gain_factors.empty() ? options.detector_windows[k].gain_factor : gain_factors[k];
                 DLIB_CASSERT(gain_factor > 0.0);
                 const double gain_offset = std::log(gain_factor);
-                for (long r = 0; r < output_tensor.nr(); ++r)
+                for (long r = 0; r < nr; ++r)
                 {
-                    for (long c = 0; c < output_tensor.nc(); ++c)
+                    for (long c = 0; c < nc; ++c)
                     {
-                        double score = out_data[(k*output_tensor.nr() + r)*output_tensor.nc() + c] + gain_offset;
+                        const double score = out_data[(k*nr + r)*nc + c] + gain_offset;
+
                         if (score > adjust_threshold)
                         {
                             dpoint p = output_tensor_to_input_tensor(net, point(c,r));
                             drectangle rect = centered_drect(p, options.detector_windows[k].width, options.detector_windows[k].height);
                             rect = input_layer(net).tensor_space_to_image_space(input_tensor,rect);
 
-                            dets_accum.push_back(intermediate_detection(rect, score, (k*output_tensor.nr() + r)*output_tensor.nc() + c, k));
+                            dets_accum.push_back(intermediate_detection(rect, score, (k*nr + r)*nc + c, k));
 
                             if (options.use_bounding_box_regression)
                             {
-                                const auto offset = options.detector_windows.size() + k*4;
-                                dets_accum.back().tensor_offset_dx = ((offset+0)*output_tensor.nr() + r)*output_tensor.nc() + c;
-                                dets_accum.back().tensor_offset_dy = ((offset+1)*output_tensor.nr() + r)*output_tensor.nc() + c;
-                                dets_accum.back().tensor_offset_dw = ((offset+2)*output_tensor.nr() + r)*output_tensor.nc() + c;
-                                dets_accum.back().tensor_offset_dh = ((offset+3)*output_tensor.nr() + r)*output_tensor.nc() + c;
+                                auto& new_item = dets_accum.back();
 
-                                // apply BBR to dets_accum.back()
-                                double dx = out_data[dets_accum.back().tensor_offset_dx];
-                                double dy = out_data[dets_accum.back().tensor_offset_dy];
-                                double dw = out_data[dets_accum.back().tensor_offset_dw];
-                                double dh = out_data[dets_accum.back().tensor_offset_dh];
+                                const auto offset = options.detector_windows.size() + k*4;
+                                new_item.tensor_offset_dx = ((offset+0)*nr + r)*nc + c;
+                                new_item.tensor_offset_dy = ((offset+1)*nr + r)*nc + c;
+                                new_item.tensor_offset_dw = ((offset+2)*nr + r)*nc + c;
+                                new_item.tensor_offset_dh = ((offset+3)*nr + r)*nc + c;
+
+                                // apply BBR to the new item
+                                double dx = out_data[new_item.tensor_offset_dx];
+                                double dy = out_data[new_item.tensor_offset_dy];
+                                double dw = out_data[new_item.tensor_offset_dw];
+                                double dh = out_data[new_item.tensor_offset_dh];
                                 dw = std::exp(dw);
                                 dh = std::exp(dh);
                                 double w = rect.width()-1;
                                 double h = rect.height()-1;
                                 rect = translate_rect(rect, dpoint(dx*w,dy*h));
                                 rect = centered_drect(rect, w*dw+1, h*dh+1);
-                                dets_accum.back().rect_bbr = rect;
+                                new_item.rect_bbr = rect;
                             }
                         }
                     }
