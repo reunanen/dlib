@@ -1972,17 +1972,34 @@ namespace dlib
             output.set_size(out_nr*out_nc, 
                             data.k()*filter_nr*filter_nc);
             DLIB_CASSERT(output.size() != 0);
-            float* t = &output(0,0);
+            float* const t = &output(0,0);
 
             // now fill in the Toeplitz output matrix for the n-th sample in data.  
-            size_t cnt = 0;
             const long max_r = data.nr() + padding_y-(filter_nr-1);
             const long max_c = data.nc() + padding_x-(filter_nc-1);
             const long data_nr = data.nr();
             const long data_nc = data.nc();
             const long data_k = data.k();
+
+            // Adapted from: https://github.com/reunanen/tuc/blob/master/include/tuc/numeric.hpp
+            const auto divide_rounding_up = [](long numerator, long denominator)
+            {
+                DLIB_ASSERT(denominator > 0);
+                return numerator == 0
+                    ? 0
+                    : 1 + ((numerator - 1) / denominator);
+            };
+
+#pragma omp parallel for
             for (long r = -padding_y; r < max_r; r+=stride_y)
             {
+                size_t cnt
+                    = divide_rounding_up(r + padding_y, stride_y) 
+                    * divide_rounding_up(max_c + padding_x, stride_x)
+                    * data_k * filter_nr * filter_nc;
+
+                float* tr = t + cnt;
+
                 for (long c = -padding_x; c < max_c; c+=stride_x)
                 {
                     for (long k = 0; k < data_k; ++k)
@@ -1995,10 +2012,10 @@ namespace dlib
                                 long xx = c+x;
                                 long yy = r+y;
                                 if (boundary.contains(xx,yy))
-                                    *t = d[(k*data_nr + yy)*data_nc + xx];
+                                    *tr = d[(k*data_nr + yy)*data_nc + xx];
                                 else
-                                    *t = 0;
-                                ++t;
+                                    *tr = 0;
+                                ++tr;
                                 ++cnt;
                             }
                         }
