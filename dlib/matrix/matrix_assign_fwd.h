@@ -84,9 +84,12 @@ namespace dlib
             - #dest == src
     !*/
     {
-        for (long r = 0; r < src.nr(); ++r)
+        const long nr = src.nr();
+        const long nc = src.nc();
+
+        for (long r = 0; r < nr; ++r)
         {
-            for (long c = 0; c < src.nc(); ++c)
+            for (long c = 0; c < nc; ++c)
             {
                 dest(r,c) = src(r,c);
             }
