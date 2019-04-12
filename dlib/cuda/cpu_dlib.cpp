@@ -2010,19 +2010,45 @@ namespace dlib
                     //       ran quite a bit slower?!
                     if (boundary_fully_contains)
                     {
-                        for (long k = 0; k < data_k; ++k)
+                        // Help compiler generate specialized code for this common case
+                        constexpr long filter_nr_5 = 5;
+                        constexpr long filter_nc_5 = 5;
+
+                        if (filter_nr == filter_nr_5 && filter_nc == filter_nc_5)
                         {
-                            for (long y = 0; y < filter_nr; ++y)
+                            for (long k = 0; k < data_k; ++k)
                             {
-                                for (long x = 0; x < filter_nc; ++x)
+                                for (long y = 0; y < filter_nr_5; ++y)
                                 {
-                                    DLIB_ASSERT(cnt < output.size());
-                                    long xx = c+x;
-                                    long yy = r+y;
-                                    DLIB_ASSERT(boundary.contains(xx, yy));
-                                    *tr = d[(k*data_nr + yy)*data_nc + xx];
-                                    ++tr;
-                                    ++cnt;
+                                    for (long x = 0; x < filter_nc_5; ++x)
+                                    {
+                                        DLIB_ASSERT(cnt < output.size());
+                                        long xx = c + x;
+                                        long yy = r + y;
+                                        DLIB_ASSERT(boundary.contains(xx, yy));
+                                        *tr = d[(k*data_nr + yy)*data_nc + xx];
+                                        ++tr;
+                                        ++cnt;
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            for (long k = 0; k < data_k; ++k)
+                            {
+                                for (long y = 0; y < filter_nr; ++y)
+                                {
+                                    for (long x = 0; x < filter_nc; ++x)
+                                    {
+                                        DLIB_ASSERT(cnt < output.size());
+                                        long xx = c + x;
+                                        long yy = r + y;
+                                        DLIB_ASSERT(boundary.contains(xx, yy));
+                                        *tr = d[(k*data_nr + yy)*data_nc + xx];
+                                        ++tr;
+                                        ++cnt;
+                                    }
                                 }
                             }
                         }
