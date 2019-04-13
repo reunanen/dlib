@@ -2010,11 +2010,32 @@ namespace dlib
                     //       ran quite a bit slower?!
                     if (boundary_fully_contains)
                     {
-                        // Help compiler generate specialized code for this common case
+                        // Help compiler generate specialized code for these common cases
+                        constexpr long filter_nr_3 = 3;
+                        constexpr long filter_nc_3 = 3;
                         constexpr long filter_nr_5 = 5;
                         constexpr long filter_nc_5 = 5;
 
-                        if (filter_nr == filter_nr_5 && filter_nc == filter_nc_5)
+                        if (filter_nr == filter_nr_3 && filter_nc == filter_nc_3)
+                        {
+                            for (long k = 0; k < data_k; ++k)
+                            {
+                                for (long y = 0; y < filter_nr_3; ++y)
+                                {
+                                    for (long x = 0; x < filter_nc_3; ++x)
+                                    {
+                                        DLIB_ASSERT(cnt < output.size());
+                                        long xx = c + x;
+                                        long yy = r + y;
+                                        DLIB_ASSERT(boundary.contains(xx, yy));
+                                        *tr = d[(k*data_nr + yy)*data_nc + xx];
+                                        ++tr;
+                                        ++cnt;
+                                    }
+                                }
+                            }
+                        }
+                        else if (filter_nr == filter_nr_5 && filter_nc == filter_nc_5)
                         {
                             for (long k = 0; k < data_k; ++k)
                             {
