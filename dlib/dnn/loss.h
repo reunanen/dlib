@@ -1055,6 +1055,8 @@ namespace dlib
             const SUB_TYPE& sub,
             label_iterator iter,
             double adjust_threshold = 0,
+            size_t desired_min_detection_count = 0,
+            size_t desired_bubbling_under_count = 0,
             std::vector<double> gain_factors = std::vector<double>()
         ) const
         {
@@ -1070,14 +1072,21 @@ namespace dlib
             DLIB_CASSERT(input_tensor.num_samples() == output_tensor.num_samples());
             DLIB_CASSERT(sub.sample_expansion_factor() == 1,  sub.sample_expansion_factor());
 
+            const double effective_threshold = desired_bubbling_under_count > 0 || desired_min_detection_count > 0
+                ? -std::numeric_limits<double>::infinity()
+                : adjust_threshold;
+
             std::vector<intermediate_detection> dets_accum;
             output_label_type final_dets;
             for (long i = 0; i < output_tensor.num_samples(); ++i)
             {
-                tensor_to_dets(input_tensor, output_tensor, i, dets_accum, adjust_threshold, sub, gain_factors);
+                tensor_to_dets(input_tensor, output_tensor, i, dets_accum, effective_threshold, sub, gain_factors);
 
                 // Do non-max suppression
                 final_dets.clear();
+
+                size_t bubbling_under_count = 0;
+
                 for (unsigned long i = 0; i < dets_accum.size(); ++i)
                 {
                     if (overlaps_any_box_nms(final_dets, dets_accum[i].rect_bbr))
@@ -1086,6 +1095,15 @@ namespace dlib
                     final_dets.push_back(mmod_rect(dets_accum[i].rect_bbr,
                                                    dets_accum[i].detection_confidence,
                                                    options.detector_windows[dets_accum[i].tensor_channel].label));
+
+                    if (dets_accum[i].detection_confidence <= adjust_threshold)
+                    {
+                        ++bubbling_under_count;
+                        if (bubbling_under_count >= desired_bubbling_under_count && final_dets.size() >= desired_min_detection_count)
+                        {
+                            break;
+                        }
+                    }
                 }
 
                 *iter++ = std::move(final_dets);

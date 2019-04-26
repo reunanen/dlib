@@ -804,6 +804,8 @@ namespace dlib
             const SUB_TYPE& sub,
             label_iterator iter,
             double adjust_threshold = 0,
+            size_t desired_min_detection_count = 0,
+            size_t desired_bubbling_under_count = 0,
             const std::vector<double>& gain_factors = std::vector<double>()
         ) const;
         /*!
