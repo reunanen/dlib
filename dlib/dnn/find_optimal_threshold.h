@@ -96,7 +96,7 @@ namespace dlib
             const size_t detections_i_size = detections_i.size();
             const size_t truth_i_size = truth_i.size();
 
-            //                 truth index       iou     detection index
+            //                 truth index       confidence, detection index
             std::unordered_map<size_t, std::pair<double, size_t>> best_matching_truths;
             std::unordered_set<size_t> detection_indexes_that_can_be_ignored;
 
@@ -135,15 +135,15 @@ namespace dlib
 
                     if (accept_truth_hit())
                     {
-                        const auto truth_match_iou_and_detection_index = [&]() { return std::make_pair(truth_match_iou, j); };
+                        const auto confidence_and_detection_index = [&]() { return std::make_pair(detection.detection_confidence, j); };
                         const auto i = best_matching_truths.find(k);
                         if (i == best_matching_truths.end())
                         {
-                            best_matching_truths[k] = truth_match_iou_and_detection_index();
+                            best_matching_truths[k] = confidence_and_detection_index();
                         }
-                        else if (truth_match_iou > i->second.first)
+                        else if (detection.detection_confidence > i->second.first)
                         {
-                            i->second = truth_match_iou_and_detection_index();
+                            i->second = confidence_and_detection_index();
                         }
                     }
 
