@@ -1323,30 +1323,22 @@ namespace dlib
             // stable.
             for (long n = 0; n < src.num_samples(); ++n)
             {
-                auto ss = s + num_locations*num_channels*n;
-                auto dd = d + num_locations*num_channels*n;
-                for (long i = 0; i < num_locations; ++i)
+                const auto ss = s + num_locations*num_channels*n;
+                const auto dd = d + num_locations*num_channels*n;
+#pragma omp parallel for
+                for (int i = 0; i < num_locations; ++i)
                 {
+                    const auto sss = ss + i;
+                    const auto ddd = dd + i;
+
                     float max_val = -std::numeric_limits<float>::infinity();
                     for (long k = 0; k < num_channels; ++k)
                         max_val = std::max(max_val, ss[k*num_locations]);
 
                     for (long k = 0; k < num_channels; ++k)
-                        dd[k*num_locations] = exp::exp(ss[k*num_locations]-max_val);
+                        ddd[k*num_locations] = exp::exp(sss[k*num_locations]-max_val);
 
-                    ++ss;
-                    ++dd;
-                }
-            }
-
-            // Now normalize each channel so they sum to 1.
-            for (long n = 0; n < src.num_samples(); ++n)
-            {
-                const auto dd = d + num_locations*num_channels*n;
-                for (long i = 0; i < num_locations; ++i)
-                {
-                    const auto ddd = dd+i;
-
+                    // Now normalize each channel so they sum to 1.
                     float temp = 0;
                     for (long k = 0; k < num_channels; ++k)
                         temp += ddd[k*num_locations];
