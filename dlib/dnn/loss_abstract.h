@@ -806,7 +806,8 @@ namespace dlib
             double adjust_threshold = 0,
             size_t desired_min_detection_count = 0,
             size_t desired_bubbling_under_count = 0,
-            const std::vector<double>& gain_factors = std::vector<double>()
+            const std::vector<double>& gain_factors = std::vector<double>(),
+            int margin = 0
         ) const;
         /*!
             This function has the same interface as EXAMPLE_LOSS_LAYER_::to_label() except
