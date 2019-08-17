@@ -8,6 +8,7 @@ matrix:
       os: linux
       env:
         - VARIANT=test
+        - DISABLED_TESTS=""
       script:
         - dlib/travis/build-and-test.sh
 
@@ -16,7 +17,7 @@ matrix:
       compiler: clang
       os: linux
       env:
-        - VARIANT=examples
+        - VARIANT=examples-debug
       script:
         - dlib/travis/build-and-test.sh
 
@@ -25,7 +26,8 @@ matrix:
       compiler: gcc
       os: linux
       env:
-        - VARIANT=test
+        - VARIANT=test-debug
+        - DISABLED_TESTS=""
       script:
         - dlib/travis/build-and-test.sh
 
@@ -71,6 +73,7 @@ matrix:
           # think you could just set them in the env area like any other, but
           # travis is wonky about CC and CXX vars so you have to do it this way.
         - MATRIX_EVAL="CC=gcc-7 && CXX=g++-7"
+        - DISABLED_TESTS=""
       addons:
         apt:
           sources:
@@ -106,14 +109,15 @@ matrix:
         - dlib/travis/build-and-test.sh
 
     ###################
-    # # Disabled because travis's OS X machines take hours (or days) to begin
-    # running.  Or maybe they are just broken entirely.  Who knows.
-    #- language: cpp
-    #  os: osx
-    #  osx_image: xcode9.2
-    #  env:
-    #    - VARIANT=test
-    #  script:
-    #    - dlib/travis/build-and-test.sh
-         
-          
+    - language: cpp
+      os: osx
+      osx_image: xcode9.2
+      env:
+        - VARIANT=test
+        # Don't test the timer because it relies on the machine running it not
+        # being under high load, but that seems to be unlikely on the travis
+        # osx VMs.
+        - DISABLED_TESTS="--no_test_timer"
+      script:
+        - dlib/travis/build-and-test.sh
+

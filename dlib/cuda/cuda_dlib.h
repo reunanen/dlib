@@ -454,15 +454,10 @@ namespace dlib
                 const size_t bytes_per_plane = subnetwork_output.nr()*subnetwork_output.nc()*sizeof(uint16_t);
                 // Allocate a cuda buffer to store all the truth images and also one float
                 // for the scalar loss output.
-                if (!work)
-                {
-                    work = device_global_buffer();
-                }
-                cuda_data_void_ptr buf = work->get(subnetwork_output.num_samples()*bytes_per_plane + sizeof(float));
+                buf = device_global_buffer(subnetwork_output.num_samples()*bytes_per_plane + sizeof(float));
 
                 cuda_data_void_ptr loss_buf = buf;
                 buf = buf+sizeof(float);
-
 
                 // copy the truth data into a cuda buffer.
                 for (long i = 0; i < subnetwork_output.num_samples(); ++i, ++truth)
@@ -486,7 +481,7 @@ namespace dlib
                 double& loss
             );
             
-            mutable std::shared_ptr<resizable_cuda_buffer> work;
+            mutable cuda_data_void_ptr buf;
         };
 
         class compute_loss_multiclass_log_per_pixel_weighted
@@ -515,11 +510,7 @@ namespace dlib
                 const size_t bytes_per_plane = subnetwork_output.nr()*subnetwork_output.nc() * sizeof(weighted_label);
                 // Allocate a cuda buffer to store all the truth images and also one float
                 // for the scalar loss output.
-                if (!work)
-                {
-                    work = device_global_buffer();
-                }
-                cuda_data_void_ptr buf = work->get(subnetwork_output.num_samples()*bytes_per_plane + sizeof(float));
+                buf = device_global_buffer(subnetwork_output.num_samples()*bytes_per_plane + sizeof(float));
 
                 cuda_data_void_ptr loss_buf = buf;
                 buf = buf + sizeof(float);
@@ -546,7 +537,7 @@ namespace dlib
                 double& loss
             );
 
-            mutable std::shared_ptr<resizable_cuda_buffer> work;
+            mutable cuda_data_void_ptr buf;
         };
 
     // ------------------------------------------------------------------------------------

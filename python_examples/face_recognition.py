@@ -99,7 +99,7 @@ for f in glob.glob(os.path.join(faces_folder_path, "*.jpg")):
         face_descriptor = facerec.compute_face_descriptor(img, shape)
         print(face_descriptor)
         # It should also be noted that you can also call this function like this:
-        #  face_descriptor = facerec.compute_face_descriptor(img, shape, 100)
+        #  face_descriptor = facerec.compute_face_descriptor(img, shape, 100, 0.25)
         # The version of the call without the 100 gets 99.13% accuracy on LFW
         # while the version with 100 gets 99.38%.  However, the 100 makes the
         # call 100x slower to execute, so choose whatever version you like.  To
@@ -109,8 +109,29 @@ for f in glob.glob(os.path.join(faces_folder_path, "*.jpg")):
         # the face and returns the average result.  You could also pick a more
         # middle value, such as 10, which is only 10x slower but still gets an
         # LFW accuracy of 99.3%.
+        # 4th value (0.25) is padding around the face. If padding == 0 then the chip will
+        # be closely cropped around the face. Setting larger padding values will result a looser cropping.
+        # In particular, a padding of 0.5 would double the width of the cropped area, a value of 1.
+        # would triple it, and so forth.
 
+        # There is another overload of compute_face_descriptor that can take
+        # as an input an aligned image. 
+        #
+        # Note that it is important to generate the aligned image as
+        # dlib.get_face_chip would do it i.e. the size must be 150x150, 
+        # centered and scaled.
+        #
+        # Here is a sample usage of that
 
+        print("Computing descriptor on aligned image ..")
+        
+        # Let's generate the aligned image using get_face_chip
+        face_chip = dlib.get_face_chip(img, shape)        
+
+        # Now we simply pass this chip (aligned image) to the api
+        face_descriptor_from_prealigned_image = facerec.compute_face_descriptor(face_chip)                
+        print(face_descriptor_from_prealigned_image)        
+        
         dlib.hit_enter_to_continue()
 
 

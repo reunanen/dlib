@@ -2039,7 +2039,7 @@ namespace dlib
             auto sg = gamma(temp,0);
             auto sb = beta(temp,gamma.size());
 
-            g = pointwise_multiply(mat(sg), 1.0f/sqrt(mat(item.running_variances)+item.get_eps()));
+            g = pointwise_divide(mat(sg), sqrt(mat(item.running_variances)+item.get_eps()));
             b = mat(sb) - pointwise_multiply(mat(g), mat(item.running_means));
         }
 
@@ -2241,8 +2241,7 @@ namespace dlib
             if (version != "add_prev_")
                 throw serialization_error("Unexpected version '"+version+"' found while deserializing dlib::add_prev_.");
         }
-
-        friend std::ostream& operator<<(std::ostream& out, const add_prev_& item)
+        friend std::ostream& operator<<(std::ostream& out, const add_prev_& )
         {
             out << "add_prev"<<id;
             return out;
@@ -2509,6 +2508,106 @@ namespace dlib
     using mult_prev8_  = mult_prev_<tag8>;
     using mult_prev9_  = mult_prev_<tag9>;
     using mult_prev10_ = mult_prev_<tag10>;
+
+// ----------------------------------------------------------------------------------------
+
+    template <
+        template<typename> class tag
+        >
+    class resize_prev_to_tagged_
+    {
+    public:
+        const static unsigned long id = tag_id<tag>::id;
+
+        resize_prev_to_tagged_()
+        {
+        }
+
+        template <typename SUBNET>
+        void setup (const SUBNET& /*sub*/)
+        {
+        }
+
+        template <typename SUBNET>
+        void forward(const SUBNET& sub, resizable_tensor& output)
+        {
+            auto& prev = sub.get_output();
+            auto& tagged = layer<tag>(sub).get_output();
+
+            DLIB_CASSERT(prev.num_samples() == tagged.num_samples());
+
+            output.set_size(prev.num_samples(),
+                            prev.k(),
+                            tagged.nr(),
+                            tagged.nc());
+
+            if (prev.nr() == tagged.nr() && prev.nc() == tagged.nc())
+            {
+                tt::copy_tensor(false, output, 0, prev, 0, prev.k());
+            }
+            else
+            {
+                tt::resize_bilinear(output, prev);
+            }
+        }
+
+        template <typename SUBNET>
+        void backward(const tensor& gradient_input, SUBNET& sub, tensor& /*params_grad*/)
+        {
+            auto& prev = sub.get_gradient_input();
+
+            DLIB_CASSERT(prev.k() == gradient_input.k());
+            DLIB_CASSERT(prev.num_samples() == gradient_input.num_samples());
+
+            if (prev.nr() == gradient_input.nr() && prev.nc() == gradient_input.nc())
+            {
+                tt::copy_tensor(true, prev, 0, gradient_input, 0, prev.k());
+            }
+            else
+            {
+                tt::resize_bilinear_gradient(prev, gradient_input);
+            }
+        }
+
+        const tensor& get_layer_params() const { return params; }
+        tensor& get_layer_params() { return params; }
+
+        inline dpoint map_input_to_output (const dpoint& p) const { return p; }
+        inline dpoint map_output_to_input (const dpoint& p) const { return p; }
+
+        friend void serialize(const resize_prev_to_tagged_& , std::ostream& out)
+        {
+            serialize("resize_prev_to_tagged_", out);
+        }
+
+        friend void deserialize(resize_prev_to_tagged_& , std::istream& in)
+        {
+            std::string version;
+            deserialize(version, in);
+            if (version != "resize_prev_to_tagged_")
+                throw serialization_error("Unexpected version '"+version+"' found while deserializing dlib::resize_prev_to_tagged_.");
+        }
+
+        friend std::ostream& operator<<(std::ostream& out, const resize_prev_to_tagged_& )
+        {
+            out << "resize_prev_to_tagged"<<id;
+            return out;
+        }
+
+        friend void to_xml(const resize_prev_to_tagged_& , std::ostream& out)
+        {
+            out << "<resize_prev_to_tagged tag='"<<id<<"'/>\n";
+        }
+
+    private:
+        resizable_tensor params;
+    };
+
+    template <
+        template<typename> class tag,
+        typename SUBNET
+        >
+    using resize_prev_to_tagged = add_layer<resize_prev_to_tagged_<tag>, SUBNET>;
 
 // ----------------------------------------------------------------------------------------
 
@@ -3152,14 +3251,14 @@ namespace dlib
         const tensor& get_layer_params() const { return params; }
         tensor& get_layer_params() { return params; }
 
-        friend void serialize(const concat_& item, std::ostream& out)
+        friend void serialize(const concat_& , std::ostream& out)
         {
             serialize("concat_", out);
             size_t count = tag_count();
             serialize(count, out);
         }
 
-        friend void deserialize(concat_& item, std::istream& in)
+        friend void deserialize(concat_& , std::istream& in)
         {
             std::string version;
             deserialize(version, in);
@@ -3173,7 +3272,7 @@ namespace dlib
                                                   " found while deserializing dlib::concat_.");
         }
 
-        friend std::ostream& operator<<(std::ostream& out, const concat_& item)
+        friend std::ostream& operator<<(std::ostream& out, const concat_& )
         {
             out << "concat\t (";
             list_tags(out);
@@ -3181,7 +3280,7 @@ namespace dlib
             return out;
         }
 
-        friend void to_xml(const concat_& item, std::ostream& out)
+        friend void to_xml(const concat_& , std::ostream& out)
         {
             out << "<concat tags='";
             list_tags(out);
