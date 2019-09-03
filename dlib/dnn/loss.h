@@ -1660,13 +1660,8 @@ namespace dlib
         {
             for (auto&& b : boxes)
             {
-                if (b.ignore)
-                {
-                    if (options.overlaps_ignore(b, rect))
-                        return true;
-                    if (b.rect.contains(center(rect)))
-                        return true;
-                }
+                if (b.ignore && options.overlaps_ignore(b, rect))
+                    return true;
             }
             return false;
         }
