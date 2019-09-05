@@ -776,7 +776,12 @@ namespace dlib
 
     public:
 
-        typedef std::vector<mmod_rect> training_label_type;
+        struct mmod_training_input {
+            matrix<uint8_t> mask;
+            std::vector<mmod_rect> mmod_rects;
+        };
+
+        typedef mmod_training_input training_label_type;
         typedef std::vector<mmod_rect> output_label_type;
 
         loss_mmod_(

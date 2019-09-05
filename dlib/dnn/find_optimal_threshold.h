@@ -70,7 +70,7 @@ namespace dlib
     }
 
     double find_optimal_threshold(
-        const std::vector<std::vector<mmod_rect>>& truth,
+        const std::vector<dlib::loss_mmod_::mmod_training_input>& truth,
         const std::vector<std::vector<mmod_rect>>& detections,
         double truth_match_iou_threshold_for_correct_label = 0.25,
         double truth_match_iou_threshold_for_incorrect_label = 0.5,
@@ -90,11 +90,11 @@ namespace dlib
 #pragma omp parallel for
         for (int i = 0; i < sample_count; ++i)
         {
-            const std::vector<mmod_rect>& truth_i = truth[i];
+            const auto& truth_i = truth[i];
             const std::vector<mmod_rect>& detections_i = detections[i];
 
             const size_t detections_i_size = detections_i.size();
-            const size_t truth_i_size = truth_i.size();
+            const size_t truth_i_size = truth_i.mmod_rects.size();
 
             //                 truth index       confidence, detection index
             std::unordered_map<size_t, std::pair<double, size_t>> best_matching_truths;
@@ -103,17 +103,22 @@ namespace dlib
             for (size_t j = 0; j < detections_i_size; ++j)
             {
                 const mmod_rect& detection = detections_i[j];
+                const auto detection_center = center(detection.rect);
 
-                bool found_corresponding_ignore = false;
+                bool found_corresponding_ignore = dlib::loss_mmod_::should_point_be_ignored(detection_center, truth_i.mask);
 
-                for (size_t k = 0; k < truth_i_size; ++k)
+                for (size_t k = 0; k < truth_i_size && !found_corresponding_ignore; ++k)
                 {
-                    const mmod_rect& candidate_truth = truth_i[k];
+                    const mmod_rect& candidate_truth = truth_i.mmod_rects[k];
                     const double truth_match_iou = box_intersection_over_union(detection.rect, candidate_truth.rect);
 
                     const auto accept_truth_hit = [&]()
                     {
                         if (candidate_truth.ignore)
+                        {
+                            return false;
+                        }
+                        if (dlib::loss_mmod_::should_point_be_ignored(center(candidate_truth.rect), truth_i.mask))
                         {
                             return false;
                         }
@@ -130,7 +135,15 @@ namespace dlib
 
                     const auto accept_ignore = [&]()
                     {
-                        return candidate_truth.ignore && truth_match_iou >= truth_match_iou_threshold_for_ignore;
+                        if (candidate_truth.ignore && truth_match_iou >= truth_match_iou_threshold_for_ignore)
+                        {
+                            return true;
+                        }
+                        if (dlib::loss_mmod_::should_point_be_ignored(center(candidate_truth.rect), truth_i.mask))
+                        {
+                            return true;
+                        }
+                        return false;
                     };
 
                     if (accept_truth_hit())

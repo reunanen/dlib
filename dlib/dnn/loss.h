@@ -1036,7 +1036,12 @@ namespace dlib
 
     public:
 
-        typedef std::vector<mmod_rect> training_label_type;
+        struct mmod_training_input {
+            matrix<uint8_t> mask;
+            std::vector<mmod_rect> mmod_rects;
+        };
+
+        typedef mmod_training_input training_label_type;
         typedef std::vector<mmod_rect> output_label_type;
 
         loss_mmod_() {}
@@ -1132,7 +1137,7 @@ namespace dlib
             >
         double compute_loss_value_and_gradient (
             const tensor& input_tensor,
-            const_label_iterator truth, 
+            const_label_iterator unfiltered_truth, 
             SUBNET& sub
         ) const
         {
@@ -1169,7 +1174,14 @@ namespace dlib
             {
                 tensor_to_dets(input_tensor, output_tensor, i, dets, -options.loss_per_false_alarm + det_thresh_speed_adjust, sub, std::vector<double>());
 
-                const unsigned long max_num_dets = 50 + truth->size()*5;
+                const auto& mask = unfiltered_truth->mask;
+
+                const auto should_ignore_point = [&mask](const dlib::point& point)
+                {
+                    return should_point_be_ignored(point, mask);
+                };
+
+                const unsigned long max_num_dets = 50 + unfiltered_truth->mmod_rects.size()*5;
                 // Prevent calls to tensor_to_dets() from running for a really long time
                 // due to the production of an obscene number of detections.
                 const unsigned long max_num_initial_dets = max_num_dets*100;
@@ -1177,6 +1189,45 @@ namespace dlib
                 {
                     det_thresh_speed_adjust = std::max(det_thresh_speed_adjust,dets[max_num_initial_dets].detection_confidence + options.loss_per_false_alarm);
                 }
+
+                { // Ignore detections outside mask
+                    const auto should_ignore_det = [should_ignore_point](const intermediate_detection& det)
+                    {
+                        return should_ignore_point(center(det.rect));
+                    };
+
+                    dets.erase(
+                        std::remove_if(
+                            dets.begin(),
+                            dets.end(),
+                            should_ignore_det
+                        ),
+                        dets.end()
+                    );
+                }
+
+                // Ignore truth outside mask
+                const auto should_keep_truth = [should_ignore_point](const mmod_rect& mmod_rect)
+                {
+                    return !should_ignore_point(center(mmod_rect.rect));
+                };
+
+                const auto get_truth_inside_mask = [should_keep_truth, &unfiltered_truth]()
+                {
+                    auto filtered_truth = std::make_unique<std::vector<mmod_rect>>();
+                    filtered_truth->reserve(unfiltered_truth->mmod_rects.size());
+
+                    std::copy_if(
+                        unfiltered_truth->mmod_rects.begin(),
+                        unfiltered_truth->mmod_rects.end(),
+                        std::back_inserter(*filtered_truth),
+                        should_keep_truth
+                    );
+
+                    return filtered_truth;
+                };
+
+                auto truth = get_truth_inside_mask();
 
                 std::vector<size_t> truth_idxs;
                 truth_idxs.reserve(truth->size());
@@ -1187,6 +1238,8 @@ namespace dlib
                 loss += truth->size()*options.loss_per_missed_target;
                 for (auto&& x : *truth)
                 {
+                    DLIB_CASSERT(should_keep_truth(x));
+
                     if (!x.ignore)
                     {
                         size_t k;
@@ -1376,11 +1429,13 @@ namespace dlib
 
                 for (auto&& x : final_dets)
                 {
+                    DLIB_CASSERT(!should_ignore_point(center(x.rect)));
+
                     loss += out_data[x.tensor_offset];
                     g[x.tensor_offset] += scale;
                 }
 
-                ++truth;
+                ++unfiltered_truth;
                 g        += output_tensor.k()*output_tensor.nr()*output_tensor.nc();
                 out_data += output_tensor.k()*output_tensor.nr()*output_tensor.nc();
             } // END for (long i = 0; i < output_tensor.num_samples(); ++i)
@@ -1441,6 +1496,16 @@ namespace dlib
         {
             // TODO, add options fields
             out << "<loss_mmod/>";
+        }
+
+        static bool should_point_be_ignored(const point& point, const matrix<uint8_t>& mask)
+        {
+            const auto x = point.x();
+            const auto y = point.y();
+
+            return x >= 0 && x < mask.nc()
+                && y >= 0 && y < mask.nr()
+                && mask(y, x) == 0;
         }
 
     private:
