@@ -99,15 +99,22 @@ namespace dlib
             //                 truth index       confidence, detection index
             std::unordered_map<size_t, std::pair<double, size_t>> best_matching_truths;
             std::unordered_set<size_t> detection_indexes_that_can_be_ignored;
+            std::unordered_set<size_t> detection_indexes_that_should_be_ignored;
 
             for (size_t j = 0; j < detections_i_size; ++j)
             {
                 const mmod_rect& detection = detections_i[j];
                 const auto detection_center = center(detection.rect);
 
-                bool found_corresponding_ignore = dlib::loss_mmod_::should_point_be_ignored(detection_center, truth_i.mask);
+                if (dlib::loss_mmod_::should_point_be_ignored(detection_center, truth_i.mask))
+                {
+                    detection_indexes_that_should_be_ignored.insert(j);
+                    continue;
+                }
 
-                for (size_t k = 0; k < truth_i_size && !found_corresponding_ignore; ++k)
+                bool found_corresponding_ignore_truth = false;
+
+                for (size_t k = 0; k < truth_i_size; ++k)
                 {
                     const mmod_rect& candidate_truth = truth_i.mmod_rects[k];
                     const double truth_match_iou = box_intersection_over_union(detection.rect, candidate_truth.rect);
@@ -162,11 +169,11 @@ namespace dlib
 
                     if (accept_ignore())
                     {
-                        found_corresponding_ignore = true;
+                        found_corresponding_ignore_truth = true;
                     }
                 }
 
-                if (found_corresponding_ignore)
+                if (found_corresponding_ignore_truth)
                 {
                     detection_indexes_that_can_be_ignored.insert(j);
                 }
@@ -189,18 +196,26 @@ namespace dlib
                     return detection_indexes_that_have_corresponding_best_match_truth.find(j) != detection_indexes_that_have_corresponding_best_match_truth.end();
                 };
 
+                const auto should_be_ignored = [&]()
+                {
+                    return detection_indexes_that_should_be_ignored.find(j) != detection_indexes_that_should_be_ignored.end();
+                };
+
                 const auto can_be_ignored = [&]()
                 {
                     return detection_indexes_that_can_be_ignored.find(j) != detection_indexes_that_can_be_ignored.end();
                 };
 
-                if (best_matching_truth_found())
+                if (!should_be_ignored())
                 {
-                    true_detections.push_back(detection.detection_confidence);
-                }
-                else if (!can_be_ignored())
-                {
-                    false_detections.push_back(detection.detection_confidence);
+                    if (best_matching_truth_found())
+                    {
+                        true_detections.push_back(detection.detection_confidence);
+                    }
+                    else if (!can_be_ignored())
+                    {
+                        false_detections.push_back(detection.detection_confidence);
+                    }
                 }
 
                 minimum_detection_confidence = std::min(minimum_detection_confidence, detection.detection_confidence);
