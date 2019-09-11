@@ -1063,7 +1063,8 @@ namespace dlib
             size_t desired_min_detection_count = 0,
             size_t desired_bubbling_under_count = 0,
             std::vector<double> gain_factors = std::vector<double>(),
-            int margin = 0
+            int margin = 0,
+            const matrix<uint8_t>* optional_mask = nullptr
         ) const
         {
             const tensor& output_tensor = sub.get_output();
@@ -1077,6 +1078,7 @@ namespace dlib
             }
             DLIB_CASSERT(input_tensor.num_samples() == output_tensor.num_samples());
             DLIB_CASSERT(sub.sample_expansion_factor() == 1,  sub.sample_expansion_factor());
+            DLIB_CASSERT(optional_mask == nullptr || (optional_mask->nr() == input_tensor.nr() && optional_mask->nc() == input_tensor.nc()));
 
             const double effective_threshold = desired_bubbling_under_count > 0 || desired_min_detection_count > 0
                 ? -std::numeric_limits<double>::infinity()
@@ -1099,18 +1101,18 @@ namespace dlib
                 for (unsigned long i = 0; i < dets_accum.size(); ++i)
                 {
                     if (margin > 0) {
-                        const auto& rect = dets_accum[i].rect_bbr;
+                        const auto center = dlib::center(dets_accum[i].rect_bbr);
 
-                        const auto center_x = (rect.left() + rect.right()) / 2.0;
-                        const auto center_y = (rect.top() + rect.bottom()) / 2.0;
-
-                        if (center_x < margin || center_x >= input_width - margin)
+                        if (center.x() < margin || center.x() >= input_width - margin)
                             continue;
-                        if (center_y < margin || center_y >= input_height - margin)
+                        if (center.y() < margin || center.y() >= input_height - margin)
                             continue;
                     }
 
                     if (overlaps_any_box_nms(final_dets, dets_accum[i].rect_bbr))
+                        continue;
+
+                    if (optional_mask && should_point_be_ignored(center(dets_accum[i].rect_bbr), *optional_mask))
                         continue;
 
                     final_dets.push_back(mmod_rect(dets_accum[i].rect_bbr,

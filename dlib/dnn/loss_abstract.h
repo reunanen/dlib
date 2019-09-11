@@ -818,7 +818,8 @@ namespace dlib
             size_t desired_min_detection_count = 0,
             size_t desired_bubbling_under_count = 0,
             const std::vector<double>& gain_factors = std::vector<double>(),
-            int margin = 0
+            int margin = 0,
+            const matrix<uint8_t>* optional_mask = nullptr
         ) const;
         /*!
             This function has the same interface as EXAMPLE_LOSS_LAYER_::to_label() except
