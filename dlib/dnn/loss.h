@@ -1171,8 +1171,11 @@ namespace dlib
 
             const float* out_data = output_tensor.host();
 
-            const auto get_limited_out_data = [&out_data, this](size_t idx) {
-                return std::min(static_cast<double>(out_data[idx]), options.loss_per_missed_target);
+            constexpr auto max_out_data = 20.f;
+
+            const auto get_limited_out_data = [&out_data, max_out_data](size_t idx) {
+                //return std::max(-max_out_data, std::min(max_out_data, out_data[idx]));
+                return std::min(max_out_data, out_data[idx]);
             };
 
             std::vector<intermediate_detection> dets;
@@ -1258,10 +1261,10 @@ namespace dlib
                             continue;
                         }
                         const size_t idx = (k*output_tensor.nr() + p.y())*output_tensor.nc() + p.x();
-                        const double limited_out_data = get_limited_out_data(idx);
+                        const auto limited_out_data = get_limited_out_data(idx);
                         loss -= limited_out_data;
 
-                        if (limited_out_data < options.loss_per_missed_target)
+                        if (limited_out_data < max_out_data)
                         {
                             // compute gradient
                             g[idx] = -scale;
