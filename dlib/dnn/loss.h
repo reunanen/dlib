@@ -1171,7 +1171,7 @@ namespace dlib
 
             const float* out_data = output_tensor.host();
 
-            constexpr auto max_out_data = 20.f;
+            constexpr auto max_out_data = 100.f;
 
             const auto get_limited_out_data = [&out_data, max_out_data](size_t idx) {
                 //return std::max(-max_out_data, std::min(max_out_data, out_data[idx]));
