@@ -13,6 +13,8 @@
 #include "../svm/ranking_tools.h"
 #include <sstream>
 #include <map>
+#include <numeric> // std::accumulate
+#include <unordered_map>
 
 namespace dlib
 {
@@ -1145,7 +1147,9 @@ namespace dlib
                 // The loss will measure the number of incorrect detections.  A detection is
                 // incorrect if it doesn't hit a truth rectangle or if it is a duplicate detection
                 // on a truth rectangle.
-                loss += truth->size()*options.loss_per_missed_target;
+                typedef std::pair<double, double> loss_and_gradient;
+                std::unordered_map<size_t, loss_and_gradient> loss_and_gradient_by_index;
+
                 for (auto&& x : *truth)
                 {
                     if (!x.ignore)
@@ -1155,21 +1159,24 @@ namespace dlib
                         if(image_rect_to_feat_coord(p, input_tensor, x, x.label, sub, k, options.assume_image_pyramid))
                         {
                             // Ignore boxes that can't be detected by the CNN.
-                            loss -= options.loss_per_missed_target;
-                            truth_idxs.push_back(0);
+                            truth_idxs.push_back(-1);
                             continue;
                         }
                         const size_t idx = (k*output_tensor.nr() + p.y())*output_tensor.nc() + p.x();
+
+                        auto& loss_and_gradient = loss_and_gradient_by_index[idx];
+                        auto& loss = loss_and_gradient.first;
+                        auto& gradient = loss_and_gradient.second;
+                        loss = options.loss_per_missed_target;
                         loss -= out_data[idx];
-                        // compute gradient
-                        g[idx] = -scale;
+                        gradient = -scale;
+
                         truth_idxs.push_back(idx);
                     }
                     else
                     {
                         // This box was ignored so shouldn't have been counted in the loss.
-                        loss -= options.loss_per_missed_target;
-                        truth_idxs.push_back(0);
+                        truth_idxs.push_back(-1);
                     }
                 }
 
@@ -1226,11 +1233,13 @@ namespace dlib
                         if (options.overlaps_nms(best_matching_truth_box, (*truth)[i]))
                         {
                             const size_t idx = truth_idxs[i];
+                            DLIB_CASSERT(idx != -1);
                             // We are ignoring this box so we shouldn't have counted it in the
                             // loss in the first place.  So we subtract out the loss values we
                             // added for it in the code above.
-                            loss -= options.loss_per_missed_target-out_data[idx];
-                            g[idx] = 0;
+                            auto& loss_and_gradient = loss_and_gradient_by_index[idx];
+                            loss_and_gradient.first = 0;
+                            loss_and_gradient.second = 0;
                             std::cout << "Warning, ignoring object.  We encountered a truth rectangle located at " << (*truth)[i].rect;
                             std::cout << " that is suppressed by non-max-suppression ";
                             std::cout << "because it is overlapped by another truth rectangle located at " << best_matching_truth_box 
@@ -1261,6 +1270,9 @@ namespace dlib
                     {
                         if (truth_score_hits[hittruth.second] > options.loss_per_missed_target)
                         {
+                            const auto idx = truth_idxs[hittruth.second];
+                            auto& loss = loss_and_gradient_by_index[idx].first;
+
                             if (!hit_truth_table[hittruth.second])
                             {
                                 hit_truth_table[hittruth.second] = true;
@@ -1331,15 +1343,46 @@ namespace dlib
                     {
                         // didn't hit anything
                         final_dets.push_back(dets[i]);
+                        const auto idx = dets[i].tensor_offset;
+                        auto& loss = loss_and_gradient_by_index[idx].first;
                         loss += options.loss_per_false_alarm;
                     }
                 }
 
                 for (auto&& x : final_dets)
                 {
+                    auto& loss_and_gradient = loss_and_gradient_by_index[x.tensor_offset];
+                    auto& loss = loss_and_gradient.first;
+                    auto& gradient = loss_and_gradient.second;
                     loss += out_data[x.tensor_offset];
-                    g[x.tensor_offset] += scale;
+                    gradient += scale;
                 }
+
+                const auto accumulate_loss = [](double sum, const auto& item)
+                {
+                    return sum + item.second.first;
+                };
+
+                const auto calculate_loss = [&accumulate_loss](const auto& items)
+                {
+                    return std::accumulate(items.begin(), items.end(), 0.0, accumulate_loss);
+                };
+
+                const double raw_sample_loss = calculate_loss(loss_and_gradient_by_index);
+
+                double actual_sample_loss = 0.0;
+
+                for (auto& item : loss_and_gradient_by_index)
+                {
+                    const double item_loss = item.second.first;
+                    if (raw_sample_loss >= 0.0 || item_loss >= 0.0)
+                    {
+                        actual_sample_loss += item_loss;
+                        g[item.first]      += item.second.second;
+                    }
+                }
+
+                loss += actual_sample_loss;
 
                 ++truth;
                 g        += output_tensor.k()*output_tensor.nr()*output_tensor.nc();
