@@ -13,6 +13,7 @@
 #include "../svm/ranking_tools.h"
 #include <sstream>
 #include <map>
+#include <unordered_map>
 #include <numeric> // std::accumulate
 
 namespace dlib
