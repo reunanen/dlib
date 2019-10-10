@@ -14,7 +14,6 @@
 #include <sstream>
 #include <map>
 #include <unordered_map>
-#include <unordered_set>
 #include <numeric> // std::accumulate
 
 namespace dlib
@@ -1243,8 +1242,7 @@ namespace dlib
                 typedef std::pair<double, double> loss_and_gradient;
                 std::unordered_map<size_t, loss_and_gradient> loss_and_gradient_by_index;
 
-                std::unordered_set<size_t> unique_truth_idxs;
-
+                std::unordered_map<size_t, std::deque<rectangle>> truth_idx_to_truth_rects;
                 for (auto&& x : *truth)
                 {
                     DLIB_CASSERT(should_keep_truth(x));
@@ -1260,10 +1258,12 @@ namespace dlib
                             continue;
                         }
                         const size_t idx = (k*output_tensor.nr() + p.y())*output_tensor.nc() + p.x();
-
-                        if (unique_truth_idxs.find(idx) != unique_truth_idxs.end()) {
+                        const auto i = truth_idx_to_truth_rects.find(idx);
+                        if (i != truth_idx_to_truth_rects.end())
+                        {
                             // Ignore truth rects that completely overlap another truth rect in feature coordinates.
                             truth_idxs.push_back(-1);
+                            i->second.push_back(x.rect);
                             continue;
                         }
 
@@ -1275,7 +1275,7 @@ namespace dlib
                         gradient = -scale;
 
                         truth_idxs.push_back(idx);
-                        unique_truth_idxs.insert(idx);
+                        truth_idx_to_truth_rects[idx].push_back(x.rect);
                     }
                     else
                     {
@@ -1337,18 +1337,20 @@ namespace dlib
                         if (options.overlaps_nms(best_matching_truth_box, (*truth)[i]))
                         {
                             const size_t idx = truth_idxs[i];
-                            DLIB_CASSERT(idx != -1);
-                            // We are ignoring this box so we shouldn't have counted it in the
-                            // loss in the first place.  So we subtract out the loss values we
-                            // added for it in the code above.
-                            auto& loss_and_gradient = loss_and_gradient_by_index[idx];
-                            loss_and_gradient.first = 0;
-                            loss_and_gradient.second = 0;
-                            std::cout << "Warning, ignoring object.  We encountered a truth rectangle located at " << (*truth)[i].rect;
-                            std::cout << " that is suppressed by non-max-suppression ";
-                            std::cout << "because it is overlapped by another truth rectangle located at " << best_matching_truth_box 
-                                      << " (IoU:"<< box_intersection_over_union(best_matching_truth_box,(*truth)[i]) <<", Percent covered:" 
-                                      << box_percent_covered(best_matching_truth_box,(*truth)[i]) << ")." << std::endl;
+                            if (idx != -1)
+                            {
+                                // We are ignoring this box so we shouldn't have counted it in the
+                                // loss in the first place.  So we subtract out the loss values we
+                                // added for it in the code above.
+                                auto& loss_and_gradient = loss_and_gradient_by_index[idx];
+                                loss_and_gradient.first = 0;
+                                loss_and_gradient.second = 0;
+                                std::cout << "Warning, ignoring object.  We encountered a truth rectangle located at " << (*truth)[i].rect;
+                                std::cout << " that is suppressed by non-max-suppression ";
+                                std::cout << "because it is overlapped by another truth rectangle located at " << best_matching_truth_box 
+                                          << " (IoU:"<< box_intersection_over_union(best_matching_truth_box,(*truth)[i]) <<", Percent covered:" 
+                                          << box_percent_covered(best_matching_truth_box,(*truth)[i]) << ")." << std::endl;
+                            }
                         }
                     }
                 }
