@@ -14,6 +14,7 @@
 #include <sstream>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <numeric> // std::accumulate
 
 namespace dlib
@@ -1242,6 +1243,8 @@ namespace dlib
                 typedef std::pair<double, double> loss_and_gradient;
                 std::unordered_map<size_t, loss_and_gradient> loss_and_gradient_by_index;
 
+                std::unordered_set<size_t> unique_truth_idxs;
+
                 for (auto&& x : *truth)
                 {
                     DLIB_CASSERT(should_keep_truth(x));
@@ -1258,6 +1261,12 @@ namespace dlib
                         }
                         const size_t idx = (k*output_tensor.nr() + p.y())*output_tensor.nc() + p.x();
 
+                        if (unique_truth_idxs.find(idx) != unique_truth_idxs.end()) {
+                            // Ignore truth rects that completely overlap another truth rect in feature coordinates.
+                            truth_idxs.push_back(-1);
+                            continue;
+                        }
+
                         auto& loss_and_gradient = loss_and_gradient_by_index[idx];
                         auto& loss = loss_and_gradient.first;
                         auto& gradient = loss_and_gradient.second;
@@ -1266,6 +1275,7 @@ namespace dlib
                         gradient = -scale;
 
                         truth_idxs.push_back(idx);
+                        unique_truth_idxs.insert(idx);
                     }
                     else
                     {
