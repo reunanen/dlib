@@ -1486,7 +1486,18 @@ namespace dlib
                     if (raw_sample_loss >= 0.0 || item_loss >= 0.0)
                     {
                         actual_sample_loss += item_loss;
-                        g[item.first]      += item.second.second;
+
+                        const auto idx = item.first;
+                        const auto item_gradient = item.second.second;
+
+                        if (idx != -1)
+                        {
+                            g[idx] += item_gradient;
+                        }
+                        else
+                        {
+                            DLIB_CASSERT(item_gradient == 0.0);
+                        }
                     }
                 }
 
