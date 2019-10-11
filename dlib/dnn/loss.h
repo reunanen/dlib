@@ -1236,13 +1236,14 @@ namespace dlib
                 std::vector<size_t> truth_idxs;
                 truth_idxs.reserve(truth->size());
 
+                std::unordered_map<size_t, rectangle> idx_to_truth_rect;
+
                 // The loss will measure the number of incorrect detections.  A detection is
                 // incorrect if it doesn't hit a truth rectangle or if it is a duplicate detection
                 // on a truth rectangle.
                 typedef std::pair<double, double> loss_and_gradient;
                 std::unordered_map<size_t, loss_and_gradient> loss_and_gradient_by_index;
 
-                std::unordered_map<size_t, std::deque<rectangle>> truth_idx_to_truth_rects;
                 for (auto&& x : *truth)
                 {
                     DLIB_CASSERT(should_keep_truth(x));
@@ -1258,12 +1259,11 @@ namespace dlib
                             continue;
                         }
                         const size_t idx = (k*output_tensor.nr() + p.y())*output_tensor.nc() + p.x();
-                        const auto i = truth_idx_to_truth_rects.find(idx);
-                        if (i != truth_idx_to_truth_rects.end())
+                        const auto i = idx_to_truth_rect.find(idx);
+                        if (i != idx_to_truth_rect.end())
                         {
                             // Ignore truth rects that completely overlap another truth rect in feature coordinates.
                             truth_idxs.push_back(-1);
-                            i->second.push_back(x.rect);
                             continue;
                         }
 
@@ -1275,7 +1275,7 @@ namespace dlib
                         gradient = -scale;
 
                         truth_idxs.push_back(idx);
-                        truth_idx_to_truth_rects[idx].push_back(x.rect);
+                        idx_to_truth_rect[idx] = x.rect;
                     }
                     else
                     {
