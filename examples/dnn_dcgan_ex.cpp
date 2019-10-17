@@ -153,7 +153,14 @@ int main(int argc, char** argv) try
         //     out_gen.nr() << "x" <<
         //     out_gen.nc() << std::endl;
 
-        generator.subnet().subnet().back_propagate_error(noises_tensor, out_fake);
+        if (out_fake.nr() > 0 && out_fake.nc() > 0)
+        {
+            generator.subnet().subnet().back_propagate_error(noises_tensor, out_fake);
+        }
+        else
+        {
+            std::cout << "Empty out_fake, skipping..." << std::endl;
+        }
 
 
         auto iteration = dis_trainer.get_train_one_step_calls();
