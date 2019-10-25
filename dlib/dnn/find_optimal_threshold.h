@@ -87,140 +87,158 @@ namespace dlib
 
         const int sample_count = static_cast<int>(truth.size());
 
+        std::string error;
+
 #pragma omp parallel for
         for (int i = 0; i < sample_count; ++i)
         {
-            const auto& truth_i = truth[i];
-            const std::vector<mmod_rect>& detections_i = detections[i];
-
-            const size_t detections_i_size = detections_i.size();
-            const size_t truth_i_size = truth_i.mmod_rects.size();
-
-            //                 truth index       confidence, detection index
-            std::unordered_map<size_t, std::pair<double, size_t>> best_matching_truths;
-            std::unordered_set<size_t> detection_indexes_that_can_be_ignored;
-            std::unordered_set<size_t> detection_indexes_that_should_be_ignored;
-
-            for (size_t j = 0; j < detections_i_size; ++j)
+            try
             {
-                const mmod_rect& detection = detections_i[j];
-                const auto detection_center = center(detection.rect);
+                const auto& truth_i = truth[i];
+                const std::vector<mmod_rect>& detections_i = detections[i];
 
-                if (dlib::loss_mmod_::should_point_be_ignored(detection_center, truth_i.mask))
+                const size_t detections_i_size = detections_i.size();
+                const size_t truth_i_size = truth_i.mmod_rects.size();
+
+                //                 truth index       confidence, detection index
+                std::unordered_map<size_t, std::pair<double, size_t>> best_matching_truths;
+                std::unordered_set<size_t> detection_indexes_that_can_be_ignored;
+                std::unordered_set<size_t> detection_indexes_that_should_be_ignored;
+
+                for (size_t j = 0; j < detections_i_size; ++j)
                 {
-                    detection_indexes_that_should_be_ignored.insert(j);
-                    continue;
-                }
+                    const mmod_rect& detection = detections_i[j];
+                    const auto detection_center = center(detection.rect);
 
-                bool found_corresponding_ignore_truth = false;
-
-                for (size_t k = 0; k < truth_i_size; ++k)
-                {
-                    const mmod_rect& candidate_truth = truth_i.mmod_rects[k];
-                    const double truth_match_iou = box_intersection_over_union(detection.rect, candidate_truth.rect);
-
-                    const auto accept_truth_hit = [&]()
+                    if (dlib::loss_mmod_::should_point_be_ignored(detection_center, truth_i.mask))
                     {
-                        if (candidate_truth.ignore)
+                        detection_indexes_that_should_be_ignored.insert(j);
+                        continue;
+                    }
+
+                    bool found_corresponding_ignore_truth = false;
+
+                    for (size_t k = 0; k < truth_i_size; ++k)
+                    {
+                        const mmod_rect& candidate_truth = truth_i.mmod_rects[k];
+                        const double truth_match_iou = box_intersection_over_union(detection.rect, candidate_truth.rect);
+
+                        const auto accept_truth_hit = [&]()
                         {
+                            if (candidate_truth.ignore)
+                            {
+                                return false;
+                            }
+                            if (dlib::loss_mmod_::should_point_be_ignored(center(candidate_truth.rect), truth_i.mask))
+                            {
+                                return false;
+                            }
+                            if (truth_match_iou >= truth_match_iou_threshold_for_correct_label && detection.label == candidate_truth.label)
+                            {
+                                return true; // accept with correct label
+                            }
+                            if (truth_match_iou >= truth_match_iou_threshold_for_incorrect_label)
+                            {
+                                return true; // accept with incorrect label
+                            }
                             return false;
-                        }
-                        if (dlib::loss_mmod_::should_point_be_ignored(center(candidate_truth.rect), truth_i.mask))
+                        };
+
+                        const auto accept_ignore = [&]()
                         {
+                            if (candidate_truth.ignore && truth_match_iou >= truth_match_iou_threshold_for_ignore)
+                            {
+                                return true;
+                            }
+                            if (dlib::loss_mmod_::should_point_be_ignored(center(candidate_truth.rect), truth_i.mask))
+                            {
+                                return true;
+                            }
                             return false;
-                        }
-                        if (truth_match_iou >= truth_match_iou_threshold_for_correct_label && detection.label == candidate_truth.label)
-                        {
-                            return true; // accept with correct label
-                        }
-                        if (truth_match_iou >= truth_match_iou_threshold_for_incorrect_label)
-                        {
-                            return true; // accept with incorrect label
-                        }
-                        return false;
-                    };
+                        };
 
-                    const auto accept_ignore = [&]()
-                    {
-                        if (candidate_truth.ignore && truth_match_iou >= truth_match_iou_threshold_for_ignore)
+                        if (accept_truth_hit())
                         {
-                            return true;
+                            const auto confidence_and_detection_index = [&]() { return std::make_pair(detection.detection_confidence, j); };
+                            const auto i = best_matching_truths.find(k);
+                            if (i == best_matching_truths.end())
+                            {
+                                best_matching_truths[k] = confidence_and_detection_index();
+                            }
+                            else if (detection.detection_confidence > i->second.first)
+                            {
+                                i->second = confidence_and_detection_index();
+                            }
                         }
-                        if (dlib::loss_mmod_::should_point_be_ignored(center(candidate_truth.rect), truth_i.mask))
-                        {
-                            return true;
-                        }
-                        return false;
-                    };
 
-                    if (accept_truth_hit())
-                    {
-                        const auto confidence_and_detection_index = [&]() { return std::make_pair(detection.detection_confidence, j); };
-                        const auto i = best_matching_truths.find(k);
-                        if (i == best_matching_truths.end())
+                        if (accept_ignore())
                         {
-                            best_matching_truths[k] = confidence_and_detection_index();
-                        }
-                        else if (detection.detection_confidence > i->second.first)
-                        {
-                            i->second = confidence_and_detection_index();
+                            found_corresponding_ignore_truth = true;
                         }
                     }
 
-                    if (accept_ignore())
+                    if (found_corresponding_ignore_truth)
                     {
-                        found_corresponding_ignore_truth = true;
+                        detection_indexes_that_can_be_ignored.insert(j);
                     }
                 }
 
-                if (found_corresponding_ignore_truth)
+                std::unordered_set<size_t> detection_indexes_that_have_corresponding_best_match_truth;
+
+                for (const auto& j : best_matching_truths)
                 {
-                    detection_indexes_that_can_be_ignored.insert(j);
+                    detection_indexes_that_have_corresponding_best_match_truth.insert(j.second.second);
                 }
-            }
-
-            std::unordered_set<size_t> detection_indexes_that_have_corresponding_best_match_truth;
-
-            for (const auto& j : best_matching_truths)
-            {
-                detection_indexes_that_have_corresponding_best_match_truth.insert(j.second.second);
-            }
 
 #pragma omp critical
-            for (size_t j = 0; j < detections_i_size; ++j)
-            {
-                const mmod_rect& detection = detections_i[j];
-
-                const auto best_matching_truth_found = [&]()
+                for (size_t j = 0; j < detections_i_size; ++j)
                 {
-                    return detection_indexes_that_have_corresponding_best_match_truth.find(j) != detection_indexes_that_have_corresponding_best_match_truth.end();
-                };
+                    const mmod_rect& detection = detections_i[j];
 
-                const auto should_be_ignored = [&]()
-                {
-                    return detection_indexes_that_should_be_ignored.find(j) != detection_indexes_that_should_be_ignored.end();
-                };
-
-                const auto can_be_ignored = [&]()
-                {
-                    return detection_indexes_that_can_be_ignored.find(j) != detection_indexes_that_can_be_ignored.end();
-                };
-
-                if (!should_be_ignored())
-                {
-                    if (best_matching_truth_found())
+                    const auto best_matching_truth_found = [&]()
                     {
-                        true_detections.push_back(detection.detection_confidence);
-                    }
-                    else if (!can_be_ignored())
+                        return detection_indexes_that_have_corresponding_best_match_truth.find(j) != detection_indexes_that_have_corresponding_best_match_truth.end();
+                    };
+
+                    const auto should_be_ignored = [&]()
                     {
-                        false_detections.push_back(detection.detection_confidence);
+                        return detection_indexes_that_should_be_ignored.find(j) != detection_indexes_that_should_be_ignored.end();
+                    };
+
+                    const auto can_be_ignored = [&]()
+                    {
+                        return detection_indexes_that_can_be_ignored.find(j) != detection_indexes_that_can_be_ignored.end();
+                    };
+
+                    if (!should_be_ignored())
+                    {
+                        if (best_matching_truth_found())
+                        {
+                            true_detections.push_back(detection.detection_confidence);
+                        }
+                        else if (!can_be_ignored())
+                        {
+                            false_detections.push_back(detection.detection_confidence);
+                        }
                     }
+
+                    minimum_detection_confidence = std::min(minimum_detection_confidence, detection.detection_confidence);
+                    maximum_detection_confidence = std::max(maximum_detection_confidence, detection.detection_confidence);
                 }
-
-                minimum_detection_confidence = std::min(minimum_detection_confidence, detection.detection_confidence);
-                maximum_detection_confidence = std::max(maximum_detection_confidence, detection.detection_confidence);
             }
+            catch (std::exception& e)
+            {
+#pragma omp critical
+                if (error.empty())
+                {
+                    error = e.what();
+                }
+            }
+        }
+
+        if (!error.empty())
+        {
+            throw std::runtime_error(error);
         }
 
         if (true_detections.empty() && false_detections.empty())
