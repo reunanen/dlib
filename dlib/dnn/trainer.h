@@ -605,6 +605,27 @@ namespace dlib
             last_sync_time = time;
         }
 
+        // if net is changed from outside, then this has to be called in multi-GPU settings
+        void update_device_net_copies()
+        {
+            if (devices.size() > 1)
+            {
+                wait_for_thread_to_pause();
+
+                const auto prev_dev = dlib::cuda::get_device();
+                // initialize all the other device networks and solver objects
+                for (size_t i = 1; i < devices.size(); ++i)
+                {
+                    // Switch to this device so that any tensor objects that get allocated when
+                    // we copy this stuff happen on this device.
+                    dlib::cuda::set_device(devices[i]->device_id);
+                    devices[i]->solvers = devices[0]->solvers;
+                    devices[i]->net = devices[0]->net;
+                }
+                dlib::cuda::set_device(prev_dev);
+            }
+        }
+
     private:
 
         void record_test_loss(double loss)
@@ -997,20 +1018,7 @@ namespace dlib
             deserialize(item.previous_loss_values_dump_amount, in);
             deserialize(item.test_previous_loss_values_dump_amount, in);
 
-            if (item.devices.size() > 1)
-            {
-                const auto prev_dev = dlib::cuda::get_device();
-                // initialize all the other device networks and solver objects
-                for (size_t i = 1; i < item.devices.size(); ++i)
-                {
-                    // Switch to this device so that any tensor objects that get allocated when
-                    // we copy this stuff happen on this device.
-                    dlib::cuda::set_device(item.devices[i]->device_id);
-                    item.devices[i]->solvers = item.devices[0]->solvers;
-                    item.devices[i]->net = item.devices[0]->net;
-                }
-                dlib::cuda::set_device(prev_dev);
-            }
+            item.update_device_net_copies();
         }
 
         void sync_to_disk (
