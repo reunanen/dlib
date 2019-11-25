@@ -702,11 +702,6 @@ namespace dlib
             std::vector<dlib::future<double>> losses(devices.size());
 
             std::vector<tt::multi_device_tensor_averager> averagers;
-            // An array of all the parameter tensors in the first network.  We will
-            // periodically copy these tensors to all the other devices to make sure the
-            // different GPUs don't go out of sync.
-            std::vector<tensor*> reference_params;
-            visit_layer_parameters(devices[0]->net, [&](size_t, tensor& t) { reference_params.push_back(&t); });
 
             // We make separate thread pools with just one thread in them because we want
             // to make sure each device is always executed on the same thread.  We care
@@ -830,6 +825,15 @@ namespace dlib
                 // issues.
                 if (devices.size() > 1 && main_iteration_counter%2000 == 1)
                 {
+                    // An array of all the parameter tensors in the first network.
+                    // We periodically copy these tensors to all the other devices
+                    // to make sure the different GPUs don't go out of sync.
+                    std::vector<tensor*> reference_params;
+                    visit_layer_parameters(devices[0]->net, [&](size_t, tensor& t)
+                    {
+                        reference_params.push_back(&t);
+                    });
+
                     for (size_t i = 1; i < devices.size(); ++i)
                     {
                         visit_layer_parameters(devices[i]->net, [&](size_t j, tensor& t) 
