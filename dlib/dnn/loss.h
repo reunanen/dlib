@@ -1110,7 +1110,6 @@ namespace dlib
             }
             DLIB_CASSERT(input_tensor.num_samples() == output_tensor.num_samples());
             DLIB_CASSERT(sub.sample_expansion_factor() == 1,  sub.sample_expansion_factor());
-            DLIB_CASSERT(optional_mask == nullptr || (optional_mask->nr() == input_tensor.nr() && optional_mask->nc() == input_tensor.nc()));
 
             const double effective_threshold = desired_bubbling_under_count > 0 || desired_min_detection_count > 0
                 ? -std::numeric_limits<double>::infinity()
@@ -1121,6 +1120,18 @@ namespace dlib
 
             std::vector<intermediate_detection> dets_accum;
             output_label_type final_dets;
+
+            matrix<uint8_t> resized_mask;
+            if (optional_mask && (optional_mask->nr() != input_tensor.nr() || optional_mask->nc() != input_tensor.nc()))
+            {
+                DLIB_CASSERT(options.assume_image_pyramid == use_image_pyramid::yes);
+                resized_mask.set_size(input_tensor.nr(), input_tensor.nc());
+                resize_image(*optional_mask, resized_mask, interpolate_nearest_neighbor());
+                optional_mask = &resized_mask;
+            }
+
+            DLIB_CASSERT(optional_mask == nullptr || (optional_mask->nr() == input_tensor.nr() && optional_mask->nc() == input_tensor.nc()));
+
             for (long i = 0; i < output_tensor.num_samples(); ++i)
             {
                 tensor_to_dets(input_tensor, output_tensor, i, dets_accum, effective_threshold, sub, gain_factors);
