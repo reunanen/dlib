@@ -2241,8 +2241,7 @@ namespace dlib
             if (version != "add_prev_")
                 throw serialization_error("Unexpected version '"+version+"' found while deserializing dlib::add_prev_.");
         }
-
-        friend std::ostream& operator<<(std::ostream& out, const add_prev_& item)
+        friend std::ostream& operator<<(std::ostream& out, const add_prev_& )
         {
             out << "add_prev"<<id;
             return out;
@@ -2615,13 +2614,13 @@ namespace dlib
                 throw serialization_error("Unexpected version '"+version+"' found while deserializing dlib::resize_prev_to_tagged_.");
         }
 
-        friend std::ostream& operator<<(std::ostream& out, const resize_prev_to_tagged_& item)
+        friend std::ostream& operator<<(std::ostream& out, const resize_prev_to_tagged_& )
         {
             out << "resize_prev_to_tagged"<<id;
             return out;
         }
 
-        friend void to_xml(const resize_prev_to_tagged_& item, std::ostream& out)
+        friend void to_xml(const resize_prev_to_tagged_& , std::ostream& out)
         {
             out << "<resize_prev_to_tagged tag='"<<id<<"'/>\n";
         }
@@ -3278,14 +3277,14 @@ namespace dlib
         const tensor& get_layer_params() const { return params; }
         tensor& get_layer_params() { return params; }
 
-        friend void serialize(const concat_& item, std::ostream& out)
+        friend void serialize(const concat_& , std::ostream& out)
         {
             serialize("concat_", out);
             size_t count = tag_count();
             serialize(count, out);
         }
 
-        friend void deserialize(concat_& item, std::istream& in)
+        friend void deserialize(concat_& , std::istream& in)
         {
             std::string version;
             deserialize(version, in);
@@ -3299,7 +3298,7 @@ namespace dlib
                                                   " found while deserializing dlib::concat_.");
         }
 
-        friend std::ostream& operator<<(std::ostream& out, const concat_& item)
+        friend std::ostream& operator<<(std::ostream& out, const concat_& )
         {
             out << "concat\t (";
             list_tags(out);
@@ -3307,7 +3306,7 @@ namespace dlib
             return out;
         }
 
-        friend void to_xml(const concat_& item, std::ostream& out)
+        friend void to_xml(const concat_& , std::ostream& out)
         {
             out << "<concat tags='";
             list_tags(out);
@@ -3533,7 +3532,7 @@ namespace dlib
         const tensor& get_layer_params() const { return params; }
         tensor& get_layer_params() { return params; }
 
-        friend void serialize(const extract_& item, std::ostream& out)
+        friend void serialize(const extract_& /*item*/, std::ostream& out)
         {
             serialize("extract_", out);
             serialize(_offset, out);
@@ -3542,7 +3541,7 @@ namespace dlib
             serialize(_nc, out);
         }
 
-        friend void deserialize(extract_& item, std::istream& in)
+        friend void deserialize(extract_& /*item*/, std::istream& in)
         {
             std::string version;
             deserialize(version, in);
@@ -3564,7 +3563,7 @@ namespace dlib
             if (nc != _nc) throw serialization_error("Wrong nc found while deserializing dlib::extract_");
         }
 
-        friend std::ostream& operator<<(std::ostream& out, const extract_& item)
+        friend std::ostream& operator<<(std::ostream& out, const extract_& /*item*/)
         {
             out << "extract\t ("
                 << "offset="<<_offset
@@ -3575,7 +3574,7 @@ namespace dlib
             return out;
         }
 
-        friend void to_xml(const extract_& item, std::ostream& out)
+        friend void to_xml(const extract_& /*item*/, std::ostream& out)
         {
             out << "<extract";
             out << " offset='"<<_offset<<"'";

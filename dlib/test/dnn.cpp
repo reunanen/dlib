@@ -2497,6 +2497,66 @@ namespace
 
 // ----------------------------------------------------------------------------------------
 
+    void test_loss_mean_squared_per_channel_and_pixel()
+    {
+        print_spinner();
+
+        const int num_samples = 1000;
+        const long num_channels = 2;
+        const long dimension = 3;
+        ::std::vector<matrix<float>> inputs;
+        ::std::vector<::std::array<matrix<float>, num_channels>> labels;
+        for (int i = 0; i < num_samples; ++i)
+        {
+            matrix<float> x = matrix_cast<float>(randm(5, dimension));
+            matrix<float> w = matrix_cast<float>(randm(num_channels, 5));
+            matrix<float> y = w * x;
+            DLIB_CASSERT(y.nr() == num_channels);
+            ::std::array<matrix<float>, num_channels> y_arr;
+            // convert y to an array of matrices
+            for (long c = 0; c < num_channels; ++c)
+            {
+                y_arr[c] = rowm(y, c);
+            }
+            inputs.push_back(::std::move(x));
+            labels.push_back(::std::move(y_arr));
+        }
+
+        const long num_outputs = num_channels * dimension;
+        using net_type = loss_mean_squared_per_channel_and_pixel<num_channels,
+                            extract<0, num_channels, 1, dimension,
+                            fc<num_outputs,
+                            relu<bn_fc<fc<500,
+                            input<matrix<float>>>>>>>>;
+        net_type net;
+
+        const auto compute_error = [&inputs, &labels, &net, num_channels]()
+        {
+            const auto out = net(inputs);
+            double error = 0.0;
+            for (size_t i = 0; i < out.size(); ++i)
+            {
+                for (long c = 0; c < num_channels; ++c)
+                {
+                    error += mean(squared(out[i][c] - labels[i][c]));
+                }
+            }
+            return error / out.size() / num_channels;
+        };
+
+        const auto error_before = compute_error();
+        dnn_trainer<net_type> trainer(net);
+        trainer.set_learning_rate(0.1);
+        trainer.set_iterations_without_progress_threshold(500);
+        trainer.set_min_learning_rate(1e-6);
+        trainer.set_mini_batch_size(50);
+        trainer.train(inputs, labels);
+        const auto error_after = compute_error();
+        DLIB_TEST_MSG(error_after < error_before, "multi channel error increased after training");
+    }
+
+// ----------------------------------------------------------------------------------------
+
     void test_loss_multiclass_per_pixel_learned_params_on_trivial_single_pixel_task()
     {
         print_spinner();
@@ -3172,6 +3232,89 @@ namespace
     }
 
 // ----------------------------------------------------------------------------------------
+    
+    // This test really just checks if the mmod loss goes negative when a whole lot of overlapping
+    // truth rectangles are given.  
+    void test_loss_mmod()
+    {
+        print_spinner();
+
+        // Define input image size.
+        constexpr int nc = 20;
+        constexpr int nr = 20;
+
+        constexpr int margin = 3;
+
+        // Create a checkerboard pattern.
+        std::deque<point> labeled_points;
+        for (int y = margin; y < nr - margin; ++y)
+            for (int x = margin + 1 - y % 2; x < nc - margin; x += 2)
+                labeled_points.emplace_back(x, y);
+
+        // Create training data that follows the generated pattern.
+        typedef matrix<float> input_image_type;
+
+        const auto generate_input_image = [&labeled_points, nr, nc]()
+        {
+            input_image_type sample(nr, nc);
+            sample = -1.0;
+
+            for (const auto& point : labeled_points)
+                sample(point.y(), point.x()) = 1.0;
+
+            return sample;
+        };
+
+        const auto generate_labels = [&labeled_points]()
+        {
+            const auto point_to_rect = [](const point& point) {
+                constexpr int rect_size = 5;
+                return centered_rect(
+                    point.x(), point.y(),
+                    rect_size, rect_size
+                );
+            };
+
+            std::vector<mmod_rect> labels;
+
+            std::transform(
+                labeled_points.begin(),
+                labeled_points.end(),
+                std::back_inserter(labels),
+                point_to_rect
+            );
+
+            return labels;
+        };
+
+        const input_image_type input_image = generate_input_image();
+        const std::vector<mmod_rect> labels = generate_labels();
+
+        mmod_options options(use_image_pyramid::no, { labels });
+
+        // Define a simple network.
+        using net_type = loss_mmod<con<1,5,5,1,1,con<1,5,5,2,2,input<input_image_type>>>>;
+        net_type net(options);
+        dnn_trainer<net_type> trainer(net, sgd(0.1));
+
+        // Train the network. The loss is not supposed to go negative.
+        for (int i = 0; i < 100; ++i) {
+            print_spinner();
+            trainer.train_one_step({ input_image }, { labels });
+            DLIB_TEST(trainer.get_average_loss() >= 0.0);
+        }
+
+        // Inference should return something for the training data.
+        const auto dets = net(input_image);
+        DLIB_TEST(dets.size() > 0);
+
+        // Indeed many truth objects should be found.
+        const auto approximate_desired_det_count = (nr - 2 * margin) * (nc - 2 * margin) / 2.0;
+        DLIB_TEST(dets.size() > approximate_desired_det_count * 0.45);
+        DLIB_TEST(dets.size() < approximate_desired_det_count * 1.05);
+    }
+
+// ----------------------------------------------------------------------------------------
 
     class dnn_tester : public tester
     {
@@ -3252,6 +3395,7 @@ namespace
             test_simple_linear_regression_with_mult_prev();
             test_multioutput_linear_regression();
             test_simple_autoencoder();
+            test_loss_mean_squared_per_channel_and_pixel();
             test_loss_multiclass_per_pixel_learned_params_on_trivial_single_pixel_task();
             test_loss_multiclass_per_pixel_activations_on_trivial_single_pixel_task();
             test_loss_multiclass_per_pixel_outputs_on_trivial_task();
@@ -3260,6 +3404,7 @@ namespace
             test_serialization();
             test_loss_dot();
             test_loss_multimulticlass_log();
+            test_loss_mmod();
         }
 
         void perform_test()
