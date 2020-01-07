@@ -449,12 +449,13 @@ namespace dlib
         }
 
         void set_learning_rate (
-            double lr
+            double lr,
+            bool is_major_change = true
         )
         {
             DLIB_CASSERT(lr > 0);
             wait_for_thread_to_pause();
-            if (learning_rate != lr)
+            if (is_major_change && learning_rate != lr)
             {
                 steps_without_progress = 0;
                 test_steps_without_progress = 0;

@@ -166,7 +166,8 @@ namespace dlib
         !*/
 
         void set_learning_rate (
-            double lr
+            double lr,
+            bool is_major_change = true
         );
         /*!
             requires
