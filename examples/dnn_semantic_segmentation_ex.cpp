@@ -16,7 +16,7 @@
        ./dnn_semantic_segmentation_ex /path/to/VOC2012-or-other-images
 
     An alternative to steps 2-4 above is to download a pre-trained network
-    from here: http://dlib.net/files/semantic_segmentation_voc2012net_v2.dnn
+    from here: http://dlib.net/files/semantic_segmentation_voc2012net_v3.dnn
 
     It would be a good idea to become familiar with dlib's DNN tooling before reading this
     example.  So you should read dnn_introduction_ex.cpp and dnn_introduction2_ex.cpp

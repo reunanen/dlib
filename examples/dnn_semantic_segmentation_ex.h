@@ -23,7 +23,7 @@
        ./dnn_semantic_segmentation_ex /path/to/VOC2012-or-other-images
 
     An alternative to steps 2-4 above is to download a pre-trained network
-    from here: http://dlib.net/files/semantic_segmentation_voc2012net_v2.dnn
+    from here: http://dlib.net/files/semantic_segmentation_voc2012net_v3.dnn
 
     It would be a good idea to become familiar with dlib's DNN tooling before reading this
     example.  So you should read dnn_introduction_ex.cpp and dnn_introduction2_ex.cpp
@@ -46,10 +46,10 @@
 // Image Segmentation, https://arxiv.org/pdf/1505.04597.pdf)
 
 template <int N, template <typename> class BN, int stride, typename SUBNET>
-using block = BN<dlib::con<N,3,3,1,1,dlib::relu<BN<dlib::con<N,3,3,stride,stride,SUBNET>>>>>;
+using block = BN<dlib::con<N,3,3,1,1,dlib::mish<BN<dlib::con<N,3,3,stride,stride,SUBNET>>>>>;
 
 template <int N, template <typename> class BN, int stride, typename SUBNET>
-using blockt = BN<dlib::cont<N,3,3,1,1,dlib::relu<BN<dlib::cont<N,3,3,stride,stride,SUBNET>>>>>;
+using blockt = BN<dlib::cont<N,3,3,1,1,dlib::mish<BN<dlib::cont<N,3,3,stride,stride,SUBNET>>>>>;
 
 template <template <int,template<typename>class,int,typename> class block, int N, template<typename>class BN, typename SUBNET>
 using residual = dlib::add_prev1<block<N,BN,1,dlib::tag1<SUBNET>>>;
@@ -60,12 +60,12 @@ using residual_down = dlib::add_prev2<dlib::avg_pool<2,2,2,2,dlib::skip1<dlib::t
 template <template <int,template<typename>class,int,typename> class block, int N, template<typename>class BN, typename SUBNET>
 using residual_up = dlib::add_prev2<dlib::cont<N,2,2,2,2,dlib::skip1<dlib::tag2<blockt<N,BN,2,dlib::tag1<SUBNET>>>>>>;
 
-template <int N, typename SUBNET> using res       = dlib::relu<residual<block,N,dlib::bn_con,SUBNET>>;
-template <int N, typename SUBNET> using ares      = dlib::relu<residual<block,N,dlib::affine,SUBNET>>;
-template <int N, typename SUBNET> using res_down  = dlib::relu<residual_down<block,N,dlib::bn_con,SUBNET>>;
-template <int N, typename SUBNET> using ares_down = dlib::relu<residual_down<block,N,dlib::affine,SUBNET>>;
-template <int N, typename SUBNET> using res_up    = dlib::relu<residual_up<block,N,dlib::bn_con,SUBNET>>;
-template <int N, typename SUBNET> using ares_up   = dlib::relu<residual_up<block,N,dlib::affine,SUBNET>>;
+template <int N, typename SUBNET> using res       = dlib::mish<residual<block,N,dlib::bn_con,SUBNET>>;
+template <int N, typename SUBNET> using ares      = dlib::mish<residual<block,N,dlib::affine,SUBNET>>;
+template <int N, typename SUBNET> using res_down  = dlib::mish<residual_down<block,N,dlib::bn_con,SUBNET>>;
+template <int N, typename SUBNET> using ares_down = dlib::mish<residual_down<block,N,dlib::affine,SUBNET>>;
+template <int N, typename SUBNET> using res_up    = dlib::mish<residual_up<block,N,dlib::bn_con,SUBNET>>;
+template <int N, typename SUBNET> using ares_up   = dlib::mish<residual_up<block,N,dlib::affine,SUBNET>>;
 
 // ----------------------------------------------------------------------------------------
 
@@ -126,14 +126,14 @@ template <typename SUBNET> using concat_utag4 = resize_and_concat<utag4,utag4_,S
 
 // ----------------------------------------------------------------------------------------
 
-static const char* semantic_segmentation_net_filename = "semantic_segmentation_voc2012net_v2.dnn";
+static const char* semantic_segmentation_net_filename = "semantic_segmentation_voc2012net_v3.dnn";
 
 // ----------------------------------------------------------------------------------------
 
 // training network type
 using bnet_type = dlib::loss_multiclass_log_per_pixel<
                               dlib::cont<class_count,1,1,1,1,
-                              dlib::relu<dlib::bn_con<dlib::cont<64,7,7,2,2,
+                              dlib::mish<dlib::bn_con<dlib::cont<64,7,7,2,2,
                               concat_utag1<level1t<
                               concat_utag2<level2t<
                               concat_utag3<level3t<
@@ -142,14 +142,14 @@ using bnet_type = dlib::loss_multiclass_log_per_pixel<
                               level3<utag3<
                               level2<utag2<
                               level1<dlib::max_pool<3,3,2,2,utag1<
-                              dlib::relu<dlib::bn_con<dlib::con<64,7,7,2,2,
+                              dlib::mish<dlib::bn_con<dlib::con<64,7,7,2,2,
                               dlib::input<dlib::matrix<dlib::rgb_pixel>>
                               >>>>>>>>>>>>>>>>>>>>>>>>>;
 
 // testing network type (replaced batch normalization with fixed affine transforms)
 using anet_type = dlib::loss_multiclass_log_per_pixel<
                               dlib::cont<class_count,1,1,1,1,
-                              dlib::relu<dlib::affine<dlib::cont<64,7,7,2,2,
+                              dlib::mish<dlib::affine<dlib::cont<64,7,7,2,2,
                               concat_utag1<alevel1t<
                               concat_utag2<alevel2t<
                               concat_utag3<alevel3t<
@@ -158,7 +158,7 @@ using anet_type = dlib::loss_multiclass_log_per_pixel<
                               alevel3<utag3<
                               alevel2<utag2<
                               alevel1<dlib::max_pool<3,3,2,2,utag1<
-                              dlib::relu<dlib::affine<dlib::con<64,7,7,2,2,
+                              dlib::mish<dlib::affine<dlib::con<64,7,7,2,2,
                               dlib::input<dlib::matrix<dlib::rgb_pixel>>
                               >>>>>>>>>>>>>>>>>>>>>>>>>;
 
