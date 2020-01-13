@@ -2562,6 +2562,8 @@ namespace dlib
                              "output size = " << output_tensor.nr() << " x " << output_tensor.nc());
             }
 
+            tt::sigmoid(grad, output_tensor);
+
             // TODO: implement a corresponding CUDA kernel
 #if 0
             double loss;
@@ -2569,10 +2571,8 @@ namespace dlib
             return loss;
 #else
 
-            tt::softmax(grad, output_tensor);
-
             // The loss we output is the average loss over the mini-batch, and also over each element of the matrix output.
-            const double scale = 1.0 / (output_tensor.num_samples() * output_tensor.nr() * output_tensor.nc());
+            const double scale = 1.0/(output_tensor.num_samples()*output_tensor.nr()*output_tensor.nc());
             double loss = 0;
             float* const g = grad.host();
             const float* const out_data = output_tensor.host();
@@ -2588,14 +2588,14 @@ namespace dlib
                         if (y > 0.f)
                         {
                             const float temp = log1pexp(-out_data[idx]);
-                            loss += y * scale*temp;
-                            g[idx] = y * scale*(g[idx] - 1);
+                            loss += y*scale*temp;
+                            g[idx] = y*scale*(g[idx]-1);
                         }
                         else if (y < 0.f)
                         {
-                            const float temp = -(-out_data[idx] - log1pexp(-out_data[idx]));
-                            loss += -y * scale*temp;
-                            g[idx] = -y * scale*g[idx];
+                            const float temp = -(-out_data[idx]-log1pexp(-out_data[idx]));
+                            loss += -y*scale*temp;
+                            g[idx] = -y*scale*g[idx];
                         }
                         else
                         {
