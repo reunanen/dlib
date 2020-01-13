@@ -2562,13 +2562,13 @@ namespace dlib
                              "output size = " << output_tensor.nr() << " x " << output_tensor.nc());
             }
 
-            tt::sigmoid(grad, output_tensor);
-
 #ifdef DLIB_USE_CUDA
             double loss;
             cuda_compute(truth, output_tensor, grad, loss);
             return loss;
 #else
+
+            tt::sigmoid(grad, output_tensor);
 
             // The loss we output is the average loss over the mini-batch, and also over each element of the matrix output.
             const double scale = 1.0/(output_tensor.num_samples()*output_tensor.nr()*output_tensor.nc());

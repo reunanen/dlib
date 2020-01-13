@@ -1741,7 +1741,7 @@ namespace dlib
         )
         {
             CHECK_CUDA(cudaMemset(loss_cuda_work_buffer, 0, sizeof(float)));
-            softmax(gradient, subnetwork_output);
+            sigmoid(gradient, subnetwork_output);
 
             // The loss we output is the average loss over the mini-batch, and also over each element of the matrix output.
             const double scale = 1.0 / (subnetwork_output.num_samples() * subnetwork_output.nr() * subnetwork_output.nc());
