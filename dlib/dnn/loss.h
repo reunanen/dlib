@@ -2564,8 +2564,7 @@ namespace dlib
 
             tt::sigmoid(grad, output_tensor);
 
-            // TODO: implement a corresponding CUDA kernel
-#if 0
+#ifdef DLIB_USE_CUDA
             double loss;
             cuda_compute(truth, output_tensor, grad, loss);
             return loss;
@@ -2641,8 +2640,7 @@ namespace dlib
             return (sample * t.nr() + row) * t.nc() + column;
         }
 
-
-#if 0 // TODO: implement a corresponding CUDA kernel
+#ifdef DLIB_USE_CUDA
         cuda::compute_loss_binary_log_per_pixel cuda_compute;
 #endif
     };

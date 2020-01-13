@@ -1770,7 +1770,6 @@ namespace dlib
             // The loss we output is the average loss over the mini-batch, and also over each element of the matrix output.
             const double scale = 1.0 / (subnetwork_output.num_samples() * subnetwork_output.nr() * subnetwork_output.nc());
 
-
             launch_kernel(_cuda_compute_loss_multiclass_log_per_pixel, max_jobs(gradient.size()),
                 loss_cuda_work_buffer, gradient.device(), truth_buffer, gradient.size(), gradient.nr()*gradient.nc(), gradient.nr()*gradient.nc()*gradient.k(), gradient.k(), label_to_ignore, scale);
 
