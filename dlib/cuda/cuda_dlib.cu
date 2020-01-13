@@ -1638,13 +1638,12 @@ namespace dlib
                 return x;
         }
 
-        __global__ void _cuda_compute_loss_binary_log_per_pixel(float* loss_out, float* g, const float* truth, const float* out_data, size_t n, size_t plane_size, const float scale)
+        __global__ void _cuda_compute_loss_binary_log_per_pixel(float* loss_out, float* g, const float* truth, const float* out_data, size_t n, const float scale)
         {
             float loss = 0;
             for(auto i : grid_stride_range(0, n))
             {
-                const size_t idx = (i%plane_size) + plane_size*(i/plane_size);
-                const float y = truth[idx];
+                const float y = truth[i];
 
                 if (y > 0.f)
                 {
@@ -1747,11 +1746,11 @@ namespace dlib
             const double scale = 1.0 / (subnetwork_output.num_samples() * subnetwork_output.nr() * subnetwork_output.nc());
 
             launch_kernel(_cuda_compute_loss_binary_log_per_pixel, max_jobs(gradient.size()),
-                loss_cuda_work_buffer, gradient.device(), truth_buffer, subnetwork_output.device(), gradient.size(), gradient.nr()*gradient.nc(), scale);
+                loss_cuda_work_buffer, gradient.device(), truth_buffer, subnetwork_output.device(), gradient.size(), scale);
 
             float floss;
             CHECK_CUDA(cudaMemcpy(&floss, loss_cuda_work_buffer, sizeof(float), cudaMemcpyDefault));
-            loss = scale*floss;
+            loss = floss;
         }
 
         void compute_loss_multiclass_log_per_pixel::
