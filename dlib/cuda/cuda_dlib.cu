@@ -1644,24 +1644,23 @@ namespace dlib
             for(auto i : grid_stride_range(0, n))
             {
                 const size_t idx = (i%plane_size) + plane_size*(i/plane_size);
-
                 const float y = truth[idx];
 
                 if (y > 0.f)
                 {
-                    const float temp = cuda_log1pexp(-out_data[idx]);
-                    loss += y * scale*temp;
-                    g[idx] = y * scale*(g[idx] - 1);
+                    const float temp = cuda_log1pexp(-out_data[i]);
+                    loss += y*scale*temp;
+                    g[i] = y*scale*(g[i]-1);
                 }
                 else if (y < 0.f)
                 {
-                    const float temp = -(-out_data[idx] - cuda_log1pexp(-out_data[idx]));
-                    loss += -y * scale*temp;
-                    g[idx] = -y * scale*g[idx];
+                    const float temp = -(-out_data[i]-cuda_log1pexp(-out_data[i]));
+                    loss += -y*scale*temp;
+                    g[i] = -y*scale*g[i];
                 }
                 else
                 {
-                    g[idx] = 0.f;
+                    g[i] = 0.f;
                 }
             }
 
