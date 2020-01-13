@@ -1648,13 +1648,13 @@ namespace dlib
                 if (y > 0.f)
                 {
                     const float temp = cuda_log1pexp(-out_data[i]);
-                    loss += y*scale*temp;
+                    loss += y*temp;
                     g[i] = y*scale*(g[i]-1);
                 }
                 else if (y < 0.f)
                 {
                     const float temp = -(-out_data[i]-cuda_log1pexp(-out_data[i]));
-                    loss += -y*scale*temp;
+                    loss += -y*temp;
                     g[i] = -y*scale*g[i];
                 }
                 else
@@ -1750,7 +1750,7 @@ namespace dlib
 
             float floss;
             CHECK_CUDA(cudaMemcpy(&floss, loss_cuda_work_buffer, sizeof(float), cudaMemcpyDefault));
-            loss = floss;
+            loss = scale*floss;
         }
 
         void compute_loss_multiclass_log_per_pixel::
