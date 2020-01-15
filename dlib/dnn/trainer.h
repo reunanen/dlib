@@ -148,6 +148,15 @@ namespace dlib
             return net; 
         }
 
+        void save_training_state(
+            const std::string& filename
+        )
+        {
+            wait_for_thread_to_pause();
+            net.clean(); // compact network before saving to disk.
+            serialize(filename) << *this;
+            propagate_exception();
+        }
 
         unsigned long get_mini_batch_size (
         ) const { return mini_batch_size; }
