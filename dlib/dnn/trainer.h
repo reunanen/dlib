@@ -508,6 +508,7 @@ namespace dlib
             set_learning_rate(schedule(0,0));
             set_min_learning_rate(min(schedule));
             set_learning_rate_shrink_factor(1);
+            set_learning_rate_shrink_factor_in_case_loss_clearly_goes_up(1);
             lr_schedule = matrix_cast<double>(reshape_to_column_vector(schedule));
             lr_schedule_pos = 0;
         }
@@ -576,6 +577,22 @@ namespace dlib
         ) const
         {
             return learning_rate_shrink;
+        }
+
+        void set_learning_rate_shrink_factor_in_case_loss_clearly_goes_up (
+            double shrink
+        )
+        {
+            DLIB_CASSERT(0 < shrink && shrink <= 1);
+            wait_for_thread_to_pause();
+            lr_schedule.set_size(0);
+            learning_rate_shrink_in_case_loss_clearly_goes_up = shrink;
+        }
+
+        double get_learning_rate_shrink_factor_in_case_loss_clearly_goes_up(
+        ) const
+        {
+            return learning_rate_shrink_in_case_loss_clearly_goes_up;
         }
 
         unsigned long long get_train_one_step_calls (
@@ -933,6 +950,7 @@ namespace dlib
             test_steps_without_progress = 0;
 
             learning_rate_shrink = 0.1;
+            learning_rate_shrink_in_case_loss_clearly_goes_up = 0.1;
             epoch_iteration = 0;
             epoch_pos = 0;
             train_one_step_calls = 0;
@@ -962,7 +980,7 @@ namespace dlib
         friend void serialize(const dnn_trainer& item, std::ostream& out)
         {
             item.wait_for_thread_to_pause();
-            int version = 13;
+            int version = 14;
             serialize(version, out);
 
             size_t nl = dnn_trainer::num_layers;
@@ -980,6 +998,7 @@ namespace dlib
             serialize(item.iter_without_progress_thresh.load(), out);
             serialize(item.steps_without_progress.load(), out);
             serialize(item.learning_rate_shrink.load(), out);
+            serialize(item.learning_rate_shrink_in_case_loss_clearly_goes_up.load(), out);
             serialize(item.epoch_iteration, out);
             serialize(item.epoch_pos, out);
             serialize(item.train_one_step_calls, out);
@@ -998,7 +1017,7 @@ namespace dlib
             item.wait_for_thread_to_pause();
             int version = 0;
             deserialize(version, in);
-            if (version != 13)
+            if (version != 14)
                 throw serialization_error("Unexpected version found while deserializing dlib::dnn_trainer.");
 
             size_t num_layers = 0;
@@ -1026,6 +1045,7 @@ namespace dlib
             deserialize(ltemp, in); item.iter_without_progress_thresh = ltemp;
             deserialize(ltemp, in); item.steps_without_progress = ltemp;
             deserialize(dtemp, in); item.learning_rate_shrink = dtemp;
+            deserialize(dtemp, in); item.learning_rate_shrink_in_case_loss_clearly_goes_up = dtemp;
             deserialize(item.epoch_iteration, in);
             deserialize(item.epoch_pos, in);
             deserialize(item.train_one_step_calls, in);
@@ -1096,7 +1116,7 @@ namespace dlib
                     if (prob_loss_increasing_thresh >= prob_loss_increasing_thresh_max_value)
                     {
                         std::cout << "(and while at it, also shrinking the learning rate)" << std::endl;
-                        learning_rate = learning_rate_shrink * learning_rate;
+                        learning_rate = learning_rate_shrink_in_case_loss_clearly_goes_up * learning_rate;
                         steps_without_progress = 0;
                         test_steps_without_progress = 0;
 
@@ -1342,6 +1362,7 @@ namespace dlib
         std::deque<double> previous_loss_values_to_keep_until_disk_sync;
 
         std::atomic<double> learning_rate_shrink;
+        std::atomic<double> learning_rate_shrink_in_case_loss_clearly_goes_up;
         std::chrono::time_point<std::chrono::system_clock> last_sync_time;
         std::string sync_filename;
         std::chrono::seconds time_between_syncs;
@@ -1412,6 +1433,7 @@ namespace dlib
         {
             out << "  learning rate:                              "<< trainer.get_learning_rate() << endl;
             out << "  learning rate shrink factor:                "<< trainer.get_learning_rate_shrink_factor() << endl;
+            out << "    - in case loss clearly goes up:           "<< trainer.get_learning_rate_shrink_factor_in_case_loss_clearly_goes_up() << endl;
             out << "  min learning rate:                          "<< trainer.get_min_learning_rate() << endl;
             out << "  iterations without progress threshold:      "<< trainer.get_iterations_without_progress_threshold() << endl;
             out << "  test iterations without progress threshold: "<< trainer.get_test_iterations_without_progress_threshold() << endl;

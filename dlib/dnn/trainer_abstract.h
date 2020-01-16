@@ -85,6 +85,7 @@ namespace dlib
                 - #get_iterations_without_progress_threshold() == 2000
                 - #get_test_iterations_without_progress_threshold() == 500
                 - #get_learning_rate_shrink_factor() == 0.1
+                - #get_learning_rate_shrink_factor_in_case_loss_clearly_goes_up() == 0.1
                 - #get_learning_rate_schedule().size() == 0
                 - #get_train_one_step_calls() == 0
                 - #get_test_one_step_calls() == 0
@@ -232,6 +233,7 @@ namespace dlib
                 - #get_learning_rate() == schedule(0,0)
                 - #get_min_learning_rate() == min(schedule)
                 - #set_learning_rate_shrink_factor() == 1
+                - #set_learning_rate_shrink_factor_in_case_loss_clearly_goes_up() == 1
         !*/
 
         const matrix<double,0,1>& get_learning_rate_schedule (
@@ -314,6 +316,30 @@ namespace dlib
                   will reduce get_learning_rate() by multiplying it by get_learning_rate_shrink_factor().
                 - You can disable the automatic learning rate reduction by setting
                   get_learning_rate_shrink_factor() to 1.
+        !*/
+
+        void set_learning_rate_shrink_factor_in_case_loss_clearly_goes_up (
+            double shrink
+        );
+        /*!
+            requires
+                - 0 < shrink && shrink <= 1
+            ensures
+                - #get_learning_rate_shrink_factor_in_case_loss_clearly_goes_up() == shrink
+                - #get_learning_rate_schedule().size() == 0
+                - This function blocks until all threads inside the dnn_trainer have
+                  stopped touching the net. 
+        !*/
+
+        double get_learning_rate_shrink_factor_in_case_loss_clearly_goes_up(
+        ) const;
+        /*!
+            ensures
+                - Whenever the training routine detects that the loss has multiple times increased
+                  very significantly, the training routine will reduce get_learning_rate() by
+                  multiplying it by get_learning_rate_shrink_factor_in_case_loss_clearly_goes_up().
+                - You can disable this automatic learning rate reduction by setting
+                  get_learning_rate_shrink_factor_in_case_loss_clearly_goes_up() to 1.
         !*/
 
         unsigned long long get_train_one_step_calls (
