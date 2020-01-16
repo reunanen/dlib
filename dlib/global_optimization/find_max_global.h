@@ -9,7 +9,9 @@
 #include <utility>
 #include <chrono>
 #include <memory>
+#include <thread>
 #include "../threads/thread_pool_extension.h"
+#include "../statistics/statistics.h"
 
 namespace dlib
 {
@@ -157,13 +159,22 @@ template <typename T> static auto go(T&& f, const matrix<double, 0, 1>& a) -> de
             global_function_search opt(specs);
             opt.set_solver_epsilon(solver_epsilon);
 
-            const auto time_to_stop = std::chrono::steady_clock::now() + max_runtime;
+            running_stats_decayed<double> objective_funct_eval_time(functions.size()*5);
+            std::mutex eval_time_mutex;
+            using namespace std::chrono;
+
+            const auto time_to_stop = steady_clock::now() + max_runtime;
+
+            double max_solver_overhead_time = 0;
 
             // Now run the main solver loop.
-            for (size_t i = 0; i < num.max_calls && std::chrono::steady_clock::now() < time_to_stop; ++i)
+            for (size_t i = 0; i < num.max_calls && steady_clock::now() < time_to_stop; ++i)
             {
+                const auto get_next_x_start_time = steady_clock::now();
                 auto next = std::make_shared<function_evaluation_request>(opt.get_next_x());
-                auto execute_call = [&functions,&ymult,&log_scale,next]() {
+                const auto get_next_x_runtime = steady_clock::now() - get_next_x_start_time;
+
+                auto execute_call = [&functions,&ymult,&log_scale,&eval_time_mutex,&objective_funct_eval_time,next]() {
                     matrix<double,0,1> x = next->x();
                     // Undo any log-scaling that was applied to the variables before we pass them
                     // to the functions being optimized.
@@ -172,11 +183,63 @@ template <typename T> static auto go(T&& f, const matrix<double, 0, 1>& a) -> de
                         if (log_scale[next->function_idx()][j])
                             x(j) = std::exp(x(j));
                     }
+                    const auto funct_eval_start = steady_clock::now();
                     double y = ymult*call_function_and_expand_args(functions[next->function_idx()], x);
+                    const double funct_eval_runtime = duration_cast<nanoseconds>(steady_clock::now() - funct_eval_start).count();
                     next->set(y);
+                    
+                    std::lock_guard<std::mutex> lock(eval_time_mutex);
+                    objective_funct_eval_time.add(funct_eval_runtime);
                 };
 
                 tp.add_task_by_value(execute_call);
+
+                std::lock_guard<std::mutex> lock(eval_time_mutex);
+                const double obj_funct_time = objective_funct_eval_time.mean()/std::max(1ul,tp.num_threads_in_pool());
+                const double solver_overhead_time = duration_cast<nanoseconds>(get_next_x_runtime).count();
+                max_solver_overhead_time = std::max(max_solver_overhead_time, solver_overhead_time);
+                // Don't start thinking about the logic below until we have at least 5 objective
+                // function samples for each objective function.  This way we have a decent idea how
+                // fast these things are.  The solver overhead is really small initially so none of
+                // the stuff below really matters in the beginning anyway.
+                if (objective_funct_eval_time.current_n() > functions.size()*5) 
+                {
+                    // If calling opt.get_next_x() is taking a long time relative to how long it takes
+                    // to evaluate the objective function then we should spend less time grinding on the
+                    // internal details of the optimizer and more time running the actual objective
+                    // function.  E.g. if we could just run 2x more objective function calls in the same
+                    // amount of time then we should just do that.  The main slowness in the solver is
+                    // from the Monte Carlo sampling, which we can turn down if the objective function
+                    // is really fast to evaluate.  This is because the point of the Monte Carlo part is
+                    // to try really hard to avoid calls to really expensive objective functions.  But
+                    // if the objective function is not expensive then we should just call it.
+                    if (obj_funct_time < solver_overhead_time) 
+                    {
+                        // Reduce the amount of Monte Carlo sampling we do.  If it goes low enough
+                        // we will disable it altogether.
+                        const size_t new_val = static_cast<size_t>(std::floor(opt.get_monte_carlo_upper_bound_sample_num()*0.8));
+                        opt.set_monte_carlo_upper_bound_sample_num(std::max<size_t>(1, new_val));
+                        // At this point just disable the upper bounding Monte Carlo search stuff and
+                        // use only pure random search since the objective function is super cheap to
+                        // evaluate, making this more fancy search a waste of time.
+                        if (opt.get_monte_carlo_upper_bound_sample_num() == 1) 
+                        {
+                            opt.set_pure_random_search_probability(1);
+                        }
+                    } else if (obj_funct_time > 1.5*max_solver_overhead_time) // Consider reenabling
+                    {
+                        // The Monte Carlo overhead grows over time as the solver accumulates more
+                        // information about the objective function.  So we only want to reenable it
+                        // or make it bigger if the objective function really is more expensive.  So
+                        // we compare to the max solver runtime we have seen so far. If the
+                        // objective function has suddenly gotten more expensive then we start to
+                        // turn the Monte Carlo modeling back on.
+                        const size_t new_val = static_cast<size_t>(std::ceil(opt.get_monte_carlo_upper_bound_sample_num()*1.28));
+                        opt.set_monte_carlo_upper_bound_sample_num(std::min<size_t>(5000, new_val));
+                        // Set this back to its default value.
+                        opt.set_pure_random_search_probability(0.02);
+                    }
+                }
             }
             tp.wait_for_all_tasks();
 
