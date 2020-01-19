@@ -1115,7 +1115,9 @@ namespace dlib
                     // lower one instead.
                     if (prob_loss_increasing_thresh >= prob_loss_increasing_thresh_max_value)
                     {
-                        std::cout << "(and while at it, also shrinking the learning rate)" << std::endl;
+                        if (verbose)
+                            std::cout << "(and while at it, also shrinking the learning rate)" << std::endl;
+
                         learning_rate = learning_rate_shrink_in_case_loss_clearly_goes_up * learning_rate;
                         steps_without_progress = 0;
                         test_steps_without_progress = 0;
