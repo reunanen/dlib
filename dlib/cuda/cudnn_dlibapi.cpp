@@ -7,7 +7,6 @@
 
 #include "cudnn_dlibapi.h"
 #include "tensor.h"
-#include <cudnn.h>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -70,53 +69,56 @@ namespace dlib
 
     // ------------------------------------------------------------------------------------
 
-        class cudnn_context
+        cudnn_context::cudnn_context()
         {
-        public:
-            // not copyable
-            cudnn_context(const cudnn_context&) = delete;
-            cudnn_context& operator=(const cudnn_context&) = delete;
+            handles.resize(16);
+        }
+        cudnn_context::~cudnn_context()
+        {
+            destroy_all_handles();
+        }
 
-            cudnn_context()
+        void cudnn_context::destroy_all_handles(
+        )
+        {
+            for (auto& h : handles)
             {
-                handles.resize(16);
-            }
-            ~cudnn_context()
-            {
-                for (auto h : handles)
+                if (h)
                 {
-                    if (h)
-                        cudnnDestroy(h);
+                    cudnnDestroy(h);
+                    h = 0;
                 }
             }
+        }
 
-            cudnnHandle_t get_handle (
-            )  
-            { 
-                int new_device_id;
-                CHECK_CUDA(cudaGetDevice(&new_device_id));
-                // make room for more devices if needed
-                if (new_device_id >= (long)handles.size())
-                    handles.resize(new_device_id+16);
+        cudnnHandle_t cudnn_context::get_handle (
+        )  
+        { 
+            int new_device_id;
+            CHECK_CUDA(cudaGetDevice(&new_device_id));
+            // make room for more devices if needed
+            if (new_device_id >= (long)handles.size())
+                handles.resize(new_device_id+16);
 
-                // If we don't have a handle already for this device then make one
-                if (!handles[new_device_id])
-                    CHECK_CUDNN(cudnnCreate(&handles[new_device_id]));
+            // If we don't have a handle already for this device then make one
+            if (!handles[new_device_id])
+                CHECK_CUDNN(cudnnCreate(&handles[new_device_id]));
 
-                // Finally, return the handle for the current device
-                return handles[new_device_id];
-            }
+            // Finally, return the handle for the current device
+            return handles[new_device_id];
+        }
 
-        private:
-
-            std::vector<cudnnHandle_t> handles;
-        };
+        cudnn_context& cudnn_ctx()
+        {
+            thread_local cudnn_context c;
+            return c;
+        }
 
         static cudnnHandle_t context()
         {
-            thread_local cudnn_context c;
-            return c.get_handle();
+            return cudnn_ctx().get_handle();
         }
+
     // ------------------------------------------------------------------------------------
 
         class cudnn_activation_descriptor

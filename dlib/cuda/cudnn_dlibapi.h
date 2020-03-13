@@ -8,6 +8,7 @@
 #include "cuda_errors.h"
 #include <memory>
 #include "cuda_data_ptr.h"
+#include <cudnn.h>
 
 namespace dlib
 {
@@ -380,6 +381,26 @@ namespace dlib
 
     // ------------------------------------------------------------------------------------
 
+        class cudnn_context
+        {
+        public:
+            // not copyable
+            cudnn_context(const cudnn_context&) = delete;
+            cudnn_context& operator=(const cudnn_context&) = delete;
+
+            cudnn_context();
+            ~cudnn_context();
+
+            void destroy_all_handles();
+
+            cudnnHandle_t get_handle();
+
+        private:
+
+            std::vector<cudnnHandle_t> handles;
+        };
+
+        cudnn_context& cudnn_ctx();
     } 
 }
 
