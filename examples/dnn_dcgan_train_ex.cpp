@@ -175,10 +175,14 @@ int main(int argc, char** argv) try
     //const auto match = dlib::match_endings(".jpg .jpeg .png");
 
     const auto match = [](const dlib::file& file) {
-        return file.name().find("zoom1") != std::string::npos && file.name().find("jpg") != std::string::npos;
+        return file.name().find("zoom1_") != std::string::npos && file.name().find("jpg") != std::string::npos;
     };
 
+    cout << "Finding images...";
+
     const auto files = dlib::get_files_in_directory_tree(argv[1], match);
+
+    cout << " found " << files.size() << " files" << endl << endl;
 
     // Start a bunch of threads that read images from disk.
     // It's important to be sure to feed the GPU fast enough to keep it busy.
@@ -237,7 +241,7 @@ int main(int argc, char** argv) try
 
         const std::vector<float> real_labels(minibatch_size, 1);
         const std::vector<float> fake_labels(minibatch_size, -1);
-        dlib::image_window win;
+        dlib::image_window training_win, generated_win;
         resizable_tensor real_samples_tensor, fake_samples_tensor, noises_tensor;
         running_stats<double> g_loss, d_loss;
         while (iteration < max_iter)
@@ -250,6 +254,10 @@ int main(int argc, char** argv) try
                 training_images.dequeue(img);
                 real_samples.push_back(std::move(img));
             }
+
+            training_win.set_image(tile_images(real_samples));
+            training_win.set_title("Training images, step#: " + to_string(iteration));
+
             // The following lines are equivalent to calling train_one_step(real_samples, real_labels)
             discriminator.to_tensor(real_samples.begin(), real_samples.end(), real_samples_tensor);
             d_loss.add(discriminator.compute_loss(real_samples_tensor, real_labels.begin()));
@@ -291,6 +299,9 @@ int main(int argc, char** argv) try
             generator.back_propagate_error(noises_tensor, d_grad);
             generator.update_parameters(g_solvers, g_learning_rate);
 
+            generated_win.set_image(tile_images(fake_samples));
+            generated_win.set_title("Generated images, step#: " + to_string(iteration));
+
             // At some point, we should see that the generated images start looking like samples from
             // the MNIST dataset
             if (++iteration % 100 == 0)
@@ -300,8 +311,6 @@ int main(int argc, char** argv) try
                     "step#: " << iteration <<
                     "\tdiscriminator loss: " << d_loss.mean() * 2 <<
                     "\tgenerator loss: " << g_loss.mean() << '\n';
-                win.set_image(tile_images(fake_samples));
-                win.set_title("DCGAN step#: " + to_string(iteration));
                 d_loss.clear();
                 g_loss.clear();
             }
@@ -314,9 +323,9 @@ int main(int argc, char** argv) try
 
         // To test the generator, we just forward some random noise through it and visualize the
         // output.
-        while (!win.is_closed())
+        while (!generated_win.is_closed())
         {
-            win.set_image(generate_image(generator, make_noise(rnd)));
+            generated_win.set_image(generate_image(generator, make_noise(rnd)));
             cout << "Hit enter to generate a new image";
             cin.get();
         }
