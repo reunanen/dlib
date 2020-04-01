@@ -51,7 +51,7 @@ public:
 };
 
 // Some helper definitions for the noise generation
-const size_t noise_size = 1000;
+const size_t noise_size = 100;
 using noise_t = std::array<matrix<float, 1, 1>, noise_size>;
 
 noise_t make_noise(dlib::rand& rnd)
@@ -78,41 +78,28 @@ using contp = add_layer<cont_<num_filters, kernel_size, kernel_size, stride, str
 // generator.
 using generator_type =
     loss_multiclass_log_per_pixel<
-    sig<contp<3, 4, 2, 0,
-    relu<bn_con<contp<64, 3, 2, 0,
-    relu<bn_con<contp<64, 3, 2, 0,
-    relu<bn_con<contp<128, 3, 2, 0,
-    relu<bn_con<contp<128, 3, 2, 0,
-    relu<bn_con<contp<256, 3, 2, 0,
-    relu<bn_con<contp<512, 3, 2, 1,
+    sig<contp<3, 1, 1, 0,
+    relu<bn_con<contp<64, 4, 2, 1,
+    relu<bn_con<contp<128, 4, 2, 1,
+    relu<bn_con<contp<256, 4, 2, 1,
+    relu<bn_con<contp<512, 4, 2, 1,
     relu<bn_con<contp<1024, 4, 1, 0,
     input<noise_t>
-    >>>>>>>>>>>>>>>>>>>>>>>>;
+    >>>>>>>>>>>>>>>>>>;
 
 // Now, let's proceed to define the discriminator, whose role will be to decide whether an
 // image is fake or not.
 using discriminator_type =
     loss_binary_log<
-    conp<1, 3, 1, 0,
-    leaky_relu<bn_con<conp<1024, 4, 2, 0,
+    conp<1, 4, 1, 0,
     leaky_relu<bn_con<conp<512, 4, 2, 1,
     leaky_relu<bn_con<conp<256, 4, 2, 1,
     leaky_relu<bn_con<conp<128, 4, 2, 1,
     leaky_relu<bn_con<conp<128, 4, 2, 1,
-    leaky_relu<bn_con<conp<64, 4, 2, 1,
-    leaky_relu<conp<64, 4, 2, 1,
     input<matrix<rgb_pixel>>
-    >>>>>>>>>>>>>>>>>>>>>>;
+    >>>>>>>>>>>>>>;
 
 // Some helper functions to generate and get the images from the generator
-matrix<rgb_pixel> generate_image(generator_type& net, const noise_t& noise)
-{
-    const auto output = net(noise);
-    matrix<rgb_pixel> image;
-    assign_image(image, 255 * output);
-    return image;
-}
-
 std::vector<matrix<rgb_pixel>> get_generated_images(const tensor& out)
 {
     std::vector<matrix<rgb_pixel>> images;
@@ -138,6 +125,17 @@ std::vector<matrix<rgb_pixel>> get_generated_images(const tensor& out)
     return images;
 }
 
+matrix<rgb_pixel> generate_image(generator_type& net, const noise_t& noise)
+{
+    resizable_tensor noise_tensor;
+    const std::vector<noise_t> noises = { noise };
+    net.to_tensor(noises.begin(), noises.end(), noise_tensor);
+    const auto& output = net.forward(noise_tensor);
+    const auto images = get_generated_images(output);
+    DLIB_CASSERT(images.size() == 1);
+    return images.front();
+}
+
 int main(int argc, char** argv) try
 {
     if (argc != 2)
@@ -146,6 +144,33 @@ int main(int argc, char** argv) try
         cout << "Give a folder containing images as input to this program." << endl;
         return EXIT_FAILURE;
     }
+
+    //const auto match = dlib::match_endings(".jpg .jpeg .png");
+
+    // Fix the random generator seeds for network initialization and noise
+    srand(1234);
+    dlib::rand rnd(std::rand());
+
+    // Instantiate both generator and discriminator
+    generator_type generator;
+    discriminator_type discriminator(
+        leaky_relu_(0.2),
+        leaky_relu_(0.2),
+        leaky_relu_(0.2),
+        leaky_relu_(0.2)
+    );
+    // Remove the bias learning from the networks
+    visit_layers(generator, visitor_no_bias());
+    visit_layers(discriminator, visitor_no_bias());
+    // Forward random noise so that we see the tensor size at each layer
+    const auto generated_image = generate_image(generator, make_noise(rnd));
+    discriminator(generated_image);
+    cout << "generator" << endl;
+    cout << generator << endl;
+    cout << "discriminator" << endl;
+    cout << discriminator << endl;
+
+    cout << "IMAGE SIZE: " << generated_image.nr() << " x " << generated_image.nc() << endl << endl;
 
     //const auto match = dlib::match_endings(".jpg .jpeg .png");
 
@@ -160,16 +185,22 @@ int main(int argc, char** argv) try
     // Using multiple thread for this kind of data preparation helps us do that.
     // Each thread puts the images into the data queue.
     dlib::pipe<matrix<rgb_pixel>> training_images(200);
-    auto keep_loading_images = [&training_images, &files](time_t seed)
+    auto keep_loading_images = [&training_images, &files, &generated_image](time_t seed)
     {
         dlib::rand rnd(time(0) + seed);
+
         while (training_images.is_enabled())
         {
             const auto filename = files[rnd.get_random_64bit_number() % files.size()];
-            matrix<rgb_pixel> img;
+            matrix<rgb_pixel> img, img2;
             load_image(img, filename);
-            if (img.nr() == 512 && img.nc() == 512) {
-                training_images.enqueue(img);
+            if (img.nr() >= generated_image.nr() && img.nc() >= generated_image.nc()) {
+                const auto left = rnd.get_integer_in_range(0, img.nc() - generated_image.nc());
+                const auto top  = rnd.get_integer_in_range(0, img.nr() - generated_image.nr());
+                const rectangle rect(left, top, left + generated_image.nc() - 1, top + generated_image.nr() - 1);
+                const auto crop = sub_image(img, rect);
+                assign_image(img2, crop);
+                training_images.enqueue(img2);
             }
         }
     };
@@ -183,127 +214,124 @@ int main(int argc, char** argv) try
         );
     }
 
-    // Fix the random generator seeds for network initialization and noise
-    srand(1234);
-    dlib::rand rnd(std::rand());
+    try {
+        // The solvers for the generator and discriminator networks.  In this example, we are going to
+        // train the networks manually, so we don't need to use a dnn_trainer.  Note that the
+        // discriminator could be trained using a dnn_trainer, but not the generator, since its
+        // training process is a bit particular.
+        std::vector<adam> g_solvers(generator.num_computational_layers, adam(0, 0.5, 0.999));
+        std::vector<adam> d_solvers(discriminator.num_computational_layers, adam(0, 0.5, 0.999));
 
-    // Instantiate both generator and discriminator
-    generator_type generator;
-    discriminator_type discriminator(
-        leaky_relu_(0.2), leaky_relu_(0.2), leaky_relu_(0.2));
-    // Remove the bias learning from the networks
-    visit_layers(generator, visitor_no_bias());
-    visit_layers(discriminator, visitor_no_bias());
-    // Forward random noise so that we see the tensor size at each layer
-    discriminator(generate_image(generator, make_noise(rnd)));
-    cout << "generator" << endl;
-    cout << generator << endl;
-    cout << "discriminator" << endl;
-    cout << discriminator << endl;
+        const double g_learning_rate = 2.0e-4;
+        const double d_learning_rate = 2.0e-4;
 
-    // The solvers for the generator and discriminator networks.  In this example, we are going to
-    // train the networks manually, so we don't need to use a dnn_trainer.  Note that the
-    // discriminator could be trained using a dnn_trainer, but not the generator, since its
-    // training process is a bit particular.
-    std::vector<adam> g_solvers(generator.num_computational_layers, adam(0, 0.5, 0.999));
-    std::vector<adam> d_solvers(discriminator.num_computational_layers, adam(0, 0.5, 0.999));
-    double learning_rate = 2e-4;
-
-    // Resume training from last sync file
-    size_t iteration = 0;
-    if (file_exists("dcgan_sync"))
-    {
-        deserialize("dcgan_sync") >> generator >> discriminator >> iteration;
-    }
-
-    const size_t minibatch_size = 32;
-    const std::vector<float> real_labels(minibatch_size, 1);
-    const std::vector<float> fake_labels(minibatch_size, -1);
-    dlib::image_window win;
-    resizable_tensor real_samples_tensor, fake_samples_tensor, noises_tensor;
-    running_stats<double> g_loss, d_loss;
-    while (iteration < 50000)
-    {
-        // Train the discriminator with real images
-        std::vector<matrix<rgb_pixel>> real_samples;
-        while (real_samples.size() < minibatch_size)
+        // Resume training from last sync file
+        size_t iteration = 0;
+        if (file_exists("dcgan_sync"))
         {
-            dlib::matrix<dlib::rgb_pixel> img;
-            training_images.dequeue(img);
-            real_samples.push_back(std::move(img));
+            deserialize("dcgan_sync") >> generator >> discriminator >> iteration;
         }
-        // The following lines are equivalent to calling train_one_step(real_samples, real_labels)
-        discriminator.to_tensor(real_samples.begin(), real_samples.end(), real_samples_tensor);
-        d_loss.add(discriminator.compute_loss(real_samples_tensor, real_labels.begin()));
-        discriminator.back_propagate_error(real_samples_tensor);
-        discriminator.update_parameters(d_solvers, learning_rate);
 
-        // Train the discriminator with fake images
-        // 1. generate some random noise
-        std::vector<noise_t> noises;
-        while (noises.size() < minibatch_size)
+        const size_t minibatch_size = 360;
+        const size_t max_iter = 50000;
+
+        const std::vector<float> real_labels(minibatch_size, 1);
+        const std::vector<float> fake_labels(minibatch_size, -1);
+        dlib::image_window win;
+        resizable_tensor real_samples_tensor, fake_samples_tensor, noises_tensor;
+        running_stats<double> g_loss, d_loss;
+        while (iteration < max_iter)
         {
-            noises.push_back(make_noise(rnd));
+            // Train the discriminator with real images
+            std::vector<matrix<rgb_pixel>> real_samples;
+            while (real_samples.size() < minibatch_size)
+            {
+                dlib::matrix<dlib::rgb_pixel> img;
+                training_images.dequeue(img);
+                real_samples.push_back(std::move(img));
+            }
+            // The following lines are equivalent to calling train_one_step(real_samples, real_labels)
+            discriminator.to_tensor(real_samples.begin(), real_samples.end(), real_samples_tensor);
+            d_loss.add(discriminator.compute_loss(real_samples_tensor, real_labels.begin()));
+            discriminator.back_propagate_error(real_samples_tensor);
+            discriminator.update_parameters(d_solvers, d_learning_rate);
+
+            // Train the discriminator with fake images
+            // 1. generate some random noise
+            std::vector<noise_t> noises;
+            while (noises.size() < minibatch_size)
+            {
+                noises.push_back(make_noise(rnd));
+            }
+            // 2. convert noises into a tensor 
+            generator.to_tensor(noises.begin(), noises.end(), noises_tensor);
+            // 3. Then forward the noise through the network and convert the outputs into images.
+            const auto fake_samples = get_generated_images(generator.forward(noises_tensor));
+            // 4. finally train the discriminator and wait for the threading to stop.  The following
+            // lines are equivalent to calling train_one_step(fake_samples, fake_labels)
+            discriminator.to_tensor(fake_samples.begin(), fake_samples.end(), fake_samples_tensor);
+            d_loss.add(discriminator.compute_loss(fake_samples_tensor, fake_labels.begin()));
+            discriminator.back_propagate_error(fake_samples_tensor);
+            discriminator.update_parameters(d_solvers, d_learning_rate);
+
+            // Train the generator
+            // This part is the essence of the Generative Adversarial Networks.  Until now, we have
+            // just trained a binary classifier that the generator is not aware of.  But now, the
+            // discriminator is going to give feedback to the generator on how it should update
+            // itself to generate more realistic images.  The following lines perform the same
+            // actions as train_one_step() except for the network update part.  They can also be
+            // seen as test_one_step() plus the error back propagation.
+
+            // Forward the fake samples and compute the loss with real labels
+            g_loss.add(discriminator.compute_loss(fake_samples_tensor, real_labels.begin()));
+            // Back propagate the error to fill the final data gradient
+            discriminator.back_propagate_error(fake_samples_tensor);
+            // Get the gradient that will tell the generator how to update itself
+            const tensor& d_grad = discriminator.get_final_data_gradient();
+            generator.back_propagate_error(noises_tensor, d_grad);
+            generator.update_parameters(g_solvers, g_learning_rate);
+
+            // At some point, we should see that the generated images start looking like samples from
+            // the MNIST dataset
+            if (++iteration % 100 == 0)
+            {
+                serialize("dcgan_sync") << generator << discriminator << iteration;
+                std::cout <<
+                    "step#: " << iteration <<
+                    "\tdiscriminator loss: " << d_loss.mean() * 2 <<
+                    "\tgenerator loss: " << g_loss.mean() << '\n';
+                win.set_image(tile_images(fake_samples));
+                win.set_title("DCGAN step#: " + to_string(iteration));
+                d_loss.clear();
+                g_loss.clear();
+            }
         }
-        // 2. convert noises into a tensor 
-        generator.to_tensor(noises.begin(), noises.end(), noises_tensor);
-        // 3. Then forward the noise through the network and convert the outputs into images.
-        const auto fake_samples = get_generated_images(generator.forward(noises_tensor));
-        // 4. finally train the discriminator and wait for the threading to stop.  The following
-        // lines are equivalent to calling train_one_step(fake_samples, fake_labels)
-        discriminator.to_tensor(fake_samples.begin(), fake_samples.end(), fake_samples_tensor);
-        d_loss.add(discriminator.compute_loss(fake_samples_tensor, fake_labels.begin()));
-        discriminator.back_propagate_error(fake_samples_tensor);
-        discriminator.update_parameters(d_solvers, learning_rate);
 
-        // Train the generator
-        // This part is the essence of the Generative Adversarial Networks.  Until now, we have
-        // just trained a binary classifier that the generator is not aware of.  But now, the
-        // discriminator is going to give feedback to the generator on how it should update
-        // itself to generate more realistic images.  The following lines perform the same
-        // actions as train_one_step() except for the network update part.  They can also be
-        // seen as test_one_step() plus the error back propagation.
+        // Once the training has finished, we don't need the discriminator any more. We just keep the
+        // generator.
+        generator.clean();
+        serialize("dcgan_mnist.dnn") << generator;
 
-        // Forward the fake samples and compute the loss with real labels
-        g_loss.add(discriminator.compute_loss(fake_samples_tensor, real_labels.begin()));
-        // Back propagate the error to fill the final data gradient
-        discriminator.back_propagate_error(fake_samples_tensor);
-        // Get the gradient that will tell the generator how to update itself
-        const tensor& d_grad = discriminator.get_final_data_gradient();
-        generator.back_propagate_error(noises_tensor, d_grad);
-        generator.update_parameters(g_solvers, learning_rate);
-
-        // At some point, we should see that the generated images start looking like samples from
-        // the training set
-        if (++iteration % 100 == 0)
+        // To test the generator, we just forward some random noise through it and visualize the
+        // output.
+        while (!win.is_closed())
         {
-            serialize("dcgan_sync") << generator << discriminator << iteration;
-            std::cout <<
-                "step#: " << iteration <<
-                "\tdiscriminator loss: " << d_loss.mean() * 2 <<
-                "\tgenerator loss: " << g_loss.mean() << '\n';
-            win.set_image(tile_images(fake_samples));
-            win.set_title("DCGAN step#: " + to_string(iteration));
-            d_loss.clear();
-            g_loss.clear();
+            win.set_image(generate_image(generator, make_noise(rnd)));
+            cout << "Hit enter to generate a new image";
+            cin.get();
         }
+
+        return EXIT_SUCCESS;
     }
+    catch (std::exception&) {
+        training_images.disable();
 
-    // Once the training has finished, we don't need the discriminator any more. We just keep the
-    // generator.
-    generator.clean();
-    serialize("dcgan_mnist.dnn") << generator;
+        for (auto& data_loader : data_loaders) {
+            data_loader.join();
+        }
 
-    // To test the generator, we just forward some random noise through it and visualize the
-    // output.
-    while (!win.is_closed())
-    {
-        win.set_image(generate_image(generator, make_noise(rnd)));
-        cout << "Hit enter to generate a new image";
-        cin.get();
+        throw;
     }
-
-    return EXIT_SUCCESS;
 }
 catch(exception& e)
 {
