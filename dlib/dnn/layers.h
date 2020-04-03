@@ -173,17 +173,28 @@ namespace dlib
 
             long num_inputs = filt_nr*filt_nc*sub.get_output().k();
             long num_outputs = num_filters_;
-            // allocate params for the filters and also for the filter bias values.
-            params.set_size(num_inputs*num_filters_ + num_filters_);
 
-            dlib::rand rnd(std::rand());
-            randomize_parameters(params, num_inputs+num_outputs, rnd);
+            auto required_size = num_inputs * num_filters_ + num_filters_;
+
+            if (params.size() != required_size)
+            {
+                assert(params.size() == 0);
+
+                // allocate params for the filters and also for the filter bias values.
+                params.set_size(required_size);
+
+                dlib::rand rnd(std::rand());
+                randomize_parameters(params, num_inputs + num_outputs, rnd);
+            }
 
             filters = alias_tensor(num_filters_, sub.get_output().k(), filt_nr, filt_nc);
-            biases = alias_tensor(1,num_filters_);
 
-            // set the initial bias values to zero
-            biases(params,filters.size()) = 0;
+            if (biases.size() != num_filters_) {
+                biases = alias_tensor(1, num_filters_);
+
+                // set the initial bias values to zero
+                biases(params, filters.size()) = 0;
+            }
         }
 
         template <typename SUBNET>
@@ -472,17 +483,32 @@ namespace dlib
         {
             long num_inputs = _nr*_nc*sub.get_output().k();
             long num_outputs = num_filters_;
-            // allocate params for the filters and also for the filter bias values.
-            params.set_size(num_inputs*num_filters_ + num_filters_);
 
-            dlib::rand rnd(std::rand());
-            randomize_parameters(params, num_inputs+num_outputs, rnd);
+            auto required_size = num_inputs * num_filters_ + num_filters_;
+
+            bool init_bias = false;
+
+            if (params.size() != required_size)
+            {
+                assert(params.size() == 0);
+
+                // allocate params for the filters and also for the filter bias values.
+                params.set_size(required_size);
+
+                dlib::rand rnd(std::rand());
+                randomize_parameters(params, num_inputs + num_outputs, rnd);
+            }
 
             filters = alias_tensor(sub.get_output().k(), num_filters_, _nr, _nc);
-            biases = alias_tensor(1,num_filters_);
 
-            // set the initial bias values to zero
-            biases(params,filters.size()) = 0;
+            if (biases.size() != num_filters_) {
+                assert(biases.size() == 0);
+
+                biases = alias_tensor(1, num_filters_);
+
+                // set the initial bias values to zero
+                biases(params, filters.size()) = 0;
+            }
         }
 
         template <typename SUBNET>
@@ -1305,29 +1331,35 @@ namespace dlib
         template <typename SUBNET>
         void setup (const SUBNET& sub)
         {
-            if (mode == FC_MODE)
-            {
-                gamma = alias_tensor(1,
-                                sub.get_output().k(),
-                                sub.get_output().nr(),
-                                sub.get_output().nc());
+            if (gamma.size() == 0) {
+                if (mode == FC_MODE)
+                {
+                    gamma = alias_tensor(1,
+                        sub.get_output().k(),
+                        sub.get_output().nr(),
+                        sub.get_output().nc());
+                }
+                else
+                {
+                    gamma = alias_tensor(1, sub.get_output().k());
+                }
+                beta = gamma;
             }
-            else
-            {
-                gamma = alias_tensor(1, sub.get_output().k());
+
+            if (params.size() != gamma.size() + beta.size()) {
+                assert(params.size() == 0);
+
+                params.set_size(gamma.size() + beta.size());
+
+                gamma(params, 0) = 1;
+                beta(params, gamma.size()) = 0;
+
+                running_means.copy_size(gamma(params, 0));
+                running_variances.copy_size(gamma(params, 0));
+                running_means = 0;
+                running_variances = 1;
+                num_updates = 0;
             }
-            beta = gamma;
-
-            params.set_size(gamma.size()+beta.size());
-
-            gamma(params,0) = 1;
-            beta(params,gamma.size()) = 0;
-
-            running_means.copy_size(gamma(params,0));
-            running_variances.copy_size(gamma(params,0));
-            running_means = 0;
-            running_variances = 1;
-            num_updates = 0;
         }
 
         template <typename SUBNET>
@@ -1597,21 +1629,29 @@ namespace dlib
         void setup (const SUBNET& sub)
         {
             num_inputs = sub.get_output().nr()*sub.get_output().nc()*sub.get_output().k();
-            if (bias_mode == FC_HAS_BIAS)
-                params.set_size(num_inputs+1, num_outputs);
-            else
-                params.set_size(num_inputs, num_outputs);
 
-            dlib::rand rnd(std::rand());
-            randomize_parameters(params, num_inputs+num_outputs, rnd);
+            const auto required_n = bias_mode == FC_HAS_BIAS ? num_inputs + 1 : num_inputs;
+            const auto required_k = num_outputs;
+
+            if (params.num_samples() != required_n || params.k() != required_k)
+            {
+                assert(params.size() == 0);
+
+                params.set_size(required_n, required_k);
+
+                dlib::rand rnd(std::rand());
+                randomize_parameters(params, num_inputs + num_outputs, rnd);
+            }
 
             weights = alias_tensor(num_inputs, num_outputs);
 
             if (bias_mode == FC_HAS_BIAS)
             {
-                biases = alias_tensor(1,num_outputs);
-                // set the initial bias values to zero
-                biases(params,weights.size()) = 0;
+                if (biases.size() != num_outputs) {
+                    biases = alias_tensor(1, num_outputs);
+                    // set the initial bias values to zero
+                    biases(params, weights.size()) = 0;
+                }
             }
         }
 
@@ -1927,6 +1967,10 @@ namespace dlib
         float get_multiply_value (
         ) const { return val; }
 
+        void set_multiply_value(
+            float val_
+        ) { val = val_; }
+
         template <typename SUBNET>
         void setup (const SUBNET& /*sub*/)
         {
@@ -2051,23 +2095,29 @@ namespace dlib
         template <typename SUBNET>
         void setup (const SUBNET& sub)
         {
-            if (mode == FC_MODE)
-            {
-                gamma = alias_tensor(1,
-                                sub.get_output().k(),
-                                sub.get_output().nr(),
-                                sub.get_output().nc());
+            if (gamma.size() == 0) {
+                if (mode == FC_MODE)
+                {
+                    gamma = alias_tensor(1,
+                        sub.get_output().k(),
+                        sub.get_output().nr(),
+                        sub.get_output().nc());
+                }
+                else
+                {
+                    gamma = alias_tensor(1, sub.get_output().k());
+                }
+                beta = gamma;
             }
-            else
-            {
-                gamma = alias_tensor(1, sub.get_output().k());
+
+            if (params.size() != gamma.size() + beta.size()) {
+                assert(params.size() == 0);
+
+                params.set_size(gamma.size() + beta.size());
+
+                gamma(params, 0) = 1;
+                beta(params, gamma.size()) = 0;
             }
-            beta = gamma;
-
-            params.set_size(gamma.size()+beta.size());
-
-            gamma(params,0) = 1;
-            beta(params,gamma.size()) = 0;
         }
 
         void forward_inplace(const tensor& input, tensor& output)

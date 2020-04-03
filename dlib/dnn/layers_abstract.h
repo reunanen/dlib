@@ -1371,6 +1371,14 @@ namespace dlib
                   produces the result as output.
         !*/
 
+        void set_multiply_value(
+            float val
+        );
+        /*!
+            ensures
+                - #get_multiply_value() == val
+        !*/
+
         template <typename SUBNET> void setup (const SUBNET& sub);
         void forward_inplace(const tensor& input, tensor& output);
         void backward_inplace(const tensor& gradient_input, tensor& data_grad, tensor& params_grad);
