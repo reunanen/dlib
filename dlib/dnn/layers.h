@@ -3601,6 +3601,131 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
+    // TODO: group size parameter
+
+    class minibatch_stddev_
+    {
+    public:
+        explicit minibatch_stddev_(
+        )
+        {
+        }
+
+        inline dpoint map_input_to_output(const dpoint& p) const { return p; }
+        inline dpoint map_output_to_input(const dpoint& p) const { return p; }
+
+        template <typename SUBNET>
+        void setup(const SUBNET& sub)
+        {
+        }
+
+        template <typename SUBNET>
+        void forward(const SUBNET& sub, resizable_tensor& output)
+        {
+            const tensor& input = sub.get_output();
+            output.set_size(input.num_samples(), 1, input.nr(), input.nc());
+
+            if (input.num_samples() > 1)
+            {
+                const float* in = input.host();
+                float* out = output.host();
+
+                // Calculate mean
+                double total_stddev = 0.0;
+
+                for (long long k = 0; k < input.k(); ++k) {
+                    for (long long r = 0; r < input.nr(); ++r) {
+                        for (long long c = 0; c < input.nc(); ++c) {
+                            double total = 0.0;
+                            for (long long n = 0; n < input.num_samples(); ++n) {
+                                const auto i = tensor_index(input, n, k, r, c);
+                                const double value = in[i];
+                                total += value;
+                            }
+                            const double mean = total / input.num_samples();
+
+                            double total_squared_diff = 0.0;
+
+                            for (long long n = 0; n < input.num_samples(); ++n) {
+                                const auto i = tensor_index(input, n, k, r, c);
+                                const auto diff = in[i] - mean;
+                                total_squared_diff += diff * diff;
+                            }
+
+                            const auto stddev = std::sqrt(total_squared_diff / input.num_samples());
+                            total_stddev += stddev;
+                        }
+                    }
+                }
+
+                // Average over fmaps and pixels
+                double mean_stddev = total_stddev / (input.k() * input.nr() * input.nc());
+
+                // Replicate
+                for (long long n = 0; n < input.num_samples(); ++n) {
+                    for (long long r = 0; r < input.nr(); ++r) {
+                        for (long long c = 0; c < input.nc(); ++c) {
+                            const auto i = tensor_index(output, n, 0, r, c);
+                            out[i] = static_cast<float>(mean_stddev);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // We are running in testing mode so we don't do anything at all.
+                // Note that the testing mode is useful only for figuring out
+                // matrix dimensions. But then again the discriminator part of
+                // GANs is usually required for training only.
+            }
+        }
+
+        template <typename SUBNET>
+        void backward(const tensor& gradient_input, SUBNET& sub, tensor& params_grad)
+        {
+        }
+
+        const tensor& get_layer_params() const { return params; }
+        tensor& get_layer_params() { return params; }
+
+        friend void serialize(const minibatch_stddev_& item, std::ostream& out)
+        {
+            serialize("minibatch_stddev", out);
+        }
+
+        friend void deserialize(minibatch_stddev_& item, std::istream& in)
+        {
+            std::string version;
+            deserialize(version, in);
+
+            if (version != "minibatch_stddev")
+                throw serialization_error("Unexpected version '" + version + "' found while deserializing dlib::minibatch_stddev_.");
+        }
+
+        friend std::ostream& operator<<(std::ostream& out, const minibatch_stddev_& item)
+        {
+            out << "minibatch_stddev";
+            return out;
+        }
+
+        friend void to_xml(const minibatch_stddev_& item, std::ostream& out)
+        {
+            out << "<minibatch_stddev/>\n";
+        }
+
+    private:
+        resizable_tensor params;
+
+        static size_t tensor_index(const tensor& t, long sample, long k, long row, long column)
+        {
+            // See: https://github.com/davisking/dlib/blob/4dfeb7e186dd1bf6ac91273509f687293bd4230a/dlib/dnn/tensor_abstract.h#L38
+            return ((sample * t.k() + k) * t.nr() + row) * t.nc() + column;
+        }
+
+    };
+
+    template <typename SUBNET>
+    using minibatch_stddev = add_layer<minibatch_stddev_, SUBNET>;
 }
 
 #endif // DLIB_DNn_LAYERS_H_

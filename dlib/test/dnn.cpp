@@ -43,6 +43,7 @@ namespace
 
 // ----------------------------------------------------------------------------------------
 
+#if 0
     void test_tanh()
     {
         using namespace dlib::tt;
@@ -1677,11 +1678,13 @@ namespace
             }
         }
     }
+#endif
 
 // ----------------------------------------------------------------------------------------
 
     void test_layers()
     {
+#if 0
         {
             print_spinner();
             extract_<0,2,2,2> l;
@@ -1928,10 +1931,18 @@ namespace
             auto res = test_layer(l);
             DLIB_TEST_MSG(res, res);
         }
+#endif
+        {
+            print_spinner();
+            minibatch_stddev_ l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
     }
 
 // ----------------------------------------------------------------------------------------
 
+#if 0
     template <unsigned long n, typename SUBNET> using rcon = max_pool<2,2,2,2,relu<bn_con<con<n,5,5,1,1,SUBNET>>>>;
     template <unsigned long n, typename SUBNET> using rfc = relu<bn_fc<fc<n,SUBNET>>>;
 
@@ -3665,6 +3676,7 @@ namespace
         DLIB_TEST(dets.size() > approximate_desired_det_count * 0.45);
         DLIB_TEST(dets.size() < approximate_desired_det_count * 1.05);
     }
+#endif
 
 // ----------------------------------------------------------------------------------------
 
@@ -3682,6 +3694,8 @@ namespace
         {
             // make the tests repeatable
             srand(1234);
+
+#if 0
 
             test_tagging();
 #ifdef DLIB_USE_CUDA
@@ -3739,7 +3753,9 @@ namespace
             test_batch_normalize();
             test_batch_normalize_conv();
             test_basic_tensor_ops();
+#endif
             test_layers();
+#if 0
             test_visit_functions();
             test_copy_tensor_cpu();
             test_copy_tensor_add_to_cpu();
@@ -3763,6 +3779,7 @@ namespace
             test_loss_dot();
             test_loss_multimulticlass_log();
             test_loss_mmod();
+#endif
         }
 
         void perform_test()
