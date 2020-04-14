@@ -685,8 +685,14 @@ namespace dlib
                 float* g = scratch.host();
                 for (long i = 0; i < scratch.num_samples(); ++i)
                 {
-                    const long y = int_labels.at(truth->at(classifier_name));
+                    const std::string& truth_label = truth->at(classifier_name);
                     ++truth;
+
+                    constexpr long unknown_label = std::numeric_limits<long>::max();
+
+                    const long y = !truth_label.empty()
+                        ? int_labels.at(truth_label)
+                        : unknown_label; // Unknown label - no effect to loss or gradient
 
                     for (long k = 0; k < scratch.k(); ++k)
                     {
@@ -695,6 +701,10 @@ namespace dlib
                         {
                             loss += scale*-std::log(g[idx]);
                             g[idx] = scale*(g[idx]-1);
+                        }
+                        else if (y == unknown_label)
+                        {
+                            g[idx] = 0.f;
                         }
                         else
                         {

@@ -500,6 +500,11 @@ namespace dlib
                 task.  More generally, you can use any number of classifiers and labels
                 when using this object.  Finally, each of the classifiers uses a standard
                 multi-class logistic regression loss.
+
+                Note that if you don't know the color or type of a particular sample, or
+                want to ignore the color or type of a particular sample for whatever
+                reason, you can pass an empty string and it will not be taken into
+                account when calculating the gradients (or the loss).
         !*/
 
     public:
@@ -679,6 +684,9 @@ namespace dlib
                   set of key strings.  It also means that the value strings in truth[i]
                   must be strings known to the loss, i.e. they are valid labels according
                   to get_labels().
+
+                  Note that empty labels are allowed as well.  For empty labels, the
+                  corresponding output elements do not contribute to gradient or loss.
         !*/
     };
 
