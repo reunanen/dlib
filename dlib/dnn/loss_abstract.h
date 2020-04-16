@@ -650,6 +650,25 @@ namespace dlib
                 - sub.sample_expansion_factor() == 1
         !*/
 
+        void set_relative_weight(const std::string& classifier_name, double relative_weight);
+        /*!
+            ensures
+                - The relative weight of the desired classifier (in gradient and
+                  loss calculations) is increased or decreased. (The default
+                  relative weight, if nothing is set, is 1.)
+                  This may be useful e.g. in situations where we have more labels
+                  available for the training of classifier A, relative to
+                  classifier B, but classifier B is important for us, too.
+                - #get_relative_weight(classifier_name) == relative_weight
+        !*/
+
+        double get_relative_weight(const std::string& classifier_name) const;
+        /*!
+            ensures
+                - returns the weight previously set with set_relative_weight(),
+                  or 1.0 if nothing was set
+        !*/
+
         template <
             typename const_label_iterator,
             typename SUBNET

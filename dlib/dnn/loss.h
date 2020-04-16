@@ -641,6 +641,19 @@ namespace dlib
             }
         }
 
+        void set_relative_weight(const std::string& classifier_name, double relative_weight)
+        {
+            relative_weights[classifier_name] = relative_weight;
+        }
+
+        double get_relative_weight(const std::string& classifier_name) const
+        {
+            const auto i = relative_weights.find(classifier_name);
+            if (i != relative_weights.end())
+                return i->second;
+            else
+                return 1.0;
+        }
 
         template <
             typename const_label_iterator,
@@ -680,6 +693,7 @@ namespace dlib
 
                 tt::softmax(scratch, scratch);
 
+                const double w = get_relative_weight(classifier_name);
 
                 auto truth = truth_begin;
                 float* g = scratch.host();
@@ -699,8 +713,8 @@ namespace dlib
                         const unsigned long idx = i*scratch.k()+k;
                         if (k == y)
                         {
-                            loss += scale*-std::log(g[idx]);
-                            g[idx] = scale*(g[idx]-1);
+                            loss += w*scale*-std::log(g[idx]);
+                            g[idx] = w*scale*(g[idx]-1);
                         }
                         else if (y == unknown_label)
                         {
@@ -708,7 +722,7 @@ namespace dlib
                         }
                         else
                         {
-                            g[idx] = scale*g[idx];
+                            g[idx] = w*scale*g[idx];
                         }
                     }
                 }
@@ -777,6 +791,8 @@ namespace dlib
         // We make it true that: possible_labels[classifier][label_idx_lookup[classifier][label]] == label
         std::map<std::string, std::map<std::string,long>> label_idx_lookup;
 
+        // Relative weight by classifier. Not serialized at the moment.
+        std::map<std::string, double> relative_weights;
 
         // Scratch doesn't logically contribute to the state of this object.  It's just
         // temporary scratch space used by this class.  
