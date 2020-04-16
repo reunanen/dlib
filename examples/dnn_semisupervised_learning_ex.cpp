@@ -21,10 +21,7 @@
 using namespace std;
 using namespace dlib;
 
-// --- Begin: code copied from dnn_dcgan_train_ex.cpp
-
-// We start by defining a simple visitor to disable bias learning in a network.  By default,
-// biases are initialized to 0, so setting the multipliers to 0 disables bias learning.
+// This class is simply copied from dnn_dcgan_train_ex.cpp
 class visitor_no_bias
 {
 public:
@@ -42,10 +39,10 @@ public:
     }
 };
 
-// Some helper definitions for the noise generation
 const size_t noise_size = 100;
 using noise_t = std::array<matrix<float, 1, 1>, noise_size>;
 
+// This, too, is copied from dnn_dcgan_train_ex.cpp
 noise_t make_noise(dlib::rand& rnd)
 {
     noise_t noise;
@@ -64,9 +61,7 @@ using conp = add_layer<con_<num_filters, kernel_size, kernel_size, stride, strid
 template<long num_filters, long kernel_size, int stride, int padding, typename SUBNET>
 using contp = add_layer<cont_<num_filters, kernel_size, kernel_size, stride, stride, padding, padding>, SUBNET>;
 
-// --- End: code copied from dnn_dcgan_train_ex.cpp
-
-// Even the generator looks the same as in dnn_dcgan_train_ex.cpp.
+// Even the generator looks the same as in dnn_dcgan_train_ex.cpp
 using generator_type =
     loss_binary_log_per_pixel<
     sig<contp<1, 4, 2, 1,
@@ -89,9 +84,7 @@ using discriminator_type =
     input<matrix<unsigned char>>
     >>>>>>>>>>;
 
-// --- Begin: more code copied from dnn_dcgan_train_ex.cpp
-
-// Some helper functions to generate and get the images from the generator
+// Also the following two functions are copied from dnn_dcgan_train_ex.cpp
 matrix<unsigned char> generate_image(generator_type& net, const noise_t& noise)
 {
     const matrix<float> output = net(noise);
@@ -113,29 +106,28 @@ std::vector<matrix<unsigned char>> get_generated_images(const tensor& out)
     return images;
 }
 
-// --- End: more code copied from dnn_dcgan_train_ex.cpp
-
 constexpr auto unknown_label = std::numeric_limits<unsigned long>::max();
 
-// Intentionally forget most of the training labels (to simulate semi-supervised learning).
-// Returns the number of labels not forgotten.
-size_t decimate_training_labels(std::vector<unsigned long>& training_labels, dlib::rand& rnd)
+// Intentionally forget most of the training labels, to simulate semi-supervised learning
+void decimate_training_labels(std::vector<unsigned long>& training_labels)
 {
-    // Keep only about 0.1% of the labels
-    const double prob_keep_training_sample_label = 0.001;
+    // Keep only 10 samples per class
+    const size_t samples_to_keep_per_class = 10;
 
-    size_t keep_count = 0;
+    std::map<unsigned long, std::deque<size_t>> indexes_by_class;
 
-    for (auto& training_label : training_labels)
+    for (size_t i = 0; i < training_labels.size(); ++i)
+        indexes_by_class[training_labels[i]].push_back(i);
+
+    for (auto& i : indexes_by_class)
     {
-        const bool keep_label = rnd.get_double_in_range(0.0, 1.0) < prob_keep_training_sample_label;
-        if (keep_label)
-            ++keep_count;
-        else
-            training_label = unknown_label;
-    }
+        auto& indexes = i.second;
+        std::random_shuffle(indexes.begin(), indexes.end());
 
-    return keep_count;
+        // Forget the label of all samples except the first N (after shuffling)
+        for (size_t j = samples_to_keep_per_class; j < indexes.size(); ++j)
+            training_labels[indexes[j]] = unknown_label;
+    }
 }
 
 int main(int argc, char** argv) try
@@ -164,7 +156,7 @@ int main(int argc, char** argv) try
     dlib::rand rnd(std::rand());
 
     // Actually use only part of the training data available
-    const auto training_label_count = decimate_training_labels(training_labels, rnd);
+    decimate_training_labels(training_labels);
 
     // Define the universe of possible labels that may be passed to the discriminator
     const std::map<string, std::vector<string>> possible_labels {
@@ -182,13 +174,21 @@ int main(int argc, char** argv) try
     visit_layers(generator, visitor_no_bias());
     visit_layers(discriminator, visitor_no_bias());
 
-    cout << endl << "Using " << training_label_count << " training labels" << endl;
+    std::deque<size_t> training_label_indexes;
+
+    for (size_t i = 0; i < training_labels.size(); ++i)
+        if (training_labels[i] != unknown_label)
+            training_label_indexes.push_back(i);
+
+    cout << endl << "Using " << training_label_indexes.size() << " training labels" << endl;
 
     // The solvers for the generator and discriminator networks.
     // Copied from dnn_dcgan_train_ex.cpp.
     std::vector<adam> g_solvers(generator.num_computational_layers, adam(0, 0.5, 0.999));
     std::vector<adam> d_solvers(discriminator.num_computational_layers, adam(0, 0.5, 0.999));
-    double learning_rate = 2e-4;
+
+    const double g_learning_rate = 2e-4;
+    const double d_learning_rate = 1e-4;
 
     // Resume training from last sync file, if any.
     size_t iteration = 0;
@@ -196,6 +196,7 @@ int main(int argc, char** argv) try
         deserialize("semisupervised_sync") >> generator >> discriminator >> iteration;
 
     const size_t minibatch_size = 64;
+    const size_t max_iter = 50000;
 
     // All generated images have the same target labels: unknown (empty) digit class, and fake image
     const std::vector<std::map<std::string, std::string>> fake_labels(
@@ -205,26 +206,36 @@ int main(int argc, char** argv) try
     dlib::image_window win;
     resizable_tensor real_samples_tensor, fake_samples_tensor, noises_tensor;
     running_stats<double> g_loss, d_loss;
-    while (iteration < 50000)
+    while (iteration < max_iter)
     {
-        // Train the discriminator with real images. This is the same as in dnn_dcgan_train_ex.cpp,
-        // except now we also set the classes (where available).
+        // Train the discriminator with real images.  This is the same as in dnn_dcgan_train_ex.cpp,
+        // except in that now we also set the classes (where available).  In addition, we control the
+        // proportion of labeled samples.
         std::vector<matrix<unsigned char>> real_samples;
         std::vector<std::map<std::string, std::string>> real_labels;
 
+        const auto proportion_of_labeled_samples = iteration / static_cast<double>(max_iter);
+        const auto w = 1.0 - proportion_of_labeled_samples;
+
         while (real_samples.size() < minibatch_size)
         {
-            auto idx = rnd.get_random_32bit_number() % training_images.size();
-            real_samples.push_back(training_images[idx]);
+            const bool require_labeled = false; // rnd.get_double_in_range(0, 1) < proportion_of_labeled_samples;
+            const auto random_number = rnd.get_random_64bit_number();
+
+            const auto index = require_labeled
+                ? training_label_indexes[random_number % training_label_indexes.size()]
+                : random_number % training_images.size();
+
+            real_samples.push_back(training_images[index]);
 
             // For real images, supply the digit class where available; also specify that the image is "real"
-            const auto label = training_labels[idx] == unknown_label ? "" : std::to_string(training_labels[idx]);
+            const auto label = training_labels[index] == unknown_label ? "" : std::to_string(training_labels[index]);
             real_labels.push_back({ { "Supervised", label }, { "Unsupervised", "Real" } });
         }
         discriminator.to_tensor(real_samples.begin(), real_samples.end(), real_samples_tensor);
         d_loss.add(discriminator.compute_loss(real_samples_tensor, real_labels.begin()));
         discriminator.back_propagate_error(real_samples_tensor);
-        discriminator.update_parameters(d_solvers, learning_rate);
+        discriminator.update_parameters(d_solvers, w * d_learning_rate);
 
         // Train the discriminator with fake images. With fake_labels already initialized, the code itself
         // does not differ from dnn_dcgan_train_ex.cpp.
@@ -238,14 +249,18 @@ int main(int argc, char** argv) try
         discriminator.to_tensor(fake_samples.begin(), fake_samples.end(), fake_samples_tensor);
         d_loss.add(discriminator.compute_loss(fake_samples_tensor, fake_labels.begin()));
         discriminator.back_propagate_error(fake_samples_tensor);
-        discriminator.update_parameters(d_solvers, learning_rate);
+        discriminator.update_parameters(d_solvers, w * d_learning_rate);
+
+        // Let's not use the supervised labels for training the generator.
+        for (auto& real_label : real_labels)
+            real_label["Supervised"] = "";
 
         // Train the generator. This does not differ from dnn_dcgan_train_ex.cpp either.
         g_loss.add(discriminator.compute_loss(fake_samples_tensor, real_labels.begin()));
         discriminator.back_propagate_error(fake_samples_tensor);
         const tensor& d_grad = discriminator.get_final_data_gradient();
         generator.back_propagate_error(noises_tensor, d_grad);
-        generator.update_parameters(g_solvers, learning_rate);
+        generator.update_parameters(g_solvers, w * g_learning_rate);
 
         // The generated images should very soon start looking like samples from the
         // MNIST dataset.
@@ -271,14 +286,17 @@ int main(int argc, char** argv) try
 
     // (The discriminator could be further simplified by dropping the real/fake classifier.)
 
-    // Now let's classify the test set.  Remember that we trained with only about 0.1% of the
-    // labels!
-    const auto predicted_labels = discriminator(testing_images);
+    // Now let's classify the test set.  Remember that we trained with 100 labels only!
+    // Generally an error of about 1% (100 samples) is expected. (See Table 1 of Salimans et
+    // al., 2016, Improved Techniques for Training GANs, https://arxiv.org/pdf/1606.03498.pdf)
     size_t num_right = 0;
     size_t num_wrong = 0;
     for (size_t i = 0; i < testing_images.size(); ++i)
     {
-        const std::string predicted_label = predicted_labels[i].find("Supervised")->second;
+        // Feed data one by one, because the batch normalization layer supports this kind of
+        // a test mode (alternatively, a new net with affine layers could be instantiated).
+        const auto& prediction = discriminator(testing_images[i]);
+        const std::string& predicted_label = prediction.find("Supervised")->second;
         if (std::stoul(predicted_label) == testing_labels[i])
             ++num_right;
         else
