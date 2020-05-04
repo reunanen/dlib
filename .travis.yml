@@ -94,7 +94,7 @@ matrix:
 
     ###################
     - language: python
-      python: 2.7
+      python: 3.5
       env:
         - VARIANT=python-api
       script:
@@ -102,7 +102,7 @@ matrix:
 
     ###################
     - language: python
-      python: 3.5
+      python: 3.8
       env:
         - VARIANT=python-api
       script:

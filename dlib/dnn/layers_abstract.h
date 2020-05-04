@@ -1631,7 +1631,7 @@ namespace dlib
                 where all operations are performed element wise and each sample in the
                 INPUT tensor is processed separately.
 
-                Moreover, this object has two modes that effect the dimensionalities of A
+                Moreover, this object has two modes that affect the dimensionalities of A
                 and B and how they are applied to compute A*INPUT+B.  If
                 get_mode()==FC_MODE then A and B each have the same dimensionality as the
                 input tensor, except their num_samples() dimensions are 1.  If
@@ -2092,6 +2092,57 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
+    class leaky_relu_
+    {
+        /*!
+            WHAT THIS OBJECT REPRESENTS
+                This is an implementation of the EXAMPLE_COMPUTATIONAL_LAYER_ interface
+                defined above.  In particular, it defines a leaky rectified linear
+                layer.  Therefore, it passes its inputs through the function
+                    f(x) = x>0 ? x : alpha*x
+                where f() is applied pointwise across the input tensor and alpha is a
+                non-learned scalar.
+
+                This is the layer type introduced in the paper:
+                    A. L. Maas, A. Y. Hannun, and A. Y. Ng. "Rectifier nonlinearities improve
+                    neural network acoustic models". In ICML, 2013.
+        !*/
+
+    public:
+        explicit leaky_relu_(
+            float alpha = 0.01f
+        );
+        /*!
+            ensures
+                - the alpha parameter will be initialized with the alpha value
+        !*/
+
+        float get_alpha(
+        ) const;
+        /*!
+            ensures
+                - returns the alpha parameter of the leaky_relu
+        !*/
+
+        template <typename SUBNET> void setup(const SUBNET& sub);
+        void forward_inplace(const tensor& input, tensor& output);
+        void backward_inplace(const tensor& computed_output, const tensor& gradient_input, tensor& data_grad, tensor& params_grad);
+        dpoint map_input_to_output(dpoint p) const;
+        dpoint map_output_to_input(dpoint p) const;
+        const tensor& get_layer_params() const;
+        tensor& get_layer_params();
+        /*!
+            These functions are implemented as described in the EXAMPLE_COMPUTATIONAL_LAYER_
+            interface.  Note that this layer doesn't have any parameters, so the tensor
+            returned by get_layer_params() is always empty.
+        !*/
+    };
+
+    template <typename SUBNET>
+    using leaky_relu = add_layer<prelu_, SUBNET>;
+
+// ----------------------------------------------------------------------------------------
+
     class sig_
     {
         /*!
@@ -2124,6 +2175,41 @@ namespace dlib
 
     template <typename SUBNET>
     using sig = add_layer<sig_, SUBNET>;
+
+// ----------------------------------------------------------------------------------------
+
+    class mish_
+    {
+        /*!
+            WHAT THIS OBJECT REPRESENTS
+                This is an implementation of the EXAMPLE_COMPUTATIONAL_LAYER_ interface
+                defined above.  In particular, it defines a mish layer.  Therefore, it
+                passes its inputs through the function
+                    f(x)= x*tanh(log(1+exp(x)))
+                where f() is applied pointwise across the input tensor.
+        !*/
+
+    public:
+
+        mish_(
+        );
+
+        template <typename SUBNET> void setup (const SUBNET& sub);
+        template <typename SUBNET> void forward(const SUBNET& sub, resizable_tensor& data_output);
+        template <typename SUBNET> void backward(const tensor& gradient_input, SUBNET& sub, tensor&);
+        dpoint map_input_to_output(dpoint p) const;
+        dpoint map_output_to_input(dpoint p) const;
+        const tensor& get_layer_params() const;
+        tensor& get_layer_params();
+        /*!
+            These functions are implemented as described in the EXAMPLE_COMPUTATIONAL_LAYER_
+            interface.  Note that this layer doesn't have any parameters, so the tensor
+            returned by get_layer_params() is always empty.
+        !*/
+    };
+
+    template <typename SUBNET>
+    using mish = add_layer<mish_, SUBNET>;
 
 // ----------------------------------------------------------------------------------------
 

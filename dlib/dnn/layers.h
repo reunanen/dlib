@@ -691,14 +691,14 @@ namespace dlib
         const tensor& get_layer_params() const { return params; }
         tensor& get_layer_params() { return params; }
 
-        friend void serialize(const upsample_& , std::ostream& out)
+        friend void serialize(const upsample_& /*item*/, std::ostream& out)
         {
             serialize("upsample_", out);
             serialize(scale_y, out);
             serialize(scale_x, out);
         }
 
-        friend void deserialize(upsample_& , std::istream& in)
+        friend void deserialize(upsample_& /*item*/, std::istream& in)
         {
             std::string version;
             deserialize(version, in);
@@ -713,7 +713,7 @@ namespace dlib
                 throw serialization_error("Wrong scale found while deserializing dlib::upsample_");
         }
 
-        friend std::ostream& operator<<(std::ostream& out, const upsample_& )
+        friend std::ostream& operator<<(std::ostream& out, const upsample_& /*item*/)
         {
             out << "upsample\t ("
                 << "scale_y="<<scale_y
@@ -823,7 +823,7 @@ namespace dlib
                 throw serialization_error("Wrong size found while deserializing dlib::resize_to_");
         }
         
-        friend std::ostream& operator<<(std::ostream& out, const resize_to_& item)
+        friend std::ostream& operator<<(std::ostream& out, const resize_to_& /*item*/)
         {
             out << "resize_to ("
                 << "nr=" << NR_
@@ -832,7 +832,7 @@ namespace dlib
             return out;
         }
         
-        friend void to_xml(const resize_to_& item, std::ostream& out)
+        friend void to_xml(const resize_to_& /*item*/, std::ostream& out)
         {
             out << "<resize_to";
             out << " nr='" << NR_ << "'" ;
@@ -2153,7 +2153,7 @@ namespace dlib
             item.mode = (layer_mode)mode;
         }
 
-        friend std::ostream& operator<<(std::ostream& out, const affine_& )
+        friend std::ostream& operator<<(std::ostream& out, const affine_& /*item*/)
         {
             out << "affine";
             return out;
@@ -2229,25 +2229,25 @@ namespace dlib
         inline dpoint map_input_to_output (const dpoint& p) const { return p; }
         inline dpoint map_output_to_input (const dpoint& p) const { return p; }
 
-        friend void serialize(const add_prev_& , std::ostream& out)
+        friend void serialize(const add_prev_& /*item*/, std::ostream& out)
         {
             serialize("add_prev_", out);
         }
 
-        friend void deserialize(add_prev_& , std::istream& in)
+        friend void deserialize(add_prev_& /*item*/, std::istream& in)
         {
             std::string version;
             deserialize(version, in);
             if (version != "add_prev_")
                 throw serialization_error("Unexpected version '"+version+"' found while deserializing dlib::add_prev_.");
         }
-        friend std::ostream& operator<<(std::ostream& out, const add_prev_& )
+        friend std::ostream& operator<<(std::ostream& out, const add_prev_& /*item*/)
         {
             out << "add_prev"<<id;
             return out;
         }
 
-        friend void to_xml(const add_prev_& item, std::ostream& out)
+        friend void to_xml(const add_prev_& /*item*/, std::ostream& out)
         {
             out << "<add_prev tag='"<<id<<"'/>\n";
         }
@@ -2479,12 +2479,12 @@ namespace dlib
         const tensor& get_layer_params() const { return params; }
         tensor& get_layer_params() { return params; }
 
-        friend void serialize(const mult_prev_& , std::ostream& out)
+        friend void serialize(const mult_prev_& /*item*/, std::ostream& out)
         {
             serialize("mult_prev_", out);
         }
 
-        friend void deserialize(mult_prev_& , std::istream& in)
+        friend void deserialize(mult_prev_& /*item*/, std::istream& in)
         {
             std::string version;
             deserialize(version, in);
@@ -2492,13 +2492,13 @@ namespace dlib
                 throw serialization_error("Unexpected version '"+version+"' found while deserializing dlib::mult_prev_.");
         }
 
-        friend std::ostream& operator<<(std::ostream& out, const mult_prev_& item)
+        friend std::ostream& operator<<(std::ostream& out, const mult_prev_& /*item*/)
         {
             out << "mult_prev"<<id;
             return out;
         }
 
-        friend void to_xml(const mult_prev_& item, std::ostream& out)
+        friend void to_xml(const mult_prev_& /*item*/, std::ostream& out)
         {
             out << "<mult_prev tag='"<<id<<"'/>\n";
         }
@@ -2601,12 +2601,12 @@ namespace dlib
         inline dpoint map_input_to_output (const dpoint& p) const { return p; }
         inline dpoint map_output_to_input (const dpoint& p) const { return p; }
 
-        friend void serialize(const resize_prev_to_tagged_& , std::ostream& out)
+        friend void serialize(const resize_prev_to_tagged_& /*item*/, std::ostream& out)
         {
             serialize("resize_prev_to_tagged_", out);
         }
 
-        friend void deserialize(resize_prev_to_tagged_& , std::istream& in)
+        friend void deserialize(resize_prev_to_tagged_& /*item*/, std::istream& in)
         {
             std::string version;
             deserialize(version, in);
@@ -2614,13 +2614,13 @@ namespace dlib
                 throw serialization_error("Unexpected version '"+version+"' found while deserializing dlib::resize_prev_to_tagged_.");
         }
 
-        friend std::ostream& operator<<(std::ostream& out, const resize_prev_to_tagged_& )
+        friend std::ostream& operator<<(std::ostream& out, const resize_prev_to_tagged_& /*item*/)
         {
             out << "resize_prev_to_tagged"<<id;
             return out;
         }
 
-        friend void to_xml(const resize_prev_to_tagged_& , std::ostream& out)
+        friend void to_xml(const resize_prev_to_tagged_& /*item*/, std::ostream& out)
         {
             out << "<resize_prev_to_tagged tag='"<<id<<"'/>\n";
         }
@@ -2711,13 +2711,13 @@ namespace dlib
             deserialize(item.reshape_src, in);
         }
 
-        friend std::ostream& operator<<(std::ostream& out, const scale_& item)
+        friend std::ostream& operator<<(std::ostream& out, const scale_& /*item*/)
         {
             out << "scale"<<id;
             return out;
         }
 
-        friend void to_xml(const scale_& item, std::ostream& out)
+        friend void to_xml(const scale_& /*item*/, std::ostream& out)
         {
             out << "<scale tag='"<<id<<"'/>\n";
         }
@@ -2791,12 +2791,12 @@ namespace dlib
         const tensor& get_layer_params() const { return params; }
         tensor& get_layer_params() { return params; }
 
-        friend void serialize(const relu_& , std::ostream& out)
+        friend void serialize(const relu_& /*item*/, std::ostream& out)
         {
             serialize("relu_", out);
         }
 
-        friend void deserialize(relu_& , std::istream& in)
+        friend void deserialize(relu_& /*item*/, std::istream& in)
         {
             std::string version;
             deserialize(version, in);
@@ -2804,7 +2804,7 @@ namespace dlib
                 throw serialization_error("Unexpected version '"+version+"' found while deserializing dlib::relu_.");
         }
 
-        friend std::ostream& operator<<(std::ostream& out, const relu_& )
+        friend std::ostream& operator<<(std::ostream& out, const relu_& /*item*/)
         {
             out << "relu";
             return out;
@@ -2912,6 +2912,84 @@ namespace dlib
     using prelu = add_layer<prelu_, SUBNET>;
 
 // ----------------------------------------------------------------------------------------
+    class leaky_relu_
+    {
+    public:
+        explicit leaky_relu_(
+            float alpha_ = 0.01f
+        ) : alpha(alpha_)
+        {
+        }
+
+        float get_alpha(
+        ) const {
+            return alpha;
+        }
+
+        template <typename SUBNET>
+        void setup(const SUBNET& /*sub*/)
+        {
+        }
+
+        void forward_inplace(const tensor& input, tensor& output)
+        {
+            tt::leaky_relu(output, input, alpha);
+        }
+
+        void backward_inplace(
+            const tensor& computed_output,
+            const tensor& gradient_input,
+            tensor& data_grad,
+            tensor&
+        )
+        {
+            tt::leaky_relu_gradient(data_grad, computed_output, gradient_input, alpha);
+        }
+
+        inline dpoint map_input_to_output (const dpoint& p) const { return p; }
+        inline dpoint map_output_to_input (const dpoint& p) const { return p; }
+
+        const tensor& get_layer_params() const { return params; }
+        tensor& get_layer_params() { return params; }
+
+        friend void serialize(const leaky_relu_& item, std::ostream& out)
+        {
+            serialize("leaky_relu_", out);
+            serialize(item.alpha, out);
+        }
+
+        friend void deserialize(leaky_relu_& item, std::istream& in)
+        {
+            std::string version;
+            deserialize(version, in);
+            if (version != "leaky_relu_")
+                throw serialization_error("Unexpected version '"+version+"' found while deserializing dlib::leaky_relu_.");
+            deserialize(item.alpha, in);
+        }
+
+        friend std::ostream& operator<<(std::ostream& out, const leaky_relu_& item)
+        {
+            out << "leaky_relu\t("
+                << "alpha=" << item.alpha
+                << ")";
+            return out;
+        }
+
+        friend void to_xml(const leaky_relu_& item, std::ostream& out)
+        {
+            out << "<leaky_relu alpha='"<< item.alpha << "'>\n";
+            out << "<leaky_relu/>\n";
+        }
+
+    private:
+        resizable_tensor params;
+        float alpha;
+    };
+
+    template <typename SUBNET>
+    using leaky_relu = add_layer<leaky_relu_, SUBNET>;
+
+// ----------------------------------------------------------------------------------------
 
     class sig_
     {
@@ -2946,12 +3024,12 @@ namespace dlib
         const tensor& get_layer_params() const { return params; }
         tensor& get_layer_params() { return params; }
 
-        friend void serialize(const sig_& , std::ostream& out)
+        friend void serialize(const sig_& /*item*/, std::ostream& out)
         {
             serialize("sig_", out);
         }
 
-        friend void deserialize(sig_& , std::istream& in)
+        friend void deserialize(sig_& /*item*/, std::istream& in)
         {
             std::string version;
             deserialize(version, in);
@@ -2959,7 +3037,7 @@ namespace dlib
                 throw serialization_error("Unexpected version '"+version+"' found while deserializing dlib::sig_.");
         }
 
-        friend std::ostream& operator<<(std::ostream& out, const sig_& )
+        friend std::ostream& operator<<(std::ostream& out, const sig_& /*item*/)
         {
             out << "sig";
             return out;
@@ -2978,6 +3056,79 @@ namespace dlib
 
     template <typename SUBNET>
     using sig = add_layer<sig_, SUBNET>;
+
+// ----------------------------------------------------------------------------------------
+
+    class mish_
+    {
+    public:
+        mish_()
+        {
+        }
+
+        template <typename SUBNET>
+        void setup (const SUBNET& /*sub*/)
+        {
+        }
+
+        template <typename SUBNET>
+        void forward(
+            const SUBNET& sub,
+            resizable_tensor& data_output
+        )
+        {
+            data_output.copy_size(sub.get_output());
+            tt::mish(data_output, sub.get_output());
+        }
+
+        template <typename SUBNET>
+        void backward(
+            const tensor& gradient_input,
+            SUBNET& sub,
+            tensor&
+        )
+        {
+            tt::mish_gradient(sub.get_gradient_input(), sub.get_output(), gradient_input);
+        }
+
+        inline dpoint map_input_to_output (const dpoint& p) const { return p; }
+        inline dpoint map_output_to_input (const dpoint& p) const { return p; }
+
+        const tensor& get_layer_params() const { return params; }
+        tensor& get_layer_params() { return params; }
+
+        friend void serialize(const mish_& /*item*/, std::ostream& out)
+        {
+            serialize("mish_", out);
+        }
+
+        friend void deserialize(mish_& /*item*/, std::istream& in)
+        {
+            std::string version;
+            deserialize(version, in);
+            if (version != "mish_")
+                throw serialization_error("Unexpected version '"+version+"' found while deserializing dlib::mish_.");
+        }
+
+        friend std::ostream& operator<<(std::ostream& out, const mish_& /*item*/)
+        {
+            out << "mish";
+            return out;
+        }
+
+        friend void to_xml(const mish_& /*item*/, std::ostream& out)
+        {
+            out << "<mish/>\n";
+        }
+
+
+    private:
+        resizable_tensor params;
+    };
+
+
+    template <typename SUBNET>
+    using mish = add_layer<mish_, SUBNET>;
 
 // ----------------------------------------------------------------------------------------
 
@@ -3014,12 +3165,12 @@ namespace dlib
         const tensor& get_layer_params() const { return params; }
         tensor& get_layer_params() { return params; }
 
-        friend void serialize(const htan_& , std::ostream& out)
+        friend void serialize(const htan_& /*item*/, std::ostream& out)
         {
             serialize("htan_", out);
         }
 
-        friend void deserialize(htan_& , std::istream& in)
+        friend void deserialize(htan_& /*item*/, std::istream& in)
         {
             std::string version;
             deserialize(version, in);
@@ -3027,7 +3178,7 @@ namespace dlib
                 throw serialization_error("Unexpected version '"+version+"' found while deserializing dlib::htan_.");
         }
 
-        friend std::ostream& operator<<(std::ostream& out, const htan_& )
+        friend std::ostream& operator<<(std::ostream& out, const htan_& /*item*/)
         {
             out << "htan";
             return out;
@@ -3079,12 +3230,12 @@ namespace dlib
         const tensor& get_layer_params() const { return params; }
         tensor& get_layer_params() { return params; }
 
-        friend void serialize(const softmax_& , std::ostream& out)
+        friend void serialize(const softmax_& /*item*/, std::ostream& out)
         {
             serialize("softmax_", out);
         }
 
-        friend void deserialize(softmax_& , std::istream& in)
+        friend void deserialize(softmax_& /*item*/, std::istream& in)
         {
             std::string version;
             deserialize(version, in);
@@ -3092,7 +3243,7 @@ namespace dlib
                 throw serialization_error("Unexpected version '"+version+"' found while deserializing dlib::softmax_.");
         }
 
-        friend std::ostream& operator<<(std::ostream& out, const softmax_& )
+        friend std::ostream& operator<<(std::ostream& out, const softmax_& /*item*/)
         {
             out << "softmax";
             return out;
@@ -3142,12 +3293,12 @@ namespace dlib
         const tensor& get_layer_params() const { return params; }
         tensor& get_layer_params() { return params; }
 
-        friend void serialize(const softmax_all_& , std::ostream& out)
+        friend void serialize(const softmax_all_& /*item*/, std::ostream& out)
         {
             serialize("softmax_all_", out);
         }
 
-        friend void deserialize(softmax_all_& , std::istream& in)
+        friend void deserialize(softmax_all_& /*item*/, std::istream& in)
         {
             std::string version;
             deserialize(version, in);
@@ -3155,7 +3306,7 @@ namespace dlib
                 throw serialization_error("Unexpected version '"+version+"' found while deserializing dlib::softmax_all_.");
         }
 
-        friend std::ostream& operator<<(std::ostream& out, const softmax_all_& )
+        friend std::ostream& operator<<(std::ostream& out, const softmax_all_& /*item*/)
         {
             out << "softmax_all";
             return out;
@@ -3277,14 +3428,14 @@ namespace dlib
         const tensor& get_layer_params() const { return params; }
         tensor& get_layer_params() { return params; }
 
-        friend void serialize(const concat_& , std::ostream& out)
+        friend void serialize(const concat_& /*item*/, std::ostream& out)
         {
             serialize("concat_", out);
             size_t count = tag_count();
             serialize(count, out);
         }
 
-        friend void deserialize(concat_& , std::istream& in)
+        friend void deserialize(concat_& /*item*/, std::istream& in)
         {
             std::string version;
             deserialize(version, in);
@@ -3298,7 +3449,7 @@ namespace dlib
                                                   " found while deserializing dlib::concat_.");
         }
 
-        friend std::ostream& operator<<(std::ostream& out, const concat_& )
+        friend std::ostream& operator<<(std::ostream& out, const concat_& /*item*/)
         {
             out << "concat\t (";
             list_tags(out);
@@ -3306,7 +3457,7 @@ namespace dlib
             return out;
         }
 
-        friend void to_xml(const concat_& , std::ostream& out)
+        friend void to_xml(const concat_& /*item*/, std::ostream& out)
         {
             out << "<concat tags='";
             list_tags(out);

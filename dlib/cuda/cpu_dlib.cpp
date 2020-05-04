@@ -1507,6 +1507,58 @@ namespace dlib
 
     // ------------------------------------------------------------------------------------
 
+        void mish (
+            tensor& dest,
+            const tensor& src
+        )
+        {
+            const auto d = dest.host_write_only();
+            const auto s = src.host();
+            for (size_t i = 0; i < src.size(); ++i)
+            {
+                const auto e = std::exp(s[i]);
+                const auto delta = 2*e + e*e + 2;
+                d[i] = s[i] - 2*s[i]/delta;
+            }
+        }
+
+        void mish_gradient(
+            tensor& grad,
+            const tensor& src,
+            const tensor& gradient_input
+        )
+        {
+            const auto g = grad.host();
+            const auto s = src.host();
+            const auto in = gradient_input.host();
+
+            const auto calculate_gradient = [](float x)
+            {
+                if (x >= 8)
+                    return 1.f;
+                if (x <= -8)
+                    return 0.f;
+
+                const auto e = std::exp(x);
+                const auto delta = 2*e + e*e + 2;
+                const auto omega = 4*(x + 1) + 4*e*e + e*e*e + e*(4*x + 6);
+                return e*omega/(delta*delta);
+            };
+
+            if (is_same_object(gradient_input, grad))
+            {
+                for (size_t i = 0; i < src.size(); ++i)
+                    g[i] = in[i]*calculate_gradient(s[i]);
+            }
+            else
+            {
+                for (size_t i = 0; i < src.size(); ++i)
+                    g[i] += in[i]*calculate_gradient(s[i]);
+            }
+        }
+
+    // ------------------------------------------------------------------------------------
+
         void relu (
             tensor& dest,
             const tensor& src
@@ -1591,6 +1643,57 @@ namespace dlib
                 }
             }
             params_grad.host()[0] = pgrad;
+        }
+
+    // ------------------------------------------------------------------------------------
+
+        void leaky_relu (
+            tensor& dest,
+            const tensor& src,
+            const float alpha
+        )
+        {
+            const float* s = src.host();
+            float* d = dest.host();
+            for (size_t i = 0; i < dest.size(); ++i)
+            {
+                if (s[i] > 0)
+                    d[i] = s[i];
+                else
+                    d[i] = alpha * s[i];
+            }
+        }
+
+        void leaky_relu_gradient (
+            tensor& grad,
+            const tensor& dest,
+            const tensor& gradient_input,
+            const float alpha
+        )
+        {
+            const float* gi = gradient_input.host();
+            const float* in = dest.host();
+            float* out = grad.host();
+            if (is_same_object(grad, gradient_input))
+            {
+                for (size_t i = 0; i < dest.size(); ++i)
+                {
+                    if (in[i] > 0)
+                        out[i] = gi[i];
+                    else
+                        out[i] = alpha * gi[i];
+                }
+            }
+            else
+            {
+                for (size_t i = 0; i < dest.size(); ++i)
+                {
+                    if (in[i] > 0)
+                        out[i] += gi[i];
+                    else
+                        out[i] += alpha * gi[i];
+                }
+            }
         }
 
     // ------------------------------------------------------------------------------------

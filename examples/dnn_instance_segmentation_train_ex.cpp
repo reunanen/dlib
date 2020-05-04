@@ -49,7 +49,7 @@ struct det_training_sample
 struct seg_training_sample
 {
     matrix<rgb_pixel> input_image;
-    matrix<uint16_t> label_image; // The ground-truth label of each pixel.
+    matrix<float> label_image; // The ground-truth label of each pixel. (+1 or -1)
 };
 
 // ----------------------------------------------------------------------------------------
@@ -168,7 +168,7 @@ std::vector<mmod_rect> extract_mmod_rects(
     );
 
     return mmod_rects;
-};
+}
 
 std::vector<std::vector<mmod_rect>> extract_mmod_rect_vectors(
     const std::vector<truth_image>& truth_images
@@ -321,12 +321,12 @@ det_bnet_type train_detection_network(
 
 // ----------------------------------------------------------------------------------------
 
-matrix<uint16_t> keep_only_current_instance(const matrix<rgb_pixel>& rgb_label_image, const rgb_pixel rgb_label)
+matrix<float> keep_only_current_instance(const matrix<rgb_pixel>& rgb_label_image, const rgb_pixel rgb_label)
 {
     const auto nr = rgb_label_image.nr();
     const auto nc = rgb_label_image.nc();
 
-    matrix<uint16_t> result(nr, nc);
+    matrix<float> result(nr, nc);
 
     for (long r = 0; r < nr; ++r)
     {
@@ -334,11 +334,11 @@ matrix<uint16_t> keep_only_current_instance(const matrix<rgb_pixel>& rgb_label_i
         {
             const auto& index = rgb_label_image(r, c);
             if (index == rgb_label)
-                result(r, c) = 1;
+                result(r, c) = +1;
             else if (index == dlib::rgb_pixel(224, 224, 192))
-                result(r, c) = dlib::loss_multiclass_log_per_pixel_::label_to_ignore;
-            else
                 result(r, c) = 0;
+            else
+                result(r, c) = -1;
         }
     }
 
@@ -373,7 +373,7 @@ seg_bnet_type train_segmentation_network(
     cout << seg_trainer << endl;
 
     std::vector<matrix<rgb_pixel>> samples;
-    std::vector<matrix<uint16_t>> labels;
+    std::vector<matrix<float>> labels;
 
     // Start a bunch of threads that read images from disk and pull out random crops.  It's
     // important to be sure to feed the GPU fast enough to keep it busy.  Using multiple
@@ -549,7 +549,7 @@ std::vector<truth_instance> load_truth_instances(const image_info& info)
     load_image(class_label_image, info.class_label_filename);
 
     return rgb_label_images_to_truth_instances(instance_label_image, class_label_image);
-};
+}
 
 std::vector<std::vector<truth_instance>> load_all_truth_instances(const std::vector<image_info>& listing)
 {

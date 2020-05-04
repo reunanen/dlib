@@ -102,7 +102,6 @@ namespace dlib { namespace tt
 #ifdef DLIB_USE_CUDA
         cuda::scale_columns(out, m, v);
 #else
-        DLIB_CASSERT(false, "shouldn't be called right now");
         out = scale_columns(mat(m), mat(v));
 #endif
     }
@@ -828,6 +827,33 @@ namespace dlib { namespace tt
 
 // ----------------------------------------------------------------------------------------
 
+    void mish (
+        tensor& dest,
+        const tensor& src
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::mish(dest,src);
+#else
+        cpu::mish(dest,src);
+#endif
+    }
+
+    void mish_gradient (
+        tensor& grad,
+        const tensor& src,
+        const tensor& gradient_input
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::mish_gradient(grad, src, gradient_input);
+#else
+        cpu::mish_gradient(grad, src, gradient_input);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
     void relu (
         tensor& dest,
         const tensor& src
@@ -880,6 +906,35 @@ namespace dlib { namespace tt
         cuda::prelu_gradient(grad, src, gradient_input, param, params_grad);
 #else
         cpu::prelu_gradient(grad, src, gradient_input, param, params_grad);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    void leaky_relu (
+        tensor& dest,
+        const tensor& src,
+        const float alpha
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::leaky_relu(dest, src, alpha);
+#else
+        cpu::leaky_relu(dest, src, alpha);
+#endif
+    }
+
+    void leaky_relu_gradient (
+        tensor& grad,
+        const tensor& dest,
+        const tensor& gradient_input,
+        const float alpha
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::leaky_relu_gradient(grad, dest, gradient_input, alpha);
+#else
+        cpu::leaky_relu_gradient(grad, dest, gradient_input, alpha);
 #endif
     }
 

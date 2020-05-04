@@ -6,6 +6,9 @@
 
 cmake_minimum_required(VERSION 2.8.12)
 
+set(CMAKE_DISABLE_SOURCE_CHANGES ON)
+set(CMAKE_DISABLE_IN_SOURCE_BUILD ON)
+
 if(POLICY CMP0048)
    cmake_policy(SET CMP0048 NEW)
 endif()
@@ -269,12 +272,7 @@ if (NOT TARGET dlib)
       md5/md5_kernel_1.cpp
       tokenizer/tokenizer_kernel_1.cpp
       unicode/unicode.cpp
-      data_io/image_dataset_metadata.cpp
-      data_io/mnist.cpp
-      global_optimization/global_function_search.cpp
-      filtering/kalman_filter.cpp
       test_for_odr_violations.cpp
-      svm/auto.cpp
       )
 
 
@@ -315,6 +313,11 @@ if (NOT TARGET dlib)
          stack_trace.cpp
          cuda/cpu_dlib.cpp
          cuda/tensor_tools.cpp
+         data_io/image_dataset_metadata.cpp
+         data_io/mnist.cpp
+         global_optimization/global_function_search.cpp
+         filtering/kalman_filter.cpp
+         svm/auto.cpp
          )
 
       if(UNIX)
@@ -375,12 +378,6 @@ if (NOT TARGET dlib)
 
          mark_as_advanced(xlib xlib_path x11_path)
       else () ##################################################################################
-         # link to the nsl library if it exists.  this is something you need sometimes 
-         find_library(nsllib nsl)
-         if (nsllib)
-            set (dlib_needed_libraries ${dlib_needed_libraries} ${nsllib})
-         endif ()
-
          # link to the socket library if it exists.  this is something you need on solaris
          find_library(socketlib socket)
          if (socketlib)
