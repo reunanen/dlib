@@ -3213,7 +3213,7 @@ namespace
         using net_type = loss_multiclass_log_per_pixel_weighted<con<num_classes,1,1,1,1,input<matrix<double>>>>;
         using weighted_label = loss_multiclass_log_per_pixel_weighted_::weighted_label;
 
-        ::std::vector<matrix<weighted_label>> y_weighted(num_samples);
+        ::std::vector<dlib::loss_multiclass_log_per_pixel_weighted_::training_label_type> y_weighted(num_samples);
 
         for (int weighted_class = 0; weighted_class < num_classes; ++weighted_class) {
 
@@ -3245,7 +3245,7 @@ namespace
             trainer.set_max_num_epochs(10);
             trainer.train(x, y_weighted);
 
-            const ::std::vector<matrix<uint16_t>> predictions = net(x);
+            const auto predictions = net(x);
 
             int num_weighted_class = 0;
             int num_not_weighted_class = 0;
