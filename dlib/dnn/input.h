@@ -179,7 +179,7 @@ namespace dlib
         }
 
         input_rgb_image_sized (
-            const input_rgb_image& item
+            const input_rgb_image<mem_manager>& item
         ) : avg_red(item.get_avg_red()),
             avg_green(item.get_avg_green()),
             avg_blue(item.get_avg_blue())
