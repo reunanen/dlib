@@ -41,17 +41,26 @@ namespace dlib
 #endif
             image_view<T> t(t_);
             t.set_size( height_, width_ );
-            for ( unsigned n = 0; n < height_;n++ )
+
+            if ( is_gray() )
             {
-                const unsigned char* v = get_row( n );
-                for ( unsigned m = 0; m < width_;m++ )
+                for (unsigned n = 0; n < height_; n++)
                 {
-                    if ( is_gray() )
+                    const unsigned char* v = get_row(n);
+                    for (unsigned m = 0; m < width_; m++)
                     {
                         unsigned char p = v[m];
                         assign_pixel( t[n][m], p );
                     }
-                    else if ( is_rgba() ) {
+                }
+            }
+            else if ( is_rgba() )
+            {
+                for (unsigned n = 0; n < height_; n++)
+                {
+                    const unsigned char* v = get_row(n);
+                    for (unsigned m = 0; m < width_; m++)
+                    {
                         rgb_alpha_pixel p;
                         p.red = v[m*4];
                         p.green = v[m*4+1];
@@ -59,7 +68,14 @@ namespace dlib
                         p.alpha = v[m*4+3];
                         assign_pixel( t[n][m], p );
                     }
-                    else // if ( is_rgb() )
+                }
+            }
+            else // is_rgb()
+            {
+                for (unsigned n = 0; n < height_; n++)
+                {
+                    const unsigned char* v = get_row(n);
+                    for (unsigned m = 0; m < width_; m++)
                     {
                         rgb_pixel p;
                         p.red = v[m*3];

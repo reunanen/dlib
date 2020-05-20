@@ -144,8 +144,8 @@ namespace dlib
             const vector<U,NR>& src
         )
         {
-            dest.x() = static_cast<T>(std::floor(src.x() + 0.5));
-            dest.y() = static_cast<T>(std::floor(src.y() + 0.5));
+            dest.x() = static_cast<T>(src.x() + 0.5);
+            dest.y() = static_cast<T>(src.y() + 0.5);
         }
 
         template <long NR>
@@ -154,9 +154,9 @@ namespace dlib
             const vector<U,NR>& src
         )
         {
-            dest.x() = static_cast<T>(std::floor(src.x() + 0.5));
-            dest.y() = static_cast<T>(std::floor(src.y() + 0.5));
-            dest.z() = static_cast<T>(std::floor(src.z() + 0.5));
+            dest.x() = static_cast<T>(src.x() + 0.5);
+            dest.y() = static_cast<T>(src.y() + 0.5);
+            dest.z() = static_cast<T>(src.z() + 0.5);
         }
 
         template <typename EXP>
@@ -165,9 +165,9 @@ namespace dlib
             const matrix_exp<EXP>& m
         )
         {
-            dest.x() = static_cast<T>(std::floor(m(0) + 0.5));
-            dest.y() = static_cast<T>(std::floor(m(1) + 0.5));
-            dest.z() = static_cast<T>(std::floor(m(2) + 0.5));
+            dest.x() = static_cast<T>(m(0) + 0.5);
+            dest.y() = static_cast<T>(m(1) + 0.5);
+            dest.z() = static_cast<T>(m(2) + 0.5);
         }
 
         template <typename EXP>
@@ -176,8 +176,8 @@ namespace dlib
             const matrix_exp<EXP>& m
         )
         {
-            dest.x() = static_cast<T>(std::floor(m(0) + 0.5));
-            dest.y() = static_cast<T>(std::floor(m(1) + 0.5));
+            dest.x() = static_cast<T>(m(0) + 0.5);
+            dest.y() = static_cast<T>(m(1) + 0.5);
         }
 
     };

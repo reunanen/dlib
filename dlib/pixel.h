@@ -745,9 +745,9 @@ namespace dlib
         typename enable_if_c<pixel_traits<P1>::grayscale && pixel_traits<P2>::rgb>::type
         assign(P1& dest, const P2& src) 
         { 
-            const unsigned int temp = ((static_cast<unsigned int>(src.red) +
-                                        static_cast<unsigned int>(src.green) +  
-                                        static_cast<unsigned int>(src.blue))/3);
+            const unsigned char temp = static_cast<unsigned char>((static_cast<unsigned int>(src.red) +
+                                                                   static_cast<unsigned int>(src.green) +  
+                                                                   static_cast<unsigned int>(src.blue))/3);
             assign_pixel(dest, temp);
         }
 
