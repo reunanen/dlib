@@ -548,6 +548,7 @@ namespace dlib
             loss = 0;
             float* const g = grad.host();
             const float* out_data = output_tensor.host();
+            const bool use_weight_matrix = truth->size() == output_tensor.k() + 1;
             for (long i = 0; i < output_tensor.num_samples(); ++i, ++truth)
             {
                 for (long k = 0; k < output_tensor.k(); ++k)
@@ -556,10 +557,17 @@ namespace dlib
                     {
                         for (long c = 0; c < output_tensor.nc(); ++c)
                         {
+                            const float weight = use_weight_matrix
+                                ? (*truth)[output_tensor.k()].operator()(r, c)
+                                : 1.f;
+
+                            if (weight == 0.0)
+                                continue;
+
                             const float y = (*truth)[k].operator()(r, c);
                             const size_t idx = ((i * output_tensor.k() + k) * output_tensor.nr() + r) * output_tensor.nc() + c;
                             const float temp1 = y - out_data[idx];
-                            const float temp2 = scale*temp1;
+                            const float temp2 = weight*scale*temp1;
                             loss += temp2*temp1;
                             g[idx] = -temp2;
                         }

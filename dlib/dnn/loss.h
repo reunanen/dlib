@@ -3237,7 +3237,7 @@ namespace dlib
     {
     public:
 
-        typedef std::array<matrix<float>, _num_channels> training_label_type;
+        typedef std::array<matrix<float>, _num_channels + 1> training_label_type;
         typedef std::array<matrix<float>, _num_channels> output_label_type;
 
         template <
@@ -3301,8 +3301,8 @@ namespace dlib
             for (long idx = 0; idx < output_tensor.num_samples(); ++idx)
             {
                 const_label_iterator truth_matrix_ptr = (truth + idx);
-                DLIB_CASSERT((*truth_matrix_ptr).size() == _num_channels);
-                for (long k = 0; k < output_tensor.k(); ++k)
+                DLIB_CASSERT((*truth_matrix_ptr).size() == _num_channels + 1);
+                for (long k = 0; k < truth_matrix_ptr->size(); ++k)
                 {
                     DLIB_CASSERT((*truth_matrix_ptr)[k].nr() == output_tensor.nr() &&
                         (*truth_matrix_ptr)[k].nc() == output_tensor.nc(),
@@ -3311,11 +3311,11 @@ namespace dlib
                 }
             }
             double loss;
-#ifdef DLIB_USE_CUDA
-            cuda_compute(truth, output_tensor, grad, loss);
-#else
+//#ifdef DLIB_USE_CUDA
+//            cuda_compute(truth, output_tensor, grad, loss);
+//#else
             cpu_compute(truth, output_tensor, grad, loss);
-#endif
+//#endif
             return loss;
         }
 
@@ -3349,11 +3349,11 @@ namespace dlib
             // See: https://github.com/davisking/dlib/blob/4dfeb7e186dd1bf6ac91273509f687293bd4230a/dlib/dnn/tensor_abstract.h#L38
             return ((sample * t.k() + k) * t.nr() + row) * t.nc() + column;
         }
-#ifdef DLIB_USE_CUDA
-        cuda::compute_loss_mean_squared_per_channel_and_pixel cuda_compute;
-#else
+//#ifdef DLIB_USE_CUDA
+//        cuda::compute_loss_mean_squared_per_channel_and_pixel cuda_compute;
+//#else
         cpu::compute_loss_mean_squared_per_channel_and_pixel cpu_compute;
-#endif
+//#endif
     };
 
     template <long num_channels, typename SUBNET>
