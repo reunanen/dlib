@@ -548,21 +548,44 @@ namespace dlib
             loss = 0;
             float* const g = grad.host();
             const float* out_data = output_tensor.host();
-            const bool use_weight_matrix = truth->size() == output_tensor.k() + 1;
+            const bool use_explicit_weight_matrix = truth->size() == output_tensor.k() + 1;
             for (long i = 0; i < output_tensor.num_samples(); ++i, ++truth)
             {
                 for (long k = 0; k < output_tensor.k(); ++k)
                 {
+                    const bool is_alpha_channel = k % 4 == 3;
+
+                    const long corresponding_alpha_channel = is_alpha_channel
+                        ? -1
+                        : k / 4 + 3;
+
                     for (long r = 0; r < output_tensor.nr(); ++r)
                     {
                         for (long c = 0; c < output_tensor.nc(); ++c)
                         {
-                            const float weight = use_weight_matrix
+                            const float explicit_weight = use_explicit_weight_matrix
                                 ? (*truth)[output_tensor.k()].operator()(r, c)
                                 : 1.f;
 
-                            if (weight == 0.0)
+                            if (explicit_weight == 0.0)
                                 continue;
+
+                            const auto get_alpha_weight = [&]() {
+                                if (is_alpha_channel)
+                                    return 1.f;
+
+                                const auto corresponding_alpha_value = (*truth)[corresponding_alpha_channel].operator()(r, c);
+                                return corresponding_alpha_value > 0.f
+                                    ? 1.f
+                                    : 0.f;
+                            };
+
+                            const float alpha_weight = get_alpha_weight();
+
+                            if (alpha_weight == 0)
+                                continue;
+
+                            const float weight = explicit_weight * alpha_weight;
 
                             const float y = (*truth)[k].operator()(r, c);
                             const size_t idx = ((i * output_tensor.k() + k) * output_tensor.nr() + r) * output_tensor.nc() + c;
