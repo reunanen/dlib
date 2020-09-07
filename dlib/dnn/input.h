@@ -306,11 +306,11 @@ namespace dlib
 #endif
 // ----------------------------------------------------------------------------------------
 
-    template <typename mem_manager = default_memory_manager>
+    template <typename mem_manager = default_memory_manager, typename T = uint8_t>
     class input_grayscale_image
     {
     public:
-        typedef matrix<uint8_t,0,0,mem_manager> input_type;
+        typedef matrix<T,0,0,mem_manager> input_type;
 
         input_grayscale_image(
         ) : average(127.5f)
@@ -359,8 +359,8 @@ namespace dlib
                 {
                     for (long c = 0; c < nc; ++c)
                     {
-                        const uint8_t temp = (*i)(r,c);
-                        *ptr++ = (temp-average)/256.0;
+                        const T temp = (*i)(r,c);
+                        *ptr++ = (temp-average)/(std::numeric_limits<T>::max()+1.0);
                     }
                 }
             }
