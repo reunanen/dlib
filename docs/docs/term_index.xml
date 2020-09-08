@@ -132,6 +132,8 @@
          <term file="dlib/dnn/loss_abstract.h.html" name="loss_binary_hinge_" include="dlib/dnn.h"/>
          <term file="dlib/dnn/loss_abstract.h.html" name="loss_binary_log_" include="dlib/dnn.h"/>
          <term file="dlib/dnn/loss_abstract.h.html" name="loss_multimulticlass_log_" include="dlib/dnn.h"/>
+         <term file="dlib/dnn/loss_abstract.h.html" name="loss_multiclass_log_weighted_" include="dlib/dnn.h"/>
+         <term file="dlib/dnn/loss_abstract.h.html" name="loss_binary_log_per_pixel_" include="dlib/dnn.h"/>
          <term file="dlib/dnn/loss_abstract.h.html" name="loss_multiclass_log_" include="dlib/dnn.h"/>
          <term file="dlib/dnn/loss_abstract.h.html" name="loss_multiclass_log_per_pixel_" include="dlib/dnn.h"/>
          <term file="dlib/dnn/loss_abstract.h.html" name="loss_multiclass_log_per_pixel_weighted_" include="dlib/dnn.h"/>
@@ -170,6 +172,8 @@
          <term file="dlib/dnn/layers_abstract.h.html" name="max_pool_" include="dlib/dnn.h"/>
          <term file="dlib/dnn/layers_abstract.h.html" name="avg_pool_" include="dlib/dnn.h"/>
          <term file="dlib/dnn/layers_abstract.h.html" name="relu_" include="dlib/dnn.h"/>
+         <term file="dlib/dnn/layers_abstract.h.html" name="leaky_relu_" include="dlib/dnn.h"/>
+         <term file="dlib/dnn/layers_abstract.h.html" name="mish_" include="dlib/dnn.h"/>
          <term file="dlib/dnn/layers_abstract.h.html" name="prelu_" include="dlib/dnn.h"/>
          <term file="dlib/dnn/layers_abstract.h.html" name="sig_" include="dlib/dnn.h"/>
          <term file="dlib/dnn/layers_abstract.h.html" name="htan_" include="dlib/dnn.h"/>
@@ -962,7 +966,7 @@
          <term file="metaprogramming.html" name="assign_zero_if_built_in_scalar_type" include="dlib/algs.h"/>
 
 
-         <term link="dlib/platform.h.html" name="POSIX"     include="dlib/platform.h"/>
+         <term link="dlib/platform.h.html" name="DLIB_POSIX"     include="dlib/platform.h"/>
          <term link="dlib/platform.h.html" name="MACOSX"    include="dlib/platform.h"/>
          <term link="dlib/platform.h.html" name="HPUX"      include="dlib/platform.h"/>
          <term link="dlib/platform.h.html" name="WIN32"     include="dlib/platform.h"/>

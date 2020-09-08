@@ -681,7 +681,7 @@ namespace dlib
             // periodically copy these tensors to all the other devices to make sure the
             // different GPUs don't go out of sync.
             std::vector<tensor*> reference_params;
-            visit_layer_parameters(devices[0]->net, [&](size_t, tensor& t) { reference_params.push_back(&t); });
+            visit_layer_parameters(devices[0]->net, [&](tensor& t) { reference_params.push_back(&t); });
 
             // If no external thread pools vector was passed, then create one that will
             // be automatically destructed as soon as the dnn_trainer object goes out of
@@ -778,7 +778,12 @@ namespace dlib
                         {
                             std::vector<tensor*> temp(all_tensors.size());
                             for (size_t j = 0; j < all_tensors.size(); ++j)
+                            {
                                 temp[j] = all_tensors[j][i];
+                                DLIB_CASSERT(temp[0]->size() == temp[j]->size(),
+                                "Make sure you don't modify the network structure "
+                                "or number of parameters after constructing the trainer.");
+                            }
                             // ignore layers that don't have parameters
                             if (temp[0]->size() != 0)
                                 averagers[i].set(temp);
@@ -1122,29 +1127,21 @@ namespace dlib
             while (previous_loss_values_to_keep_until_disk_sync.size() > 2 * gradient_updates_since_last_sync)
                 previous_loss_values_to_keep_until_disk_sync.pop_front();
 
-            running_gradient g;
-
+            // Always retry if there are any nan values
             for (auto x : previous_loss_values_to_keep_until_disk_sync)
             {
-                // If we get a NaN value of loss assume things have gone horribly wrong and
-                // we should reload the state of the trainer.
                 if (std::isnan(x))
                     return true;
-
-                g.add(x);
             }
 
             // if we haven't seen much data yet then just say false.
             if (gradient_updates_since_last_sync < 30)
                 return false;
 
-            // if learning rate was changed from outside during training, for example
-            if (g.current_n() <= 2)
-                return false;
-
             // if the loss is very likely to be increasing then return true
-            const double prob = g.probability_gradient_greater_than(0);
-            if (prob > prob_loss_increasing_thresh)
+            const double prob1 = probability_values_are_increasing(previous_loss_values_to_keep_until_disk_sync);
+            const double prob2 = probability_values_are_increasing_robust(previous_loss_values_to_keep_until_disk_sync);
+            if (std::max(prob1, prob2) > prob_loss_increasing_thresh)
             {
                 // Exponentially decay the threshold towards 1 so that if we keep finding
                 // the loss to be increasing over and over we will make the test
@@ -1212,15 +1209,18 @@ namespace dlib
             job.test_only = test_only;
 
             // chop the data into devs blocks, each of about block_size elements.
-            size_t block_size = (num+devs-1)/devs;
+            const double block_size = num / static_cast<double>(devs);
 
             const auto prev_dev = dlib::cuda::get_device();
+
+            double j = 0;
+
             for (size_t i = 0; i < devs; ++i)
             {
                 dlib::cuda::set_device(devices[i]->device_id);
 
-                size_t start = i*block_size;
-                size_t stop  = std::min(num, start+block_size);
+                const size_t start = static_cast<size_t>(std::round(j));
+                const size_t stop  = static_cast<size_t>(std::round(j + block_size));
 
                 if (start < stop)
                 {
@@ -1232,7 +1232,11 @@ namespace dlib
                 {
                     job.have_data[i] = false;
                 }
+
+                j += block_size;
             }
+
+            DLIB_ASSERT(std::fabs(j - num) < 1e-10);
 
             dlib::cuda::set_device(prev_dev);
             job_pipe.enqueue(job);
@@ -1379,6 +1383,7 @@ namespace dlib
         out << "  net architecture hash: " << md5(cast_to_string(trainer.get_net().subnet())) << endl;
         out << "  loss: " << trainer.get_net().loss_details() << endl;
 
+        out << "  get_train_one_step_calls():                 " << trainer.get_train_one_step_calls() << endl;
         out << "  synchronization file:                       " << trainer.get_synchronization_file() << endl;
         out << "  trainer.get_solvers()[0]:                   " << trainer.get_solvers()[0] << endl;
         auto sched = trainer.get_learning_rate_schedule();

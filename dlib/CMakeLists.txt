@@ -20,7 +20,7 @@ project(dlib)
 
 set(CPACK_PACKAGE_NAME "dlib")
 set(CPACK_PACKAGE_VERSION_MAJOR "19")
-set(CPACK_PACKAGE_VERSION_MINOR "19")
+set(CPACK_PACKAGE_VERSION_MINOR "21")
 set(CPACK_PACKAGE_VERSION_PATCH "99")
 set(VERSION ${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH})
 # Only print these messages once, even if dlib is added multiple times via add_subdirectory()
@@ -633,12 +633,11 @@ if (NOT TARGET dlib)
                endif()
             endif()
 
-
             set(CUDA_HOST_COMPILATION_CPP ON)
             # Note that we add __STRICT_ANSI__ to avoid freaking out nvcc with gcc specific
             # magic in the standard C++ header files (since nvcc uses gcc headers on
             # linux).
-            list(APPEND CUDA_NVCC_FLAGS "-arch=sm_30;-D__STRICT_ANSI__;-D_MWAITXINTRIN_H_INCLUDED;-D_FORCE_INLINES;${FLAGS_FOR_NVCC}")
+            list(APPEND CUDA_NVCC_FLAGS "-arch=sm_50;-D__STRICT_ANSI__;-D_MWAITXINTRIN_H_INCLUDED;-D_FORCE_INLINES;${FLAGS_FOR_NVCC}")
             list(APPEND CUDA_NVCC_FLAGS ${active_preprocessor_switches})
             if (NOT DLIB_IN_PROJECT_BUILD)
                LIST(APPEND CUDA_NVCC_FLAGS -DDLIB__CMAKE_GENERATED_A_CONFIG_H_FILE)
@@ -680,19 +679,27 @@ if (NOT TARGET dlib)
                   message(STATUS "*****************************************************************************************************************")
                   message(STATUS "*** CUDA was found but your compiler failed to compile a simple CUDA program so dlib isn't going to use CUDA. ")
                   message(STATUS "*** The output of the failed CUDA test compile is shown below: ")
+                  message(STATUS "*** ")
                   message(STATUS "***   ${try_compile_output_message}")
                   message(STATUS "*****************************************************************************************************************")
                else()
-                  message(STATUS "Checking if you have the right version of cuDNN installed.")
+                  message(STATUS "Building a cuDNN test project to check if you have the right version of cuDNN installed...")
                   try_compile(cudnn_test_compile_worked 
                      ${PROJECT_BINARY_DIR}/cudnn_test_build 
                      ${PROJECT_SOURCE_DIR}/cmake_utils/test_for_cudnn cudnn_test
                      CMAKE_FLAGS ${CUDA_TEST_CMAKE_FLAGS}
+                     OUTPUT_VARIABLE try_compile_output_message
                      )
                   if (NOT cudnn_test_compile_worked)
-                     message(STATUS "*** Found cuDNN, but it looks like the wrong version so dlib will not use it.              ***")
-                     message(STATUS "*** Dlib requires cuDNN V5.0 OR GREATER.  Since cuDNN is not found DLIB WILL NOT USE CUDA. ***")
-                     message(STATUS "*** If you have cuDNN then set CMAKE_PREFIX_PATH to include cuDNN's folder.                ***")
+                     string(REPLACE "\n" "\n   ***   " try_compile_output_message "${try_compile_output_message}")
+                     message(STATUS "*****************************************************************************************************")
+                     message(STATUS "*** Found cuDNN, but we failed to compile the dlib/cmake_utils/test_for_cudnn project. ")
+                     message(STATUS "*** You either have an unsupported version of cuDNN or something is wrong with your cudDNN install.")
+                     message(STATUS "*** Since a functional cuDNN is not found DLIB WILL NOT USE CUDA. ")
+                     message(STATUS "*** The output of the failed test_for_cudnn build is: ")
+                     message(STATUS "*** ")
+                     message(STATUS "***   ${try_compile_output_message}")
+                     message(STATUS "*****************************************************************************************************")
                   endif()
                endif()
             endif()

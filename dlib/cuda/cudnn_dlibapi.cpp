@@ -8,6 +8,8 @@
 #include "cudnn_dlibapi.h"
 #include "tensor.h"
 #include <cudnn.h>
+#include <tuple>
+#include <map>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -751,6 +753,179 @@ namespace dlib
             backward_filters_workspace.reset();
         }
 
+        // Given an array of cudnn algorithm performance results, like
+        // cudnnConvolutionFwdAlgoPerf_t, pick the best one to use.
+        template <typename T>
+        decltype(std::declval<T>().algo) pick_best_algorithm(const std::vector<T> &perf_results) 
+        {
+            DLIB_CASSERT(!perf_results.empty());
+            CHECK_CUDNN(perf_results[0].status);
+            if (dnn_prefer_fastest_algorithms())
+                return perf_results[0].algo;
+
+            // Otherwise we find the algorithm that has a good status and uses the least amount
+            // of memory.
+            size_t best_memory = std::numeric_limits<size_t>::max();
+            decltype(std::declval<T>().algo) best_alg;
+            for (auto&& perf : perf_results) 
+            {
+                if (perf.status == CUDNN_STATUS_SUCCESS && perf.memory < best_memory) 
+                {
+                    best_memory = perf.memory;
+                    best_alg = perf.algo;
+                }
+            }
+            return best_alg;
+        }
+
+        void tensor_conv::
+        select_best_algorithms (
+            const tensor& data,
+            const tensor_descriptor& dest_desc
+        ) 
+        {
+            // Calling the cuDNN "find the best algorithm" functions are really slow.  So we keep a
+            // cache that tells us what method was best for a particular configuration.
+            thread_local std::map<std::tuple<int,int,int,int,long,long>,
+                                  std::tuple<int,int,int>> config_to_algo_cache;
+
+            // If we have already found good algorithms for this setting then just pull them from
+            // the cache.
+            const auto cache_key = std::make_tuple(stride_y, stride_x, padding_y, padding_x, filters_nr, filters_nc);
+            const auto iter = config_to_algo_cache.find(cache_key);
+            if (iter != config_to_algo_cache.end())
+            {
+                std::tie(forward_algo, backward_data_algo, backward_filters_algo) = iter->second;
+                return;
+            }
+
+
+            // Pick which forward algorithm we will use and allocate the necessary
+            // workspace buffer.
+            cudnnConvolutionFwdAlgo_t forward_best_algo;
+#if CUDNN_MAJOR >= 8
+            {
+                int num_possible_algorithms = 0;
+                CHECK_CUDNN(cudnnGetConvolutionForwardAlgorithmMaxCount(context(), &num_possible_algorithms));
+                std::vector<cudnnConvolutionFwdAlgoPerf_t> perf_results(num_possible_algorithms);
+                int num_algorithms = 0;
+                CHECK_CUDNN(cudnnFindConvolutionForwardAlgorithm(
+                        context(), 
+                        descriptor(data),
+                        (const cudnnFilterDescriptor_t)filter_handle,
+                        (const cudnnConvolutionDescriptor_t)conv_handle,
+                        descriptor(dest_desc),
+                        num_possible_algorithms,
+                        &num_algorithms,
+                        perf_results.data()));
+                perf_results.resize(num_algorithms);
+                forward_best_algo = pick_best_algorithm(perf_results);
+            }
+#else
+            CHECK_CUDNN(cudnnGetConvolutionForwardAlgorithm(
+                    context(), 
+                    descriptor(data),
+                    (const cudnnFilterDescriptor_t)filter_handle,
+                    (const cudnnConvolutionDescriptor_t)conv_handle,
+                    descriptor(dest_desc),
+                    dnn_prefer_fastest_algorithms()?CUDNN_CONVOLUTION_FWD_PREFER_FASTEST:CUDNN_CONVOLUTION_FWD_NO_WORKSPACE,
+                    std::numeric_limits<size_t>::max(),
+                    &forward_best_algo));
+#endif
+            forward_algo = forward_best_algo;
+
+
+
+            // Pick which backward data algorithm we will use and allocate the
+            // necessary workspace buffer.
+            cudnnConvolutionBwdDataAlgo_t backward_data_best_algo;
+#if CUDNN_MAJOR >= 8
+            {
+                int num_possible_algorithms = 0;
+                CHECK_CUDNN(cudnnGetConvolutionBackwardFilterAlgorithmMaxCount(context(), &num_possible_algorithms));
+                std::vector<cudnnConvolutionBwdDataAlgoPerf_t> perf_results(num_possible_algorithms);
+                int num_algorithms = 0;
+                CHECK_CUDNN(cudnnFindConvolutionBackwardDataAlgorithm(
+                        context(),
+                        (const cudnnFilterDescriptor_t)filter_handle,
+                        descriptor(dest_desc),
+                        (const cudnnConvolutionDescriptor_t)conv_handle,
+                        descriptor(data),
+                        num_possible_algorithms,
+                        &num_algorithms,
+                        perf_results.data()));
+                perf_results.resize(num_algorithms);
+                backward_data_best_algo = pick_best_algorithm(perf_results);
+            }
+#else
+            CHECK_CUDNN(cudnnGetConvolutionBackwardDataAlgorithm(
+                    context(),
+                    (const cudnnFilterDescriptor_t)filter_handle,
+                    descriptor(dest_desc),
+                    (const cudnnConvolutionDescriptor_t)conv_handle,
+                    descriptor(data),
+                    dnn_prefer_fastest_algorithms()?CUDNN_CONVOLUTION_BWD_DATA_PREFER_FASTEST:CUDNN_CONVOLUTION_BWD_DATA_NO_WORKSPACE,
+                    std::numeric_limits<size_t>::max(),
+                    &backward_data_best_algo));
+#endif
+            backward_data_algo = backward_data_best_algo;
+
+
+
+
+            // Pick which backward filters algorithm we will use and allocate the
+            // necessary workspace buffer.
+            cudnnConvolutionBwdFilterAlgo_t backward_filters_best_algo;
+#if CUDNN_MAJOR >= 8
+            {
+                int num_possible_algorithms = 0;
+                CHECK_CUDNN(cudnnGetConvolutionBackwardFilterAlgorithmMaxCount(context(), &num_possible_algorithms));
+                std::vector<cudnnConvolutionBwdFilterAlgoPerf_t> perf_results(num_possible_algorithms);
+                int num_algorithms = 0;
+                CHECK_CUDNN(cudnnFindConvolutionBackwardFilterAlgorithm(
+                        context(),
+                        descriptor(data),
+                        descriptor(dest_desc),
+                        (const cudnnConvolutionDescriptor_t)conv_handle,
+                        (const cudnnFilterDescriptor_t)filter_handle,
+                        num_possible_algorithms,
+                        &num_algorithms,
+                        perf_results.data()));
+                perf_results.resize(num_algorithms);
+                backward_filters_best_algo = pick_best_algorithm(perf_results);
+            }
+#else
+            CHECK_CUDNN(cudnnGetConvolutionBackwardFilterAlgorithm(
+                    context(),
+                    descriptor(data),
+                    descriptor(dest_desc),
+                    (const cudnnConvolutionDescriptor_t)conv_handle,
+                    (const cudnnFilterDescriptor_t)filter_handle,
+                    dnn_prefer_fastest_algorithms()?CUDNN_CONVOLUTION_BWD_FILTER_PREFER_FASTEST:CUDNN_CONVOLUTION_BWD_FILTER_NO_WORKSPACE,
+                    std::numeric_limits<size_t>::max(),
+                    &backward_filters_best_algo));
+#endif
+
+            // cuDNN 5.1 has a bug that causes
+            // cudnnGetConvolutionBackwardFilterAlgorithm() to pick the winograd
+            // algorithm even for cases where cuDNN doesn't support it, leading to
+            // incorrect outputs.  So here we check if we are in a case where winograd
+            // isn't supported and manually overrule
+            // cudnnGetConvolutionBackwardFilterAlgorithm() by picking a safe
+            // algorithm.
+            if (dnn_prefer_fastest_algorithms() && 
+                !(stride_x == 1 && stride_y == 1 && ((filters_nr==3&&filters_nc==3) || (filters_nr==5&&filters_nc==5)))
+            )
+            {
+                backward_filters_best_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0;
+            }
+            backward_filters_algo = backward_filters_best_algo;
+
+
+            // Save this algorithm selection in the cache
+            config_to_algo_cache[cache_key] = std::make_tuple(forward_algo, backward_data_algo, backward_filters_algo);
+        }
+
         void tensor_conv::
         setup(
             const tensor& data,
@@ -765,18 +940,19 @@ namespace dlib
 
             // if the last call to setup gave the same exact settings then don't do
             // anything.
-            if (stride_y_ == stride_y && 
-                stride_x_ == stride_x &&
-                padding_y_ == padding_y && 
-                padding_x_ == padding_x &&
-                data_num_samples == data.num_samples() &&
+            if (data_num_samples == data.num_samples() &&
                 data_k == data.k() &&
                 data_nr == data.nr() &&
                 data_nc == data.nc() &&
+                stride_y_ == stride_y && 
+                stride_x_ == stride_x &&
+                padding_y_ == padding_y && 
+                padding_x_ == padding_x &&
                 filters_num_samples == filters.num_samples() &&
                 filters_k == filters.k() &&
                 filters_nr == filters.nr() &&
-                filters_nc == filters.nc())
+                filters_nc == filters.nc()
+            )
             {
                 return;
             }
@@ -838,41 +1014,17 @@ namespace dlib
                 tensor_descriptor dest_desc;
                 dest_desc.set_size(out_num_samples,out_k,out_nr,out_nc);
 
-                // Pick which forward algorithm we will use and allocate the necessary
-                // workspace buffer.
-                cudnnConvolutionFwdAlgo_t forward_best_algo;
-                CHECK_CUDNN(cudnnGetConvolutionForwardAlgorithm(
-                        context(), 
-                        descriptor(data),
-                        (const cudnnFilterDescriptor_t)filter_handle,
-                        (const cudnnConvolutionDescriptor_t)conv_handle,
-                        descriptor(dest_desc),
-                        dnn_prefer_fastest_algorithms()?CUDNN_CONVOLUTION_FWD_PREFER_FASTEST:CUDNN_CONVOLUTION_FWD_NO_WORKSPACE,
-                        std::numeric_limits<size_t>::max(),
-                        &forward_best_algo));
-                forward_algo = forward_best_algo;
+                select_best_algorithms(data, dest_desc);
+
                 CHECK_CUDNN(cudnnGetConvolutionForwardWorkspaceSize( 
                         context(),
                         descriptor(data),
                         (const cudnnFilterDescriptor_t)filter_handle,
                         (const cudnnConvolutionDescriptor_t)conv_handle,
                         descriptor(dest_desc),
-                        forward_best_algo,
+                        (cudnnConvolutionFwdAlgo_t)forward_algo,
                         &forward_workspace_size_in_bytes));
 
-                // Pick which backward data algorithm we will use and allocate the
-                // necessary workspace buffer.
-                cudnnConvolutionBwdDataAlgo_t backward_data_best_algo;
-                CHECK_CUDNN(cudnnGetConvolutionBackwardDataAlgorithm(
-                        context(),
-                        (const cudnnFilterDescriptor_t)filter_handle,
-                        descriptor(dest_desc),
-                        (const cudnnConvolutionDescriptor_t)conv_handle,
-                        descriptor(data),
-                        dnn_prefer_fastest_algorithms()?CUDNN_CONVOLUTION_BWD_DATA_PREFER_FASTEST:CUDNN_CONVOLUTION_BWD_DATA_NO_WORKSPACE,
-                        std::numeric_limits<size_t>::max(),
-                        &backward_data_best_algo));
-                backward_data_algo = backward_data_best_algo;
 
                 CHECK_CUDNN(cudnnGetConvolutionBackwardDataWorkspaceSize(
                         context(),
@@ -880,35 +1032,9 @@ namespace dlib
                         descriptor(dest_desc),
                         (const cudnnConvolutionDescriptor_t)conv_handle,
                         descriptor(data),
-                        backward_data_best_algo,
+                        (cudnnConvolutionBwdDataAlgo_t)backward_data_algo,
                         &backward_data_workspace_size_in_bytes));
 
-                // Pick which backward filters algorithm we will use and allocate the
-                // necessary workspace buffer.
-                cudnnConvolutionBwdFilterAlgo_t backward_filters_best_algo;
-                CHECK_CUDNN(cudnnGetConvolutionBackwardFilterAlgorithm(
-                        context(),
-                        descriptor(data),
-                        descriptor(dest_desc),
-                        (const cudnnConvolutionDescriptor_t)conv_handle,
-                        (const cudnnFilterDescriptor_t)filter_handle,
-                        dnn_prefer_fastest_algorithms()?CUDNN_CONVOLUTION_BWD_FILTER_PREFER_FASTEST:CUDNN_CONVOLUTION_BWD_FILTER_NO_WORKSPACE,
-                        std::numeric_limits<size_t>::max(),
-                        &backward_filters_best_algo));
-                // cuDNN 5.1 has a bug that causes
-                // cudnnGetConvolutionBackwardFilterAlgorithm() to pick the winograd
-                // algorithm even for cases where cuDNN doesn't support it, leading to
-                // incorrect outputs.  So here we check if we are in a case where winograd
-                // isn't supported and manually overrule
-                // cudnnGetConvolutionBackwardFilterAlgorithm() by picking a safe
-                // algorithm.
-                if (dnn_prefer_fastest_algorithms() && 
-                    !(stride_x == 1 && stride_y == 1 && ((filters_nr==3&&filters_nc==3) || (filters_nr==5&&filters_nc==5)))
-                    )
-                {
-                    backward_filters_best_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0;
-                }
-                backward_filters_algo = backward_filters_best_algo;
 
                 CHECK_CUDNN(cudnnGetConvolutionBackwardFilterWorkspaceSize( 
                         context(),
@@ -916,7 +1042,7 @@ namespace dlib
                         descriptor(dest_desc),
                         (const cudnnConvolutionDescriptor_t)conv_handle,
                         (const cudnnFilterDescriptor_t)filter_handle,
-                        backward_filters_best_algo,
+                        (cudnnConvolutionBwdFilterAlgo_t)backward_filters_algo,
                         &backward_filters_workspace_size_in_bytes));
             }
             catch(...)

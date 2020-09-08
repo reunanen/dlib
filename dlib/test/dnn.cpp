@@ -1995,28 +1995,74 @@ namespace
             pres<res<res<res_down< // 2 prelu layers here
             tag4<repeat<9,pres,    // 9 groups, each containing 2 prelu layers  
             res_down<
-            res<
+            leaky_relu<res<
             input<matrix<unsigned char>>
-            >>>>>>>>>>>;
+            >>>>>>>>>>>>;
 
         net_type2 pnet;
+        const net_type2& const_pnet = pnet;
 
-        DLIB_TEST_MSG(pnet.num_layers == 131, pnet.num_layers);
-        DLIB_TEST_MSG(pnet.num_computational_layers == 109, pnet.num_computational_layers);
+        DLIB_TEST_MSG(pnet.num_layers == 132, pnet.num_layers);
+        DLIB_TEST_MSG(pnet.num_computational_layers == 110, pnet.num_computational_layers);
 
-        std::vector<bool> hit(pnet.num_computational_layers, false);
-        size_t count = 0;
-        visit_layer_parameter_gradients(pnet, [&](size_t i, tensor& ){hit[i] = true; ++count; });
-        for (auto x : hit)
-            DLIB_TEST(x);
-        DLIB_TEST(count == pnet.num_computational_layers);
+        {
+            std::vector<bool> hit(pnet.num_computational_layers, false);
+            size_t count = 0;
+            visit_layer_parameter_gradients(pnet, [&](size_t i, tensor& ){hit[i] = true; ++count; });
+            for (auto x : hit)
+                DLIB_TEST(x);
+            DLIB_TEST(count == pnet.num_computational_layers);
+        }
+        {
+            std::vector<bool> hit(pnet.num_computational_layers, false);
+            size_t count = 0;
+            visit_layer_parameter_gradients(const_pnet, [&](size_t i, const tensor& ){hit[i] = true; ++count; });
+            for (auto x : hit)
+                DLIB_TEST(x);
+            DLIB_TEST(count == pnet.num_computational_layers);
+        }
 
-        count = 0;
-        std::vector<bool> hit2(pnet.num_computational_layers, false);
-        visit_layer_parameters(pnet, [&](size_t i, tensor& ){hit2[i] = true; ++count; });
-        for (auto x : hit2)
-            DLIB_TEST(x);
-        DLIB_TEST(count == pnet.num_computational_layers);
+        {
+            size_t count = 0;
+            std::vector<bool> hit2(pnet.num_computational_layers, false);
+            visit_layer_parameters(pnet, [&](size_t i, tensor& ){hit2[i] = true; ++count; });
+            for (auto x : hit2)
+                DLIB_TEST(x);
+            DLIB_TEST(count == pnet.num_computational_layers);
+        }
+        {
+            size_t count = 0;
+            std::vector<bool> hit2(pnet.num_computational_layers, false);
+            visit_layer_parameters(const_pnet, [&](size_t i, const tensor& ){hit2[i] = true; ++count; });
+            for (auto x : hit2)
+                DLIB_TEST(x);
+            DLIB_TEST(count == pnet.num_computational_layers);
+        }
+
+        int num_relus = 0;
+        visit_computational_layers(pnet, [&num_relus](relu_&) { ++num_relus; });
+        DLIB_TEST(num_relus == 10);
+        num_relus = 0;
+        visit_computational_layers(const_pnet, [&num_relus](const relu_&) { ++num_relus; });
+        DLIB_TEST(num_relus == 10);
+        num_relus = 0;
+        visit_computational_layers(const_pnet, [&num_relus](relu_&) { ++num_relus; });
+        // Visiting doesn't happen in this case because a const network can't bind the non-const
+        // relu_ reference used above. 
+        DLIB_TEST(num_relus == 0);
+
+        DLIB_TEST(layer<leaky_relu>(pnet).layer_details().get_alpha() == 0.01f);
+        visit_computational_layers(pnet, [](leaky_relu_& l) { l = leaky_relu_(0.001f); });
+        DLIB_TEST(layer<leaky_relu>(pnet).layer_details().get_alpha() == 0.001f);
+
+        // make sure count_parameters() works since it depends on visiting too.  Initially the
+        // network has 0 parameters.  But once we run something through it it will allocate its
+        // parameters.
+        DLIB_TEST_MSG(count_parameters(pnet) == 0, "count_parameters(pnet): "<< count_parameters(pnet));
+        const matrix<unsigned char> input = zeros_matrix<unsigned char>(40,40);
+        pnet(input);
+        DLIB_TEST_MSG(count_parameters(pnet) == 17606, "count_parameters(pnet): "<< count_parameters(pnet));
+
     }
 
     float tensor_read_cpu(const tensor& t, long i, long k, long r, long c)
@@ -3350,6 +3396,71 @@ namespace
 
 // ----------------------------------------------------------------------------------------
 
+    void test_loss_multibinary_log()
+    {
+        print_spinner();
+        dlib::rand rnd;
+
+        const long dims = 3;
+        const std::vector<float> empty_label(2, -1.f);
+        std::vector<matrix<float, 0, 1>> samples;
+        std::vector<std::vector<float>> labels(128, empty_label);
+
+        for (size_t i = 0; i < labels.size(); ++i)
+        {
+            matrix<float, 0, 1> x = matrix_cast<float>(randm(dims, 1)) * rnd.get_double_in_range(1, 9);
+            const auto norm = sqrt(sum(squared(x)));
+            if (norm < 3)
+            {
+                labels[i][0] = 1.f;
+            }
+            else if (3 <= norm && norm < 6)
+            {
+                labels[i][0] = 1.f;
+                labels[i][1] = 1.f;
+            }
+            else
+            {
+                labels[i][1] = 1.f;
+            }
+            samples.push_back(std::move(x));
+        }
+
+        using net_type = loss_multibinary_log<fc<2, relu<bn_fc<fc<10, input<matrix<float, 0, 1>>>>>>>;
+        net_type net;
+
+        auto compute_error = [&net, &samples, &labels, dims]()
+        {
+            const auto preds = net(samples);
+            double num_wrong = 0;
+            for (size_t i = 0; i < labels.size(); ++i)
+            {
+                for (size_t j = 0; j < labels[i].size(); ++j)
+                {
+                    if ((labels[i][j] == 1 && preds[i][j] < 0) ||
+                        (labels[i][j] == 0 && preds[i][j] > 0))
+                    {
+                        ++num_wrong;
+                    }
+                }
+            }
+            return num_wrong / labels.size() / dims;
+        };
+
+        dnn_trainer<net_type> trainer(net);
+        const auto error_before = compute_error();
+        trainer.set_learning_rate(0.1);
+        trainer.set_iterations_without_progress_threshold(10);
+        trainer.set_mini_batch_size(128);
+        trainer.set_min_learning_rate(1e-3);
+        trainer.train(samples, labels);
+        const auto error_after = compute_error();
+
+        DLIB_TEST_MSG(error_after < error_before && error_after == 0, "multibinary_log error increased after training");
+    }
+
+// ----------------------------------------------------------------------------------------
+
     void test_tensor_resize_bilinear(long samps, long k, long nr, long nc,  long onr, long onc)
     {
         resizable_tensor img(samps,k,nr,nc);
@@ -3771,6 +3882,7 @@ namespace
             test_loss_multiclass_per_pixel_with_noise_and_pixels_to_ignore();
             test_loss_multiclass_per_pixel_weighted();
             test_loss_multiclass_log_weighted();
+            test_loss_multibinary_log();
             test_serialization();
             test_loss_dot();
             test_loss_multimulticlass_log();

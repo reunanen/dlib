@@ -78,14 +78,13 @@ namespace dlib
                 - image_view_type == an image_view or const_image_view object 
                 - pixel_traits<typename image_view_type::pixel_type>::has_alpha == false
                 - pixel_traits<pixel_type> is defined
+                - is_color_space_cartesian_image<image_view_type>::value == true
             ensures
                 - if (there is an interpolatable image location at point p in img) then
                     - #result == the interpolated pixel value from img at point p.
                     - assign_pixel() will be used to write to #result, therefore any
                       necessary color space conversion will be performed.
                     - returns true
-                    - if img contains RGB pixels then the interpolation will be in color.
-                      Otherwise, the interpolation will be performed in a grayscale mode.
                 - else
                     - returns false
         !*/
@@ -119,14 +118,13 @@ namespace dlib
                 - image_view_type == an image_view or const_image_view object. 
                 - pixel_traits<typename image_view_type::pixel_type>::has_alpha == false
                 - pixel_traits<pixel_type> is defined
+                - is_color_space_cartesian_image<image_view_type>::value == true
             ensures
                 - if (there is an interpolatable image location at point p in img) then
                     - #result == the interpolated pixel value from img at point p
                     - assign_pixel() will be used to write to #result, therefore any
                       necessary color space conversion will be performed.
                     - returns true
-                    - if img contains RGB pixels then the interpolation will be in color.
-                      Otherwise, the interpolation will be performed in a grayscale mode.
                 - else
                     - returns false
         !*/
@@ -430,7 +428,7 @@ namespace dlib
               dlib/image_processing/generic_image.h 
             - pixel_traits<typename image_traits<image_type>::pixel_type>::has_alpha == false
         ensures
-            - Resizes img so that each of it's dimensions are size_scale times larger than img.
+            - Resizes img so that each of its dimensions are size_scale times larger than img.
               In particular, we will have:
                 - #img.nr() == std::round(size_scale*img.nr())
                 - #img.nc() == std::round(size_scale*img.nc())
@@ -1037,7 +1035,7 @@ namespace dlib
                 - #angle == 0
                 - #rows and #cols is set such that the total size of the chip is as close
                   to size_ as possible but still matches the aspect ratio of rect_.
-                - As long as size_ and the aspect ratio of of rect_ stays constant then
+                - As long as size_ and the aspect ratio of rect_ stays constant then
                   #rows and #cols will always have the same values.  This means that, for
                   example, if you want all your chips to have the same dimensions then
                   ensure that size_ is always the same and also that rect_ always has the
@@ -1059,7 +1057,7 @@ namespace dlib
                 - #angle == angle_
                 - #rows and #cols is set such that the total size of the chip is as close
                   to size_ as possible but still matches the aspect ratio of rect_.
-                - As long as size_ and the aspect ratio of of rect_ stays constant then
+                - As long as size_ and the aspect ratio of rect_ stays constant then
                   #rows and #cols will always have the same values.  This means that, for
                   example, if you want all your chips to have the same dimensions then
                   ensure that size_ is always the same and also that rect_ always has the
