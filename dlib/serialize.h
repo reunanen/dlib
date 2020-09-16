@@ -136,6 +136,46 @@
         then serialize the exponent and mantissa values using dlib's integral serialization
         format.  Therefore, the output is first the exponent and then the mantissa.  Note that
         the mantissa is a signed integer (i.e. there is not a separate sign bit).
+
+
+    MAKING YOUR OWN CUSTOM OBJECTS SERIALIZABLE
+        Suppose you create your own type, my_custom_type, and you want it to be serializable.  I.e.
+        you want to be able to use the tools above to save and load it.  E.g. maybe you have a
+        std::vector<my_custom_type> you wish to save.
+
+        To make my_custom_type properly serializable all you have to do is define global serialize
+        and deserialize functions **IN THE SAME NAMESPACE AS MY_CUSTOM_TYPE**.  You must define them
+        in your namespace so that argument dependent lookup will be able to find them.  So your code
+        might look like this:
+
+            namespace your_namespace 
+            {
+                struct my_custom_type
+                {
+                    int a;
+                    float b;
+                    std::vector<float> c;
+                };
+                void serialize (const my_custom_type& item, std::ostream& out);
+                void deserialize (my_custom_type& item, std::istream& in);
+            }
+       
+        That's all you need to do.  You may optionally avail yourself of the
+        DLIB_DEFINE_DEFAULT_SERIALIZATION macro, which generates global friend serialize and
+        deserialize functions for you.  In that case you would do this instead:
+
+            namespace your_namespace 
+            {
+                struct my_custom_type
+                {
+                    int a;
+                    float b;
+                    std::vector<float> c;
+
+                    DLIB_DEFINE_DEFAULT_SERIALIZATION(my_custom_type, a, b, c);
+                };
+            }
+
 !*/
 
 
@@ -1554,7 +1594,7 @@ namespace dlib
             if (!(*fout))
                 throw serialization_error("Unable to open " + filename + " for writing.");
         }
-
+    
         template <typename T>
         inline proxy_serialize& operator<<(const T& item)
         {
@@ -1773,6 +1813,80 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
+    template<typename T>
+    inline void serialize_these(std::ostream& out, const T& x)
+    {
+        using dlib::serialize;
+        serialize(x, out);
+    }
+    
+    template<typename T, typename... Rest>
+    inline void serialize_these(std::ostream& out, const T& x, const Rest& ... rest)
+    {
+        serialize_these(out, x);
+        serialize_these(out, rest...);
+    }
+    
+    template<typename T>
+    inline void deserialize_these(std::istream& in, T& x)
+    {
+        using dlib::deserialize;
+        deserialize(x, in);
+    }
+    
+    template<typename T, typename... Rest>
+    inline void deserialize_these(std::istream& in, T& x, Rest& ... rest)
+    {
+        deserialize_these(in, x);
+        deserialize_these(in, rest...);
+    }  
+    
+    #define DLIB_DEFINE_DEFAULT_SERIALIZATION(Type, ...)                \
+    void serialize_to(std::ostream& out) const                          \
+    {                                                                   \
+        using dlib::serialize;                                          \
+        using dlib::serialize_these;                                    \
+        try                                                             \
+        {                                                               \
+            /* Write a version header so that if, at a later time, */   \
+            /* you realize you need to change the serialization    */   \
+            /* format you can identify which version of the format */   \
+            /* you are encountering when reading old files.        */   \
+            int version = 1;                                            \
+            serialize(version, out);                                    \
+            serialize_these(out, __VA_ARGS__);                          \
+        }                                                               \
+        catch (dlib::serialization_error& e)                            \
+        {                                                               \
+            throw dlib::serialization_error(e.info + "\n   while serializing object of type " #Type); \
+        }                                                               \
+    }                                                                   \
+                                                                        \
+    void deserialize_from(std::istream& in)                             \
+    {                                                                   \
+        using dlib::deserialize;                                        \
+        using dlib::deserialize_these;                                  \
+        try                                                             \
+        {                                                               \
+            int version = 0;                                            \
+            deserialize(version, in);                                   \
+            if (version != 1)                                           \
+                throw dlib::serialization_error("Unexpected version found while deserializing " #Type); \
+            deserialize_these(in, __VA_ARGS__);                         \
+        }                                                               \
+        catch (dlib::serialization_error& e)                            \
+        {                                                               \
+            throw dlib::serialization_error(e.info + "\n   while deserializing object of type " #Type); \
+        }                                                               \
+    }                                                                   \
+    inline friend void serialize(const Type& item, std::ostream& out)   \
+    {                                                                   \
+        item.serialize_to(out);                                         \
+    }                                                                   \
+    inline friend void deserialize(Type& item, std::istream& in)        \
+    {                                                                   \
+        item.deserialize_from(in);                                      \
+    }
 }
 
 #endif // DLIB_SERIALIZe_
