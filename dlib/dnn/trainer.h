@@ -465,6 +465,7 @@ namespace dlib
                 previous_loss_values_to_keep_until_disk_sync.clear();
             }
             learning_rate = lr;
+            max_learning_rate_to_try_if_no_progress = learning_rate;
             lr_schedule.set_size(0);
         }
 
@@ -893,6 +894,7 @@ namespace dlib
             mini_batch_size = 128;
             verbose = false;
             learning_rate = 1e-2;
+            max_learning_rate_to_try_if_no_progress = learning_rate;
             min_learning_rate = 1e-5;
             iter_without_progress_thresh = 2000;
             steps_without_progress = 0;
@@ -1020,6 +1022,8 @@ namespace dlib
                 }
                 dlib::cuda::set_device(prev_dev);
             }
+
+            item.max_learning_rate_to_try_if_no_progress = item.learning_rate;
         }
 
         // Empty out some of the previous loss values so that steps_without_progress will decrease below iter_without_progress_thresh.  
@@ -1064,6 +1068,8 @@ namespace dlib
                 // previously saved state in the hopes that the problem won't reoccur.
                 if (loss_increased_since_last_disk_sync()) 
                 {
+                    const double temp = max_learning_rate_to_try_if_no_progress;
+
                     std::ifstream fin(newest_syncfile(), std::ios::binary);
                     deserialize(*this, fin);
                     sync_file_reloaded = true;
@@ -1078,7 +1084,11 @@ namespace dlib
                         if (verbose)
                             std::cout << "(and while at it, also shrinking the learning rate)" << std::endl;
 
-                        learning_rate = learning_rate_shrink * learning_rate;
+                        max_learning_rate_to_try_if_no_progress = temp * learning_rate_shrink;
+                        learning_rate = std::min(
+                            learning_rate_shrink * learning_rate,
+                            max_learning_rate_to_try_if_no_progress
+                        );
                         steps_without_progress = 0;
                         test_steps_without_progress = 0;
 
@@ -1313,6 +1323,7 @@ namespace dlib
         bool verbose;
         net_type& net;
         std::atomic<double> learning_rate;
+        double max_learning_rate_to_try_if_no_progress;
         double min_learning_rate;
         std::atomic<unsigned long> iter_without_progress_thresh;
         std::atomic<unsigned long> steps_without_progress;
