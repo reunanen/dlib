@@ -2693,10 +2693,16 @@ namespace dlib
                 for (long j = 0; j < output_tensor.k(); ++j)
                 {
                     const float y = ytrue(j, 0);
-                    const float temp1 = y - *out_data++;
-                    const float temp2 = scale*temp1;
-                    loss += temp2*temp1;
-                    *g = -temp2;
+                    if (std::isnan(y))
+                    {
+                        *g = 0.f;
+                    }
+                    else {
+                        const float temp1 = y - *out_data++;
+                        const float temp2 = scale*temp1;
+                        loss += temp2*temp1;
+                        *g = -temp2;
+                    }
                     ++g;
                 }
 
