@@ -169,6 +169,7 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
+    template <typename mem_manager = default_memory_manager>
     class input_rgb_image
     {
         /*!
@@ -179,7 +180,7 @@ namespace dlib
                 a tensor.
         !*/
     public:
-        typedef matrix<rgb_pixel> input_type;
+        typedef matrix<rgb_pixel,0,0,mem_manager> input_type;
 
         input_rgb_image (
         );
@@ -256,7 +257,7 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
-    template <size_t NR, size_t NC=NR>
+    template <size_t NR, size_t NC=NR, typename mem_manager = default_memory_manager>
     class input_rgb_image_sized 
     {
         /*!

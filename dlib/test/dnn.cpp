@@ -3709,8 +3709,8 @@ namespace
     void test_layers_scale_and_scale_prev()
     {
         print_spinner();
-        using net_type1 = scale1<con<3,1,1,1,1,avg_pool_everything<tag1<input_rgb_image>>>>;
-        using net_type2 = scale_prev2<skip1<tag2<con<3,1,1,1,1,avg_pool_everything<tag1<input_rgb_image>>>>>>;
+        using net_type1 = scale1<con<3,1,1,1,1,avg_pool_everything<tag1<input_rgb_image<default_memory_manager>>>>>;
+        using net_type2 = scale_prev2<skip1<tag2<con<3,1,1,1,1,avg_pool_everything<tag1<input_rgb_image<default_memory_manager>>>>>>>;
 
         dlib::tt::tensor_rand rnd;
         dlib::resizable_tensor x(1, 3, 64, 64);
