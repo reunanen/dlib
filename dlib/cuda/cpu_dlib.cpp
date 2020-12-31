@@ -19,6 +19,14 @@ namespace dlib
     namespace cpu 
     {
 
+        namespace exp =
+#ifdef DLIB_USE_FMATH
+            fmath
+#else // DLIB_USE_FMATH
+            std
+#endif // DLIB_USE_FMATH
+            ;
+
     // -----------------------------------------------------------------------------------
 
         void multiply (
@@ -1309,14 +1317,6 @@ namespace dlib
             const auto d = dest.host();
             const auto s = src.host();
 
-            namespace exp =
-#ifdef DLIB_USE_FMATH
-                fmath
-#else // DLIB_USE_FMATH
-                std
-#endif // DLIB_USE_FMATH
-                ;
-
             // Note that we subtract out the max values in each channel before applying
             // exp() to avoid numeric overflow in the subsequent computations.  Doing this
             // doesn't change the resulting output, it just makes it more numerically
@@ -1447,7 +1447,7 @@ namespace dlib
             const auto d = dest.host();
             const auto s = src.host();
             for (size_t i = 0; i < src.size(); ++i)
-                d[i] = 1/(1+std::exp(-s[i]));
+                d[i] = 1/(1+exp::exp(-s[i]));
         }
 
         void sigmoid_gradient (
@@ -1482,7 +1482,7 @@ namespace dlib
             const auto s = src.host();
             for (size_t i = 0; i < src.size(); ++i)
             {
-                const auto e = std::exp(s[i]);
+                const auto e = exp::exp(s[i]);
                 const auto delta = 2*e + e*e + 2;
                 d[i] = s[i] - 2*s[i]/delta;
             }
@@ -1505,7 +1505,7 @@ namespace dlib
                 if (x <= -8)
                     return 0.f;
 
-                const auto e = std::exp(x);
+                const auto e = exp::exp(x);
                 const auto delta = 2*e + e*e + 2;
                 const auto omega = 4*(x + 1) + 4*e*e + e*e*e + e*(4*x + 6);
                 return e*omega/(delta*delta);
