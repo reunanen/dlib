@@ -1146,16 +1146,16 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
+    struct rgb_pixel_float_values {
+        float red   = std::numeric_limits<float>::quiet_NaN();
+        float green = std::numeric_limits<float>::quiet_NaN();
+        float blue  = std::numeric_limits<float>::quiet_NaN();
+    };
+
     class input_rgb_image_stack
     {
     public:
         typedef std::vector<matrix<rgb_pixel>> input_type;
-
-        struct rgb_pixel_float_values {
-            float red   = std::numeric_limits<float>::quiet_NaN();
-            float green = std::numeric_limits<float>::quiet_NaN();
-            float blue  = std::numeric_limits<float>::quiet_NaN();
-        };
 
         input_rgb_image_stack( // If average values are not passed, then the values defined already in input_rgb_image are assumed
         )
@@ -1308,6 +1308,225 @@ namespace dlib
                     << " average_blue=\""  << item.average_values[j].blue  << "\"/>";
             }
             out << "</input_rgb_image_stack>";
+        }
+
+    private:
+        std::vector<rgb_pixel_float_values> average_values;
+    };
+
+// ----------------------------------------------------------------------------------------
+
+    class image_size_provider {
+    public:
+        image_size_provider(long nr, long nc)
+            : _nr(nr)
+            , _nc(nc)
+        {}
+
+        long nr() const { return _nr; }
+        long nc() const { return _nc; }
+
+    private:
+        const long _nr;
+        const long _nc;
+    };
+
+    template <typename PYRAMID_TYPE>
+    class input_rgb_image_stack_pyramid : public detail::input_image_pyramid<PYRAMID_TYPE>
+    {
+    public:
+        typedef std::vector<matrix<rgb_pixel>> input_type;
+        typedef PYRAMID_TYPE pyramid_type;
+
+        input_rgb_image_stack_pyramid (
+        )
+        {}
+
+        input_rgb_image_stack_pyramid (
+            const std::vector<rgb_pixel_float_values>& average_values_
+        ) : average_values(average_values_)
+        {}
+
+        const std::vector<rgb_pixel_float_values>& get_average_values() const { return average_values; }
+
+        template <typename forward_iterator>
+        void to_tensor (
+            forward_iterator ibegin,
+            forward_iterator iend,
+            resizable_tensor& data
+        ) const
+        {
+            const auto samples = std::distance(ibegin, iend);
+            const auto images_in_stack = ibegin->size();
+
+            const auto nr = ibegin->begin()->nr();
+            const auto nc = ibegin->begin()->nc();
+            // make sure all the input matrices have the same dimensions
+            for (auto i = ibegin; i != iend; ++i)
+            {
+                DLIB_CASSERT(i->size() == images_in_stack,
+                    "\t input_rgb_image_stack_pyramid::to_tensor()"
+                    << "\n\t All image stacks given to to_tensor() must have the same size."
+                    << "\n\t images_in_stack: " << images_in_stack
+                    << "\n\t i->size: " << i->size()
+                );
+
+                for (auto j = i->begin(); j != i->end(); ++j)
+                {
+                    DLIB_CASSERT(j->nr() == nr && j->nc() == nc,
+                        "\t input_rgb_image_stack_pyramid::to_tensor()"
+                        << "\n\t All matrices given to to_tensor() must have the same dimensions."
+                        << "\n\t nr: " << nr
+                        << "\n\t nc: " << nc
+                        << "\n\t j->nr(): " << j->nr()
+                        << "\n\t j->nc(): " << j->nc()
+                    );
+                }
+            }
+
+            // if average values are supplied, then they need to match the stack size
+            // (if they are not supplied, then values defined already in input_rgb_image are assumed)
+            DLIB_CASSERT(average_values.empty() || average_values.size() == images_in_stack);
+            const bool has_average_values = !average_values.empty();
+
+            std::vector<image_size_provider> image_size_providers;
+            image_size_providers.reserve(samples);
+            for (auto i = ibegin; i != iend; ++i)
+            {
+                const auto& img = i->front();
+                image_size_providers.push_back(image_size_provider(img.nr(), img.nc()));
+            }
+            this->to_tensor_init(image_size_providers.begin(), image_size_providers.end(), data, images_in_stack * 3);
+
+            const auto rects = data.annotation().get<std::vector<rectangle>>();
+            if (rects.size() == 0)
+                return;
+
+            // copy the first raw image into the top part of the tiled pyramid
+            auto ptr = data.host_write_only();
+            for (auto i = ibegin; i != iend; ++i)
+            {
+                for (size_t j = 0; j < images_in_stack; ++j)
+                {
+                    const auto& img = (*i)[j];
+
+                    const float avg_red   = has_average_values ? average_values[j].red   : 122.782;
+                    const float avg_green = has_average_values ? average_values[j].green : 117.001;
+                    const float avg_blue  = has_average_values ? average_values[j].blue  : 104.298;
+
+                    ptr += rects[0].top() * data.nc();
+                    for (long r = 0; r < img.nr(); ++r)
+                    {
+                        auto p = ptr + rects[0].left();
+                        for (long c = 0; c < img.nc(); ++c)
+                            p[c] = (img(r, c).red - avg_red) / 256.0;
+                        ptr += data.nc();
+                    }
+                    ptr += data.nc()*(data.nr() - rects[0].bottom() - 1);
+
+                    ptr += rects[0].top()*data.nc();
+                    for (long r = 0; r < img.nr(); ++r)
+                    {
+                        auto p = ptr + rects[0].left();
+                        for (long c = 0; c < img.nc(); ++c)
+                            p[c] = (img(r, c).green - avg_green) / 256.0;
+                        ptr += data.nc();
+                    }
+                    ptr += data.nc()*(data.nr() - rects[0].bottom() - 1);
+
+                    ptr += rects[0].top()*data.nc();
+                    for (long r = 0; r < img.nr(); ++r)
+                    {
+                        auto p = ptr + rects[0].left();
+                        for (long c = 0; c < img.nc(); ++c)
+                            p[c] = (img(r, c).blue - avg_blue) / 256.0;
+                        ptr += data.nc();
+                    }
+                    ptr += data.nc()*(data.nr() - rects[0].bottom() - 1);
+                }
+            }
+
+            this->create_tiled_pyramid(rects, data);
+        }
+
+        friend void serialize(const input_rgb_image_stack_pyramid& item, std::ostream& out)
+        {
+            serialize("input_rgb_image_stack_pyramid", out);
+            serialize(item.pyramid_padding, out);
+            serialize(item.pyramid_outer_padding, out);
+
+            // TODO: this should use std::vector's serialization instead, but didn't know
+            //       where to put rgb_pixel_float_values's serialization so that it would
+            //       have been found correctly.
+            serialize(item.average_values.size(), out);
+            for (size_t j = 0; j < item.average_values.size(); ++j)
+            {
+                const auto& i = item.average_values[j];
+                serialize(i.red, out);
+                serialize(i.green, out);
+                serialize(i.blue, out);
+            }
+        }
+
+        friend void deserialize(input_rgb_image_stack_pyramid& item, std::istream& in)
+        {
+            std::string version;
+            deserialize(version, in);
+            if (version != "input_rgb_image_stack_pyramid")
+                throw serialization_error("Unexpected version found while deserializing dlib::input_rgb_image_stack_pyramid.");
+            deserialize(item.pyramid_padding, in);
+            deserialize(item.pyramid_outer_padding, in);
+
+            // TODO: this should use std::vector's deserialization instead, but didn't know
+            //       where to put rgb_pixel_float_values's deserialization so that it would
+            //       have been found correctly.
+            size_t size;
+            deserialize(size, in);
+            item.average_values.resize(size);
+            for (size_t j = 0; j < size; ++j)
+            {
+                auto& i = item.average_values[j];
+                deserialize(i.red, in);
+                deserialize(i.green, in);
+                deserialize(i.blue, in);
+            }
+        }
+
+        friend std::ostream& operator<<(std::ostream& out, const input_rgb_image_stack_pyramid& item)
+        {
+            out << "input_rgb_image_stack_pyramid";
+
+            for (size_t j = 0; j < item.average_values.size(); ++j)
+            {
+                if (j > 0)
+                    out << ";";
+
+                out << "("
+                    << item.average_values[j].red << ","
+                    << item.average_values[j].green << ","
+                    << item.average_values[j].blue << ")";
+            }
+
+            out << " pyramid_padding="<<item.pyramid_padding;
+            out << " pyramid_outer_padding="<<item.pyramid_outer_padding;
+            return out;
+        }
+
+        friend void to_xml(const input_rgb_image_stack_pyramid& item, std::ostream& out)
+        {
+            out << "<input_rgb_image_stack_pyramid"
+                <<" pyramid_padding='"<<item.pyramid_padding<<"'"
+                <<" pyramid_outer_padding='"<<item.pyramid_outer_padding<<"'>"
+
+            for (size_t j = 0; j < item.average_values.size(); ++j)
+            {
+                out << "<stack_position index=\"" << j << "\" "
+                    << " average_red=\"" << item.average_values[j].red << "\""
+                    << " average_green=\"" << item.average_values[j].green << "\""
+                    << " average_blue=\"" << item.average_values[j].blue << "\"/>";
+            }
+
+            out <<"</input_rgb_image_stack_pyramid>";
         }
 
     private:
