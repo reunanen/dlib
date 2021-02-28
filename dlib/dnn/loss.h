@@ -2698,11 +2698,12 @@ namespace dlib
                         *g = 0.f;
                     }
                     else {
-                        const float temp1 = y - *out_data++;
+                        const float temp1 = y - *out_data;
                         const float temp2 = scale*temp1;
                         loss += temp2*temp1;
                         *g = -temp2;
                     }
+                    ++out_data;
                     ++g;
                 }
 
