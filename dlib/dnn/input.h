@@ -1515,8 +1515,8 @@ namespace dlib
         friend void to_xml(const input_rgb_image_stack_pyramid& item, std::ostream& out)
         {
             out << "<input_rgb_image_stack_pyramid"
-                <<" pyramid_padding='"<<item.pyramid_padding<<"'"
-                <<" pyramid_outer_padding='"<<item.pyramid_outer_padding<<"'>"
+                << " pyramid_padding='" << item.pyramid_padding << "'"
+                << " pyramid_outer_padding='" << item.pyramid_outer_padding << "'>";
 
             for (size_t j = 0; j < item.average_values.size(); ++j)
             {
