@@ -27,6 +27,16 @@
 #pragma inline_depth(2)
 #endif
 
+inline void write_exr(const dlib::tensor& tensor, int layer_index)
+{
+    const float* p = tensor.host();
+    cv::Mat mat(tensor.nr(), tensor.nc(), CV_32FC1);
+    for (long k = 0; k < tensor.k(); ++k) {
+        std::memcpy(mat.ptr<float>(0), p, sizeof(float) * mat.total());
+        cv::imwrite("layer" + std::to_string(layer_index) + "_output_channel" + std::to_string(k) + ".exr", mat);
+        p += tensor.nr() * tensor.nc();
+    }
+};
 
 namespace dlib
 {
@@ -787,9 +797,9 @@ namespace dlib
             return (*this)(&x, &x+1);
         }
 
-        const tensor& forward(const tensor& x)
+        const tensor& forward(const tensor& x, int layer_index = 0)
         {
-            subnetwork->forward(x);
+            subnetwork->forward(x, layer_index + 1);
             const dimpl::subnet_wrapper<subnet_type> wsub(*subnetwork);
             if (!this_layer_setup_called)
             {
@@ -802,7 +812,9 @@ namespace dlib
                 impl::call_layer_forward(details, wsub, cached_output);
 
             gradient_input_is_stale = true;
-            return private_get_output();
+            const auto& y = private_get_output();
+            write_exr(y, layer_index);
+            return y;
         }
 
     private:
@@ -1164,7 +1176,7 @@ namespace dlib
             return (*this)(&x, &x+1);
         }
 
-        const tensor& forward (const tensor& x)
+        const tensor& forward (const tensor& x, int layer_index)
         {
             DLIB_CASSERT(sample_expansion_factor() != 0, "You must call to_tensor() before this function can be used.");
             DLIB_CASSERT(x.num_samples()%sample_expansion_factor() == 0);
@@ -1176,7 +1188,9 @@ namespace dlib
             }
             impl::call_layer_forward(details, wsub, cached_output);
             gradient_input_is_stale = true;
-            return private_get_output();
+            const auto& y = private_get_output();
+            write_exr(y, layer_index);
+            return y;
         }
 
     private:
@@ -1453,9 +1467,9 @@ namespace dlib
             return subnetwork(x);
         }
 
-        const tensor& forward(const tensor& x)
+        const tensor& forward(const tensor& x, int layer_index)
         {
-            return subnetwork.forward(x);
+            return subnetwork.forward(x, layer_index + 1);
         }
 
         const tensor& get_output() const { return subnetwork.get_output(); }
