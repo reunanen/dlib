@@ -1913,7 +1913,7 @@ namespace dlib
             float drop_rate_ = 0.5
         ) :
             drop_rate(drop_rate_),
-            rnd(std::rand())
+            rnd(std::make_unique<tt::tensor_rand>(std::rand()))
         {
             DLIB_CASSERT(0 <= drop_rate && drop_rate <= 1);
         }
@@ -1922,7 +1922,7 @@ namespace dlib
         // is non-copyable.
         dropout_(
             const dropout_& item
-        ) : drop_rate(item.drop_rate), mask(item.mask), rnd(std::rand())
+        ) : drop_rate(item.drop_rate), mask(item.mask), rnd(std::make_unique<tt::tensor_rand>(std::rand()))
         {}
 
         dropout_& operator= (
@@ -1949,7 +1949,7 @@ namespace dlib
         {
             // create a random mask and use it to filter the data
             mask.copy_size(input);
-            rnd.fill_uniform(mask);
+            rnd->fill_uniform(mask);
             tt::threshold(mask, drop_rate);
             tt::multiply(false, output, input, mask);
         } 
@@ -1995,6 +1995,11 @@ namespace dlib
             mask.clear();
         }
 
+        void set_random_seed(unsigned long long new_seed)
+        {
+            rnd = std::make_unique<tt::tensor_rand>(new_seed);
+        }
+
         friend std::ostream& operator<<(std::ostream& out, const dropout_& item)
         {
             out << "dropout\t ("
@@ -2014,7 +2019,7 @@ namespace dlib
         float drop_rate;
         resizable_tensor mask;
 
-        tt::tensor_rand rnd;
+        std::unique_ptr<tt::tensor_rand> rnd;
         resizable_tensor params; // unused
     };
 
