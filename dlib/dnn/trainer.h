@@ -1351,7 +1351,6 @@ namespace dlib
 
         std::vector<std::shared_ptr<device_data>> devices;
         dlib::pipe<job_t> job_pipe;
-        std::shared_ptr<threads> thread_pools;
         job_t job;
 
 
@@ -1362,6 +1361,7 @@ namespace dlib
         size_t mini_batch_size;
         bool verbose;
         net_type& net;
+        std::shared_ptr<threads> thread_pools;
         std::atomic<double> learning_rate;
         double min_learning_rate;
         std::atomic<unsigned long> iter_without_progress_thresh;
