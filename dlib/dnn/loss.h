@@ -1203,6 +1203,7 @@ namespace dlib
             }
 
             double det_thresh_speed_adjust = 0;
+            const size_t invalid_index = static_cast<size_t>(-1);
 
             // we will scale the loss so that it doesn't get really huge
             const double scale = 1.0/(output_tensor.nr()*output_tensor.nc()*output_tensor.num_samples()*options.detector_windows.size());
@@ -1296,7 +1297,7 @@ namespace dlib
                         if(image_rect_to_feat_coord(p, input_tensor, x, x.label, sub, k, options.assume_image_pyramid))
                         {
                             // Ignore boxes that can't be detected by the CNN.
-                            truth_idxs.push_back(-1);
+                            truth_idxs.push_back(invalid_index);
                             continue;
                         }
                         const size_t idx = (k*output_tensor.nr() + p.y())*output_tensor.nc() + p.x();
@@ -1304,7 +1305,7 @@ namespace dlib
                         if (i != idx_to_truth_rect.end())
                         {
                             // Ignore truth rects that completely overlap another truth rect in feature coordinates.
-                            truth_idxs.push_back(-1);
+                            truth_idxs.push_back(invalid_index);
                             continue;
                         }
 
@@ -1321,7 +1322,7 @@ namespace dlib
                     else
                     {
                         // This box was ignored so shouldn't have been counted in the loss.
-                        truth_idxs.push_back(-1);
+                        truth_idxs.push_back(invalid_index);
                     }
                 }
 
@@ -1378,7 +1379,7 @@ namespace dlib
                         if (options.overlaps_nms(best_matching_truth_box, (*truth)[i]))
                         {
                             const size_t idx = truth_idxs[i];
-                            if (idx != -1)
+                            if (idx != invalid_index)
                             {
                                 // We are ignoring this box so we shouldn't have counted it in the
                                 // loss in the first place.  So we subtract out the loss values we
@@ -1531,7 +1532,7 @@ namespace dlib
                         const auto idx = item.first;
                         const auto item_gradient = item.second.second;
 
-                        if (idx != -1)
+                        if (idx != invalid_index)
                         {
                             g[idx] += item_gradient;
                         }
