@@ -22,9 +22,9 @@ namespace dlib
         )
         {
             std::map<unsigned long,unsigned long> class_labels;
-            for (unsigned long i = 0; i < row_labels.size(); ++i)
+            for (size_t i = 0; i < row_labels.size(); ++i)
             {
-                const unsigned long next = class_labels.size();
+                const unsigned long next = static_cast<unsigned long>(class_labels.size());
                 if (class_labels.count(row_labels[i]) == 0)
                     class_labels[row_labels[i]] = next;
             }
@@ -158,11 +158,11 @@ namespace dlib
 
         double thresh = temp[0].first;
 
-        unsigned long num_low_wrong = low_vals.size();
-        unsigned long num_high_wrong = 0;
+        size_t num_low_wrong = low_vals.size();
+        size_t num_high_wrong = 0;
         double low_error = num_low_wrong/(double)low_vals.size();
         double high_error = num_high_wrong/(double)high_vals.size();
-        for (unsigned long i = 0; i < temp.size() && high_error < low_error; ++i)
+        for (size_t i = 0; i < temp.size() && high_error < low_error; ++i)
         {
             thresh = temp[i].first;
             if (temp[i].second > 0)
