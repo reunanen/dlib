@@ -396,7 +396,7 @@ namespace dlib
 
         unsigned long number_of_labels() const { return total_num_labels; }
 
-        unsigned long number_of_classifiers() const { return static_cast<unsigned long>(possible_labels.size()); }
+        unsigned long number_of_classifiers() const { return possible_labels.size(); }
 
         std::map<std::string,std::vector<std::string>> get_labels ( 
         ) const 
@@ -423,7 +423,7 @@ namespace dlib
             ) const 
             { 
                 DLIB_CASSERT(i < num_classes());
-                return class_probs(static_cast<long>(i)); 
+                return class_probs(i); 
             }
 
             const std::string& label(

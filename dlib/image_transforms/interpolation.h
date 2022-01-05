@@ -1758,7 +1758,7 @@ namespace dlib
         {
             if (rect.is_empty())
             {
-                cols = rows = static_cast<unsigned long>(std::round(std::sqrt((double)size)));
+                cols = rows = std::round(std::sqrt((double)size));
             }
             else
             {
