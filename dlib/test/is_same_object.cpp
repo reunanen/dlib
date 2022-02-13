@@ -102,8 +102,8 @@ namespace
         {
             print_spinner();
 
-            int a, b;
-            double d;
+            int a = 1, b = 2;
+            double d = 3.0;
             DLIB_TEST( is_same_object(a,a) == true) ;
             DLIB_TEST( is_same_object(a,b) == false) ;
             DLIB_TEST( is_same_object(d,b) == false) ;
