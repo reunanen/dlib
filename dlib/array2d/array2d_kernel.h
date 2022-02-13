@@ -124,6 +124,7 @@ namespace dlib
 
             // restricted functions
             row(){}
+			row(row&);
             row& operator=(row&);
         };
 
