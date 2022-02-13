@@ -170,7 +170,7 @@ if (MSVC)
    # Treat warnings as errors.
    add_definitions("/WX")
 else()
-  # Turn on all warnings, and treat them as errors.
+   # Turn on all warnings, and treat them as errors.
    add_definitions("-W -Wall -Wextra -Werror")
    # I don't care about unused testing functions though.  I like to keep them
    # around.  Don't warn about it.
