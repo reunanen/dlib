@@ -111,11 +111,8 @@ namespace
         ensures
             - runs tests on mfp for compliance with the specs
     !*/
-    {
+    {        
 
-// There are statements such as a0 = a0 here. Let's make Clang not complain about them:
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wself-assign-overloaded"
 
         test_helper helper;
 
@@ -528,7 +525,8 @@ namespace
         DLIB_TEST(a4);
         DLIB_TEST(a4 == a4);
 
-#pragma clang diagnostic pop
+
+
     }
 
 
