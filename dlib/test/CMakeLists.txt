@@ -166,8 +166,11 @@ set (tests
 # cmake that they are part of our target (which is the executable named dtest)
 ADD_EXECUTABLE(${target_name} main.cpp tester.cpp ${tests})
 
-# Turn on all warnings when using gcc.
-if (CMAKE_COMPILER_IS_GNUCXX)
+if (MSVC)
+   # Treat warnings as errors.
+   add_definitions("/WX")
+else()
+  # Turn on all warnings, and treat them as errors.
    add_definitions("-W -Wall -Wextra -Werror")
    # I don't care about unused testing functions though.  I like to keep them
    # around.  Don't warn about it.
