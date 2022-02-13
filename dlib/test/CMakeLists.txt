@@ -183,7 +183,9 @@ else()
    else()
       # Clang complains about tests along the lines of: a0 = a0
       add_definitions("-Wno-self-assign-overloaded")
-   endif()   
+	  # What is not required by Clang is still required by Visual Studio
+	  add_definitions("-Wno-unused-lambda-capture")
+   endif()
 endif()
 
 
