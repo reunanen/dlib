@@ -2767,7 +2767,7 @@ namespace
                             input<matrix<float>>>>>>;
         net_type net;
 
-        const auto autoencoder_error = [&x, &net, &output_height, &output_width]()
+        const auto autoencoder_error = [&x, &net]()
         {
             const auto y = net(x);
             double error = 0.0;
@@ -2841,7 +2841,7 @@ namespace
                             input<matrix<float>>>>>>>>;
         net_type net;
 
-        const auto compute_error = [&inputs, &labels, &net, num_channels]()
+        const auto compute_error = [&inputs, &labels, &net]()
         {
             const auto out = net(inputs);
             double error = 0.0;
@@ -3339,7 +3339,7 @@ namespace
         matrix<uint16_t> ytmp(output_height, output_width);
 
         // The function to be learned.
-        const auto ground_truth = [num_classes](const matrix<double>& x, int row, int column) {
+        const auto ground_truth = [](const matrix<double>& x, int row, int column) {
             double sum = 0.0;
             const int first_column = std::max(0, column - 1);
             const int last_column = std::min(static_cast<int>(x.nc() - 1), column + 1);
@@ -3672,7 +3672,7 @@ namespace
         using net_type = loss_multibinary_log<fc<2, relu<bn_fc<fc<10, input<matrix<float, 0, 1>>>>>>>;
         net_type net;
 
-        auto compute_error = [&net, &samples, &labels, dims]()
+        auto compute_error = [&net, &samples, &labels]()
         {
             const auto preds = net(samples);
             double num_wrong = 0;
@@ -4102,7 +4102,7 @@ namespace
         // Create training data that follows the generated pattern.
         typedef matrix<float> input_image_type;
 
-        const auto generate_input_image = [&labeled_points, nr, nc]()
+        const auto generate_input_image = [&labeled_points]()
         {
             input_image_type sample(nr, nc);
             sample = -1.0;
