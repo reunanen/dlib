@@ -180,7 +180,10 @@ else()
    if (CMAKE_COMPILER_IS_GNUCXX)
       # Clang doesn't know about this one
       add_definitions("-Wno-maybe-uninitialized")
-   endif()
+   else()
+      # Clang complains about tests along the lines of: a0 = a0
+      add_definitions("-Wno-self-assign-overloaded")
+   endif()   
 endif()
 
 
