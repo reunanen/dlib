@@ -176,7 +176,11 @@ else()
    # around.  Don't warn about it.
    add_definitions("-Wno-unused-function")
    add_definitions("-Wno-strict-overflow")
-   add_definitions("-Wno-maybe-uninitialized")
+
+   if (CMAKE_COMPILER_IS_GNUCXX)
+      # Clang doesn't know about this one
+      add_definitions("-Wno-maybe-uninitialized")
+   endif()
 endif()
 
 
