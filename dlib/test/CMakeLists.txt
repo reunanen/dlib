@@ -168,7 +168,7 @@ ADD_EXECUTABLE(${target_name} main.cpp tester.cpp ${tests})
 
 if (MSVC)
    # Treat warnings as errors.
-   add_definitions("/WX")
+   add_definitions("/WX /w4756")
 else()
    # Turn on all warnings, and treat them as errors.
    add_definitions("-W -Wall -Wextra -Werror")
