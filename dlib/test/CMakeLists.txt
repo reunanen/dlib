@@ -185,6 +185,8 @@ else()
       add_definitions("-Wno-self-assign-overloaded")
 	  # What is not required by Clang is still required by Visual Studio
 	  add_definitions("-Wno-unused-lambda-capture")
+	  # face_detection_ex.cpp says "faces/*.jpg" in a comment, which Clang warns about
+	  add_definitions("-Wno-comment")
    endif()
 endif()
 
