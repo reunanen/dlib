@@ -27,9 +27,13 @@ namespace
 
     dlib::rand rnd;
 
+// In matrix_test1(), there are statements such as: dm4 = dm4
+// Clang warns about these, which we do not really want
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wself-assign-overloaded"
     void matrix_test1 (
     )
-    {        
+    {
         typedef memory_manager_stateless<char>::kernel_2_2a MM;
         print_spinner();
 
@@ -743,10 +747,8 @@ namespace
             DLIB_TEST((round(1e10*trans(u)*u)  == 1e10*identity_matrix<double,M>()));
             DLIB_TEST((round(1e10*trans(v)*v)  == 1e10*identity_matrix<double,N>()));
         }
-
-
     }
-
+#pragma clang diagnostic pop
 
     void matrix_test2 (
     )
