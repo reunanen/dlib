@@ -184,10 +184,8 @@ else() # basically Clang
    add_definitions("-Wno-unneeded-internal-declaration") # This is for the tests in invoke.cpp.   
    add_definitions("-Wno-self-assign-overloaded")        # This is for the tests in matrix2.cpp and member_function_pointer.cpp (e.g., a0 = a0).
    add_definitions("-Wno-unused-lambda-capture")         # This is for the tests in dnn.cpp.
-   
-   # face_detection_ex.cpp says "faces/*.jpg" in a comment, which Clang warns about	  
-   #add_definitions("-Wno-comment")
-
+   add_definitions("-Wno-comment")                       # This is for the comment in face_detection_ex.cpp that says "faces/*.jpg"
+   #
    # matrix_ex.cpp sets a "var" that is not used	  
    #if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 13.0.1)
    #   add_definitions("-Wno-unused-but-set-variable")
