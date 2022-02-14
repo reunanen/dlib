@@ -166,10 +166,7 @@ set (tests
 # cmake that they are part of our target (which is the executable named dtest)
 ADD_EXECUTABLE(${target_name} main.cpp tester.cpp ${tests})
 
-if(MSVC)
-   # Treat warnings as errors.
-   add_definitions("/WX")
-elseif(CMAKE_COMPILER_IS_GNUCXX)
+if (CMAKE_COMPILER_IS_GNUCXX)
    # Turn on all warnings, and treat them as errors.
    add_definitions("-W -Wall -Wextra -Werror")
    # I don't care about unused testing functions though.  I like to keep them
@@ -177,9 +174,13 @@ elseif(CMAKE_COMPILER_IS_GNUCXX)
    add_definitions("-Wno-unused-function")
    add_definitions("-Wno-strict-overflow")
    add_definitions("-Wno-maybe-uninitialized")
+elseif (MSVC)
+   # Treat warnings as errors.
+   add_definitions("/WX")
 else() # basically Clang
    # Treat warnings as errors, but do not turn on all warnings.
    add_definitions("-W -Wall -Werror")
+   add_definitions("-Wno-unneeded-internal-declaration")
 
    # Clang complains about tests along the lines of: a0 = a0
    #add_definitions("-Wno-self-assign-overloaded")
