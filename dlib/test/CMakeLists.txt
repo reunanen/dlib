@@ -166,35 +166,34 @@ set (tests
 # cmake that they are part of our target (which is the executable named dtest)
 ADD_EXECUTABLE(${target_name} main.cpp tester.cpp ${tests})
 
-if (MSVC)
+if(MSVC)
    # Treat warnings as errors.
    add_definitions("/WX")
-else()
+elseif(CMAKE_COMPILER_IS_GNUCXX)
    # Turn on all warnings, and treat them as errors.
    add_definitions("-W -Wall -Wextra -Werror")
    # I don't care about unused testing functions though.  I like to keep them
    # around.  Don't warn about it.
    add_definitions("-Wno-unused-function")
    add_definitions("-Wno-strict-overflow")
+   add_definitions("-Wno-maybe-uninitialized")
+else() # basically Clang
+   # Treat warnings as errors, but do not turn on all warnings.
+   add_definitions("-W -Wall -Werror")
 
-   if (CMAKE_COMPILER_IS_GNUCXX)
-      # Clang doesn't know about this one
-      add_definitions("-Wno-maybe-uninitialized")
-   else()
-      # Clang complains about tests along the lines of: a0 = a0
-      add_definitions("-Wno-self-assign-overloaded")
-      # What is not required by Clang is still required by Visual Studio
-      add_definitions("-Wno-unused-lambda-capture")
-      # face_detection_ex.cpp says "faces/*.jpg" in a comment, which Clang warns about	  
-      add_definitions("-Wno-comment")
+   # Clang complains about tests along the lines of: a0 = a0
+   #add_definitions("-Wno-self-assign-overloaded")
+   # What is not required by Clang is still required by Visual Studio
+   #add_definitions("-Wno-unused-lambda-capture")
+   # face_detection_ex.cpp says "faces/*.jpg" in a comment, which Clang warns about	  
+   #add_definitions("-Wno-comment")
 
-	  # matrix_ex.cpp sets a "var" that is not used	  
-      if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 13.0.1)
-         add_definitions("-Wno-unused-but-set-variable")
-      else()
-         add_definitions("-Wno-unused-private-field")
-      endif()
-   endif()
+   # matrix_ex.cpp sets a "var" that is not used	  
+   #if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 13.0.1)
+   #   add_definitions("-Wno-unused-but-set-variable")
+   #else()
+   #   add_definitions("-Wno-unused-private-field")
+   #endif()
 endif()
 
 
