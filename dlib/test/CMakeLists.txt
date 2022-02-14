@@ -180,12 +180,11 @@ elseif (MSVC)
 else() # basically Clang
    # Treat warnings as errors, but do not turn on all warnings.
    add_definitions("-W -Wall -Werror")
-   add_definitions("-Wno-unused-function")   
-   add_definitions("-Wno-unneeded-internal-declaration") # This for the tests in invoke.cpp.   
-   add_definitions("-Wno-self-assign-overloaded") # This is for the tests in matrix2.cpp and member_function_pointer.cpp (e.g., a0 = a0).
+   add_definitions("-Wno-unused-function")
+   add_definitions("-Wno-unneeded-internal-declaration") # This is for the tests in invoke.cpp.   
+   add_definitions("-Wno-self-assign-overloaded")        # This is for the tests in matrix2.cpp and member_function_pointer.cpp (e.g., a0 = a0).
+   add_definitions("-Wno-unused-lambda-capture")         # This is for the tests in dnn.cpp.
    
-   # What is not required by Clang is still required by Visual Studio
-   #add_definitions("-Wno-unused-lambda-capture")
    # face_detection_ex.cpp says "faces/*.jpg" in a comment, which Clang warns about	  
    #add_definitions("-Wno-comment")
 
