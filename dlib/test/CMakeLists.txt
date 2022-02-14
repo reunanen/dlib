@@ -179,12 +179,12 @@ elseif (MSVC)
    add_definitions("/WX")
 else() # basically Clang
    # Treat warnings as errors, but do not turn on all warnings.
-   add_definitions("-W -Wall -Werror")
-   add_definitions("-Wno-unused-function")
-   add_definitions("-Wno-unneeded-internal-declaration") # This is for the tests in invoke.cpp.   
-   add_definitions("-Wno-self-assign-overloaded")        # This is for the tests in matrix2.cpp and member_function_pointer.cpp (e.g., a0 = a0).
-   add_definitions("-Wno-unused-lambda-capture")         # This is for the tests in dnn.cpp.
-   add_definitions("-Wno-comment")                       # This is for the comment in face_detection_ex.cpp that says "faces/*.jpg"
+   add_definitions("-W -Werror")
+   #add_definitions("-Wno-unused-function")
+   #add_definitions("-Wno-unneeded-internal-declaration") # This is for the tests in invoke.cpp.   
+   #add_definitions("-Wno-self-assign-overloaded")        # This is for the tests in matrix2.cpp and member_function_pointer.cpp (e.g., a0 = a0).
+   #add_definitions("-Wno-unused-lambda-capture")         # This is for the tests in dnn.cpp.
+   #add_definitions("-Wno-comment")                       # This is for the comment in face_detection_ex.cpp that says "faces/*.jpg"
    #
    # matrix_ex.cpp sets a "var" that is not used	  
    #if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 13.0.1)
