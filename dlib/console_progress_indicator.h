@@ -30,7 +30,8 @@ namespace dlib
                     }
 
                 The above code will print a message to the console each iteration
-                which shows how much time is remaining until the loop terminates.
+                which shows the current progress and how much time is remaining until
+                the loop terminates.
         !*/
 
     public:
@@ -66,15 +67,16 @@ namespace dlib
 
         inline bool print_status (
             double cur,
-            bool always_print = false
+            bool always_print = false,
+            std::ostream& out = std::cout
         );
         /*!
             ensures
-                - print_status() assumes it is called with values which are linearly 
-                  approaching target().  It will attempt to predict how much time is 
-                  remaining until cur becomes equal to target().
-                - prints a status message to the screen which indicates how much
-                  more time is left until cur is equal to target()
+                - print_status() assumes it is called with values which are linearly
+                  approaching target().  It will display the current progress and attempt
+                  to predict how much time is remaining until cur becomes equal to target().
+                - prints a status message to out which indicates how much more time is
+                  left until cur is equal to target()
                 - if (always_print) then
                     - This function prints to the screen each time it is called.
                 - else
@@ -83,7 +85,7 @@ namespace dlib
                       until about one second has elapsed.  This means that the first call
                       to print_status() never prints to the screen.
                 - This function returns true if it prints to the screen and false
-                  otherwise. 
+                  otherwise.
         !*/
 
     private:
@@ -120,7 +122,8 @@ namespace dlib
     bool console_progress_indicator::
     print_status (
         double cur,
-        bool always_print
+        bool always_print,
+        std::ostream& out
     )
     {
         const time_t cur_time = std::time(0);
@@ -149,30 +152,39 @@ namespace dlib
 
             double seconds = delta_t/delta_val * std::abs(target_val - cur);
 
-            std::ios::fmtflags oldflags = std::cout.flags();  
+            std::ios::fmtflags oldflags = out.flags();
 
-            std::cout.setf(std::ios::fixed,std::ios::floatfield);
+            out.setf(std::ios::fixed,std::ios::floatfield);
             std::streamsize ss;
+
+            if (std::trunc(target_val) == target_val)
+                ss = out.precision(0);
+            else
+                ss = out.precision(2);
+
+            out << "Progress: " << cur << "/" << target_val;
+            ss = out.precision(2);
+            out << " (" << cur / target_val * 100. << "%). ";
 
             if (seconds < 60)
             {
-                ss = std::cout.precision(0); 
-                std::cout << "Time remaining: " << seconds << " seconds.                 \r" << std::flush;
+                ss = out.precision(0);
+                out << "Time remaining: " << seconds << " seconds.                 \r" << std::flush;
             }
             else if (seconds < 60*60)
             {
-                ss = std::cout.precision(2); 
-                std::cout << "Time remaining: " << seconds/60 << " minutes.                 \r" << std::flush;
+                ss = out.precision(2);
+                out << "Time remaining: " << seconds/60 << " minutes.                 \r" << std::flush;
             }
             else 
             {
-                ss = std::cout.precision(2); 
-                std::cout << "Time remaining: " << seconds/60/60 << " hours.                 \r" << std::flush;
+                ss = out.precision(2);
+                out << "Time remaining: " << seconds/60/60 << " hours.                 \r" << std::flush;
             }
 
             // restore previous output flags and precision settings
-            std::cout.flags(oldflags); 
-            std::cout.precision(ss); 
+            out.flags(oldflags);
+            out.precision(ss);
 
             return true;
         }

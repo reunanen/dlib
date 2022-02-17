@@ -12,6 +12,112 @@
 
 <current>
 New Features and Improvements:
+   - Added serialization support for std::variant and std::optional.
+   - Added upgrades to dlib::type_safe_union: type_safe_union_size, type_safe_union_alternative_t,
+     made into variadic template, more generic visit() method.
+   - Added dlib/invoke.hh which contains C++11 backports of std::invoke and related tooling.
+   - Added letterbox_image()
+   - Exposed momentum_filter to Python.
+   - Deep learning tooling:
+      - Added Clipped ReLU and ELU activations
+      - Made input_layer() work with networks that contain repeat layers.
+      - Added loss_yolo_ for training YOLO style object detectors.
+      - Added support for fused convolutions, see dlib::fuse_layers().
+      - Added dnn self supervised learning example: dnn_self_supervised_learning_ex.cpp
+
+Non-Backwards Compatible Changes:
+
+Bug fixes:
+   - Fix input/output mappings with repeat layers (PR #2337)
+   - Fix disable_duplicative_biases when the input is a skip layer (PR #2367)
+   - Fix cannot compile iso only code (PR #2384)
+   - Fix running gradient crashing sometimes (PR #2401)
+   - Fix trainer with unsupervised loss (PR #2436)
+   - Fix dnn_trainer trying to decrease the learning rate (PR #2442)
+   - Fix Layer Normalize (PR #2489)
+</current>
+
+<!-- **************************************************************************************  -->
+
+<old name="19.22" date="Mar 28, 2021">
+New Features and Improvements:
+   - Deep learning tooling:
+      - Added loss_multibinary_log_
+      - Added scale_prev layer
+      - Various ease of use improvements to the deep learning tooling, such as improved layer
+        visitors and increased DNN training stability.
+      - Added CUDA implementation for loss_multiclass_log_per_pixel_weighted.
+      - Add GELU activation layer
+      - Add Layer Normalization
+      - Add CIFAR-10 dataset loader: load_cifar_10_dataset()
+   - Add probability_values_are_increasing() and probability_values_are_increasing_robust().
+   - Expanded list of serializable types and added DLIB_DEFINE_DEFAULT_SERIALIZATION, a macro that
+     lets you make a class serializable with a single simple declaration.
+   - Added exponential and Weibull distributions to dlib::rand.
+   - For dlib::matrix:
+         - Added soft_max() and pointwise_pow()
+         - The FFT methods now support arbitrary sized FFTs and are more performant.
+   - Added user definable stopping condition support to find_min_global() and find_max_global().
+
+Non-Backwards Compatible Changes:
+   - Rename POSIX macro to DLIB_POSIX to avoid name clashes with some libraries.
+   - Dropped support for gcc 4.8.
+
+Bug fixes:
+   - Fixed bug in loss_mmod that degraded the quality of bounding box regression.  Now
+     bounding box regression works a lot better.
+   - Fixes for code not compiling in various environments and support newer CUDA tooling.
+</old>
+
+<!-- **************************************************************************************  -->
+
+<old name="19.21" date="Aug 08, 2020">
+New Features and Improvements:
+   - Added support for cuDNN 8.0.
+   - Added support for CUDA in Python 3.8 on Windows.
+   - Allow forwarding initial function evaluations into find_max_global().
+   - Can now load PNG images from a memory buffer.
+
+Non-Backwards Compatible Changes:
+
+Bug fixes:
+   - Improved error messages for python users trying to install dlib
+     with CUDA enabled or who are using windows.
+   - Fix random forest regression not doing quite the right thing.
+
+</old>
+
+<!-- **************************************************************************************  -->
+
+<old name="19.20" date="Jun 06, 2020">
+New Features and Improvements:
+   - Added CUDA implementation for loss_mean_squared_per_channel_and_pixel.
+   - Added DCGAN example in examples/dnn_dcgan_train_ex.cpp
+   - Added transfer learning example in examples/dnn_introduction3_ex.cpp
+   - Added leaky_relu activation layer
+   - Added mish activation layer 
+   - Added loss_multiclass_log_weighted
+   - Added loss_binary_log_per_pixel
+   - Minor API simplifications in deep learning tooling.
+   - imglab can automatically select the number of image clusters when --cluster 0 is given.
+   - Added a relative epsilon termination option to svm_c_linear_trainer
+   - Support new version of OpenCV that doesn't have IplImage anymore.
+
+Non-Backwards Compatible Changes:
+
+Bug fixes:
+   - Corrected interpolate_bilinear for lab_pixel.
+   - Fix build errors in CUDA 10.2
+   - Make equal_error_rate() handle degenerate case where all scores are equal.
+   - Fix DLIB_ISO_CPP_ONLY not working
+   - Fix build errors in C++20 build mode.
+   - Fixed function_evaluation_request::set() invalidating function_evaluation_request::x()
+</old>
+
+<!-- **************************************************************************************  -->
+
+<old name="19.19" date="Dec 14, 2019">
+New Features and Improvements:
    - Made find_min_global() and find_max_global() much faster when using them
      to optimize inexpensive functions.  These tools now measure the runtime of
      the objective function and automatically tune themselves to balance solver
@@ -29,7 +135,7 @@ Bug fixes:
    - Fix find_max() going into an infinite loop in some cases when a
      non-differentiable function is given.
 
-</current>
+</old>
 
 <!-- **************************************************************************************  -->
 

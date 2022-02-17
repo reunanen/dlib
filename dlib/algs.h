@@ -22,7 +22,11 @@
     // Disable the "statement is unreachable" message since it will go off on code that is
     // actually reachable but just happens to not be reachable sometimes during certain
     // template instantiations.
+    #ifdef __NVCC_DIAG_PRAGMA_SUPPORT__
+    #pragma nv_diag_suppress code_is_unreachable
+    #else
     #pragma diag_suppress code_is_unreachable
+    #endif
 #endif
 
 
@@ -74,7 +78,7 @@
 
 // DNN module uses template-based network declaration that leads to very long
 // type names. Visual Studio will produce Warning C4503 in such cases. https://msdn.microsoft.com/en-us/library/074af4b6.aspx says
-// that correct binaries are still produced even when this warning happens, but linker errors from visual studio, if they occurr could be confusing.
+// that correct binaries are still produced even when this warning happens, but linker errors from visual studio, if they occur could be confusing.
 #pragma warning( disable: 4503 )
 
 
@@ -480,6 +484,23 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
+    /*!A is_any 
+
+        This is a template where is_any<T,Rest...>::value == true when T is 
+        the same type as any one of the types in Rest... 
+    !*/
+
+    template <typename T, typename... Rest>
+    struct is_any : std::false_type {};
+    
+    template <typename T, typename First>
+    struct is_any<T,First> : std::is_same<T,First> {};
+    
+    template <typename T, typename First, typename... Rest>
+    struct is_any<T,First,Rest...> : std::integral_constant<bool, std::is_same<T,First>::value || is_any<T,Rest...>::value> {};
+
+// ----------------------------------------------------------------------------------------
+    
     /*!A is_float_type
 
         This is a template that can be used to determine if a type is one of the built
@@ -977,7 +998,7 @@ namespace dlib
     /*!A wrap_function 
         
         This is a template that allows you to turn a global function into a 
-        function object.  The reason for this template's existance is so you can
+        function object.  The reason for this template's existence is so you can
         do stuff like this:
             
             template <typename T>

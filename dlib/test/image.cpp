@@ -10,6 +10,8 @@
 #include <dlib/image_io.h>
 #include <dlib/matrix.h>
 #include <dlib/rand.h>
+#include <dlib/compress_stream.h>
+#include <dlib/base64.h>
 
 #include "tester.h"
 
@@ -1754,6 +1756,23 @@ namespace
                 << " error: " << max(abs(chip-255)) );
         }
 
+        // So the same as above, but for an image with float values that are all the same to make
+        // sure noting funny happens for float images.
+        {
+            print_spinner();
+            const long nr = 53;
+            const long nc = 67;
+            const long size = 8*9;
+            const double angle = 30*pi/180;
+
+            matrix<float> img(501,501), chip;
+            img = 1234.5;
+            chip_details details(centered_rect(center(get_rect(img)),nr,nc), size, angle);
+            extract_image_chip(img, details, chip);
+            DLIB_TEST_MSG(max(abs(chip-1234.5))==0,"nr: " << nr << "  nc: "<< nc << "  size: " << size << "  angle: " << angle 
+                << " error: " << max(abs(chip-255)) );
+        }
+
 
         {
             // Make sure that the interpolation in extract_image_chip() keeps stuff in the
@@ -1987,6 +2006,306 @@ namespace
         }
     }
 
+    template<typename interpolation_type = interpolate_bilinear>
+    void test_resize_image_with_interpolation()
+    {
+        {
+            matrix<unsigned char> img_s(2, 2);
+            matrix<unsigned char> img_d(3, 3);
+
+            img_s(0, 0) = 0;
+            img_s(0, 1) = 100;
+            img_s(1, 0) = 100;
+            img_s(1, 1) = 100;
+
+            resize_image(img_s, img_d, interpolation_type());
+            DLIB_TEST((img_d(0, 0) == 0));
+            DLIB_TEST((img_d(0, 1) == 50));
+            DLIB_TEST((img_d(1, 2) == 100));
+            DLIB_TEST((img_d(2, 2) == 100));
+        }
+
+        {
+            matrix<rgb_pixel> img_s(2, 2);
+            matrix<rgb_pixel> img_d(3, 3);
+
+            img_s(0, 0) = { 0, 0, 0 };
+            img_s(0, 1) = { 10, 20, 30 };
+            img_s(1, 0) = { 10, 20, 30 };
+            img_s(1, 1) = { 10, 20, 30 };
+
+            resize_image(img_s, img_d, interpolation_type());
+            DLIB_TEST((img_d(0, 0) == rgb_pixel{ 0, 0, 0 }));
+            DLIB_TEST((img_d(0, 1) == rgb_pixel{ 5, 10, 15 }));
+            DLIB_TEST((img_d(1, 2) == rgb_pixel{ 10, 20, 30 }));
+            DLIB_TEST((img_d(2, 2) == rgb_pixel{ 10, 20, 30 }));
+        }
+
+        {
+            matrix<lab_pixel> img_s(2, 2);
+            matrix<lab_pixel> img_d(3, 3);
+
+            img_s(0, 0) = { 0, 0, 0 };
+            img_s(0, 1) = { 100, 20, 30 };
+            img_s(1, 0) = { 100, 20, 30 };
+            img_s(1, 1) = { 100, 20, 30 };
+
+            resize_image(img_s, img_d, interpolation_type());
+            DLIB_TEST((img_d(0, 0) == lab_pixel{ 0, 0, 0 }));
+            DLIB_TEST((img_d(0, 1) == lab_pixel{ 50, 10, 15 }));
+            DLIB_TEST((img_d(1, 2) == lab_pixel{ 100, 20, 30 }));
+            DLIB_TEST((img_d(2, 2) == lab_pixel{ 100, 20, 30 }));
+        }
+
+    }
+
+    void test_null_rotate_image_with_interpolation()
+    {
+        {
+            matrix<unsigned char> img_s(3, 3);
+            matrix<unsigned char> img_d;
+
+            img_s(0, 0) = 0;
+            img_s(0, 1) = 100;
+            img_s(0, 2) = 100;
+            img_s(1, 0) = 100;
+            img_s(1, 1) = 100;
+            img_s(1, 2) = 100;
+            img_s(2, 0) = 100;
+            img_s(2, 1) = 100;
+            img_s(2, 2) = 100;
+
+            rotate_image(img_s, img_d, 0, interpolate_bilinear());
+            DLIB_TEST((img_d(0, 0) == 0));
+            DLIB_TEST((img_d(0, 1) == 100));
+            DLIB_TEST((img_d(1, 0) == 100));
+            DLIB_TEST((img_d(1, 1) == 100));
+        }
+
+        {
+            matrix<rgb_pixel> img_s(3, 3);
+            matrix<rgb_pixel> img_d(3, 3);
+
+            img_s(0, 0) = { 0, 0, 0 };
+            img_s(0, 1) = { 10, 20, 30 };
+            img_s(0, 2) = { 10, 20, 30 };
+            img_s(1, 0) = { 10, 20, 30 };
+            img_s(1, 1) = { 10, 20, 30 };
+            img_s(1, 2) = { 10, 20, 30 };
+            img_s(2, 0) = { 10, 20, 30 };
+            img_s(2, 1) = { 10, 20, 30 };
+            img_s(2, 2) = { 10, 20, 30 };
+
+            rotate_image(img_s, img_d, 0, interpolate_bilinear());
+            DLIB_TEST((img_d(0, 0) == rgb_pixel{ 0, 0, 0 }));
+            DLIB_TEST((img_d(0, 1) == rgb_pixel{ 10, 20, 30 }));
+            DLIB_TEST((img_d(1, 0) == rgb_pixel{ 10, 20, 30 }));
+            DLIB_TEST((img_d(1, 1) == rgb_pixel{ 10, 20, 30 }));
+        }
+
+        {
+            matrix<lab_pixel> img_s(3, 3);
+            matrix<lab_pixel> img_d(3, 3);
+
+            img_s(0, 0) = { 0, 0, 0 };
+            img_s(0, 1) = { 100, 20, 30 };
+            img_s(0, 2) = { 100, 20, 30 };
+            img_s(1, 0) = { 100, 20, 30 };
+            img_s(1, 1) = { 100, 20, 30 };
+            img_s(1, 2) = { 100, 20, 30 };
+            img_s(2, 0) = { 100, 20, 30 };
+            img_s(2, 1) = { 100, 20, 30 };
+            img_s(2, 2) = { 100, 20, 30 };
+
+            rotate_image(img_s, img_d, 0, interpolate_bilinear());
+            DLIB_TEST((img_d(0, 0) == lab_pixel{ 0, 0, 0 }));
+            DLIB_TEST((img_d(0, 1) == lab_pixel{ 100, 20, 30 }));
+            DLIB_TEST((img_d(1, 0) == lab_pixel{ 100, 20, 30 }));
+            DLIB_TEST((img_d(1, 1) == lab_pixel{ 100, 20, 30 }));
+        }
+
+    }
+
+    void test_null_rotate_image_with_interpolation_quadratic()
+    {
+        {
+            matrix<unsigned char> img_s(3, 3);
+            matrix<unsigned char> img_d;
+
+            img_s(0, 0) = 0;
+            img_s(0, 1) = 100;
+            img_s(0, 2) = 100;
+            img_s(1, 0) = 100;
+            img_s(1, 1) = 100;
+            img_s(1, 2) = 100;
+            img_s(2, 0) = 100;
+            img_s(2, 1) = 100;
+            img_s(2, 2) = 100;
+
+            rotate_image(img_s, img_d, 0, interpolate_quadratic());
+            DLIB_TEST((img_d(1, 1) == 111));
+        }
+
+        {
+            matrix<rgb_pixel> img_s(3, 3);
+            matrix<rgb_pixel> img_d(3, 3);
+
+            img_s(0, 0) = { 0, 0, 0 };
+            img_s(0, 1) = { 10, 20, 30 };
+            img_s(0, 2) = { 10, 20, 30 };
+            img_s(1, 0) = { 10, 20, 30 };
+            img_s(1, 1) = { 10, 20, 30 };
+            img_s(1, 2) = { 10, 20, 30 };
+            img_s(2, 0) = { 10, 20, 30 };
+            img_s(2, 1) = { 10, 20, 30 };
+            img_s(2, 2) = { 10, 20, 30 };
+
+            rotate_image(img_s, img_d, 0, interpolate_quadratic());
+            DLIB_TEST((img_d(1, 1) == rgb_pixel{ 11, 22, 33 }));
+        }
+
+        {
+            matrix<lab_pixel> img_s(3, 3);
+            matrix<lab_pixel> img_d(3, 3);
+
+            img_s(0, 0) = { 0, 0, 0 };
+            img_s(0, 1) = { 100, 20, 30 };
+            img_s(0, 2) = { 100, 20, 30 };
+            img_s(1, 0) = { 100, 20, 30 };
+            img_s(1, 1) = { 100, 20, 30 };
+            img_s(1, 2) = { 100, 20, 30 };
+            img_s(2, 0) = { 100, 20, 30 };
+            img_s(2, 1) = { 100, 20, 30 };
+            img_s(2, 2) = { 100, 20, 30 };
+
+            rotate_image(img_s, img_d, 0, interpolate_quadratic());
+            DLIB_TEST((img_d(1, 1) == lab_pixel{ 111, 22, 33 }));
+        }
+    }
+
+    void test_interpolate_bilinear()
+    {
+        {
+            matrix<unsigned char> img_s(2, 2);
+
+            img_s(0, 0) = 0;
+            img_s(0, 1) = 100;
+            img_s(1, 0) = 100;
+            img_s(1, 1) = 100;
+
+            const_image_view<matrix<unsigned char>> imgv(img_s);
+
+            unsigned char result;
+            {
+                interpolate_bilinear()(imgv, dlib::vector<double, 2>{ 0.5, 0.0 }, result);
+                DLIB_TEST(result == 50);
+            }
+            {
+                interpolate_bilinear()(imgv, dlib::vector<double, 2>{ 0.5, 0.5 }, result);
+                DLIB_TEST(result == 75);
+            }
+        }
+
+        {
+            matrix<rgb_pixel> img_s(2, 2);
+
+            img_s(0, 0) = { 0, 0, 0 };
+            img_s(0, 1) = { 10, 20, 30 };
+            img_s(1, 0) = { 10, 20, 30 };
+            img_s(1, 1) = { 10, 20, 30 };
+
+            const_image_view<matrix<rgb_pixel>> imgv(img_s);
+
+            rgb_pixel result;
+            {
+                interpolate_bilinear()(imgv, dlib::vector<double, 2>{ 0.5, 0.0 }, result);
+                DLIB_TEST(result.red == 5);
+                DLIB_TEST(result.green == 10);
+                DLIB_TEST(result.blue == 15);
+            }
+            {
+                interpolate_bilinear()(imgv, dlib::vector<double, 2>{ 0.5, 0.5 }, result);
+                DLIB_TEST(result.red == 7);
+                DLIB_TEST(result.green == 15);
+                DLIB_TEST(result.blue == 22);
+            }
+        }
+
+        {
+            matrix<lab_pixel> img_s(2, 2);
+
+            img_s(0, 0) = { 0, 0, 0 };
+            img_s(0, 1) = { 100, 20, 30 };
+            img_s(1, 0) = { 100, 20, 30 };
+            img_s(1, 1) = { 100, 20, 30 };
+
+            const_image_view<matrix<lab_pixel>> imgv(img_s);
+
+            lab_pixel result;
+            {
+                interpolate_bilinear()(imgv, dlib::vector<double, 2>{ 0.5, 0.0 }, result);
+                DLIB_TEST(result.l == 50);
+                DLIB_TEST(result.a == 10);
+                DLIB_TEST(result.b == 15);
+            }
+            {
+                interpolate_bilinear()(imgv, dlib::vector<double, 2>{ 0.5, 0.5 }, result);
+                DLIB_TEST(result.l == 75);
+                DLIB_TEST(result.a == 15);
+                DLIB_TEST(result.b == 22);
+            }
+        }
+    }
+
+    void test_letterbox_image()
+    {
+        print_spinner();
+        rgb_pixel black(0, 0, 0);
+        rgb_pixel white(255, 255, 255);
+        matrix<rgb_pixel> img_s(40, 60);
+        matrix<rgb_pixel> img_d;
+        assign_all_pixels(img_s, white);
+        const auto tform = letterbox_image(img_s, img_d, 30, interpolate_nearest_neighbor());
+        DLIB_TEST(tform.get_m() == identity_matrix<double>(2) * 0.5);
+        DLIB_TEST(tform.get_b() == dpoint(0, 5));
+
+        // manually generate the target image
+        matrix<rgb_pixel> img_t(30, 30);
+        assign_all_pixels(img_t, rgb_pixel(0, 0, 0));
+        matrix<rgb_pixel> img_w(20, 30);
+        assign_all_pixels(img_w, rgb_pixel(255, 255, 255));
+        rectangle r (0, 5, 30 - 1, 25 - 1);
+        auto si = sub_image(img_t, r);
+        assign_image(si, img_w);
+        DLIB_TEST(img_d == img_t);
+    }
+
+    void test_draw_string()
+    {
+        print_spinner();
+        matrix<rgb_pixel> image{48, 48};
+        assign_all_pixels(image, rgb_pixel{0, 0, 0});
+        draw_string(image, point{10, 15}, string{"cat"}, rgb_pixel{255, 255, 255});
+
+        matrix<rgb_pixel> result;
+        const std::string data{"gQgLudERwR0JqP9kUiitFNDYSO9rdZzdmeDmricAlM5f5RBqzTlaW6Lp704mTXJq/WXHTQ84wWnGAA=="};
+        ostringstream sout;
+        istringstream sin;
+        base64 base64_coder;
+        compress_stream::kernel_1ea compressor;
+        sin.str(data);
+        base64_coder.decode(sin, sout);
+        sin.clear();
+        sin.str(sout.str());
+        sout.clear();
+        sout.str("");
+        compressor.decompress(sin, sout);
+        sin.clear();
+        sin.str(sout.str());
+        deserialize(result, sin);
+        DLIB_TEST(image == result);
+    }
+
 // ----------------------------------------------------------------------------------------
 
     class image_tester : public tester
@@ -2086,6 +2405,12 @@ namespace
             }
 
             test_partition_pixels();
+            test_resize_image_with_interpolation<interpolate_bilinear>();
+            test_null_rotate_image_with_interpolation();
+            test_null_rotate_image_with_interpolation_quadratic();
+            test_interpolate_bilinear();
+            test_letterbox_image();
+            test_draw_string();
         }
     } a;
 

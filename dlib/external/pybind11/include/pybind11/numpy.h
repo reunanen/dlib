@@ -26,6 +26,10 @@
 #if defined(_MSC_VER)
 #  pragma warning(push)
 #  pragma warning(disable: 4127) // warning C4127: Conditional expression is constant
+#ifdef _WIN64
+#include <BaseTsd.h>
+using ssize_t = SSIZE_T;
+#endif
 #endif
 
 /* This will be true on all flat address space platforms and allows us to reduce the
@@ -764,8 +768,9 @@ protected:
     static std::vector<ssize_t> c_strides(const std::vector<ssize_t> &shape, ssize_t itemsize) {
         auto ndim = shape.size();
         std::vector<ssize_t> strides(ndim, itemsize);
-        for (size_t i = ndim - 1; i > 0; --i)
-            strides[i - 1] = strides[i] * shape[i];
+        if (ndim > 0)
+            for (size_t i = ndim - 1; i > 0; --i)
+                strides[i - 1] = strides[i] * shape[i];
         return strides;
     }
 
@@ -1586,7 +1591,7 @@ Helper vectorize(Return (Class::*f)(Args...)) {
     return Helper(std::mem_fn(f));
 }
 
-// Vectorize a class method (non-const):
+// Vectorize a class method (const):
 template <typename Return, typename Class, typename... Args,
           typename Helper = detail::vectorize_helper<decltype(std::mem_fn(std::declval<Return (Class::*)(Args...) const>())), Return, const Class *, Args...>>
 Helper vectorize(Return (Class::*f)(Args...) const) {

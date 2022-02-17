@@ -81,6 +81,74 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
+    struct string_dims
+    {
+        /*!
+            WHAT THIS OBJECT REPRESENTS
+                This is a simple struct that represents the size (width and height) of a
+                string in pixels.
+        !*/
+
+        string_dims() = default;
+        string_dims (
+            unsigned long width,
+            unsigned long height
+        ) : width(width), height(height) {}
+        unsigned long width = 0;
+        unsigned long height = 0;
+    };
+
+// ----------------------------------------------------------------------------------------
+
+    template <
+        typename T, typename traits,
+        typename alloc
+    >
+    string_dims compute_string_dims (
+        const std::basic_string<T, traits, alloc>& str,
+        const std::shared_ptr<font>& f_ptr = default_font::get_font()
+    )
+
+    /*!
+        ensures
+            - computes the size of the given string with the specified font in pixels.  To be very specific,
+              if dims is the returned object by this function, then:
+              - dims.width == width of the string
+              - dims.height == height of the string
+    !*/
+
+// ----------------------------------------------------------------------------------------
+
+    template <
+        typename T,
+        typename traits,
+        typename alloc,
+        typename image_type,
+        typename pixel_type
+    >
+    void draw_string (
+        image_type& img,
+        const dlib::point& p,
+        const std::basic_string<T,traits,alloc>& str,
+        const pixel_type& val,
+        const std::shared_ptr<font>& f = default_font::get_font(),
+        typename std::basic_string<T,traits,alloc>::size_type first = 0,
+        typename std::basic_string<T,traits,alloc>::size_type last = (std::basic_string<T,traits,alloc>::npos)
+    );
+
+    /*!
+        requires
+            - image_type == an image object that implements the interface defined in
+              dlib/image_processing/generic_image.h
+            - pixel_traits<pixel_type> is defined
+        ensures
+            - Draws the given string from first to last character onto the image img
+              starting from point p.
+            - The string is drawn with the color given by val and font f;
+    !*/
+
+// ----------------------------------------------------------------------------------------
+
     template <
         typename image_type,
         typename pixel_type
@@ -145,6 +213,5 @@ namespace dlib
 }
 
 #endif // DLIB_DRAW_IMAGe_ABSTRACT
-
 
 

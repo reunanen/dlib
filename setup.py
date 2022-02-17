@@ -118,18 +118,17 @@ class CMakeBuild(build_ext):
     def get_cmake_version(self):
         try:
             out = subprocess.check_output(['cmake', '--version'])
-        except OSError:
-            raise RuntimeError("\n*******************************************************************\n" +
-                                  " CMake must be installed to build the following extensions: " +
-                               ", ".join(e.name for e in self.extensions) + 
-                               "\n*******************************************************************\n")
+        except:
+            sys.stderr.write("\nERROR: CMake must be installed to build dlib\n\n") 
+            sys.exit(1)
         return re.search(r'version\s*([\d.]+)', out.decode()).group(1)
 
     def run(self):
         cmake_version = self.get_cmake_version()
         if platform.system() == "Windows":
             if LooseVersion(cmake_version) < '3.1.0':
-                raise RuntimeError("CMake >= 3.1.0 is required on Windows")
+                sys.stderr.write("\nERROR: CMake >= 3.1.0 is required on Windows\n\n")
+                sys.exit(1)
 
         for ext in self.extensions:
             self.build_extension(ext)
@@ -229,13 +228,14 @@ setup(
     author_email='davis@dlib.net',
     url='https://github.com/davisking/dlib',
     license='Boost Software License',
-    ext_modules=[CMakeExtension('dlib','tools/python')],
+    ext_modules=[CMakeExtension('_dlib_pybind11','tools/python')],
     cmdclass=dict(build_ext=CMakeBuild, test=PyTest),
     zip_safe=False,
     # We need an older more-itertools version because v6 broke pytest (for everyone, not just dlib)
     tests_require=['pytest==3.8', 'more-itertools<6.0.0'],
     #install_requires=['cmake'], # removed because the pip cmake package is busted, maybe someday it will be usable.
     packages=['dlib'],
+    package_dir={'': 'tools/python'},
     keywords=['dlib', 'Computer Vision', 'Machine Learning'],
     classifiers=[
         'Development Status :: 5 - Production/Stable',

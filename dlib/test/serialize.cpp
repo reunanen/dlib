@@ -12,30 +12,9 @@
 #include <ctime>
 #include <dlib/serialize.h>
 #include <dlib/image_transforms.h>
+#include <dlib/rand.h>
 
 #include "tester.h"
-
-namespace dlib
-{
-    static bool operator!=(const rgb_pixel& a, const rgb_pixel& b)
-    {
-        return !(a.red==b.red && a.green==b.green && a.blue==b.blue);
-    }
-    static bool operator!=(const bgr_pixel& a, const bgr_pixel& b)
-    {
-        return !(a.red==b.red && a.green==b.green && a.blue==b.blue);
-    }
-
-    static bool operator!=(const hsi_pixel& a, const hsi_pixel& b)
-    {
-        return !(a.h==b.h && a.s==b.s && a.i==b.i);
-    }
-    static bool operator!=(const rgb_alpha_pixel& a, const rgb_alpha_pixel& b)
-    {
-        return !(a.red==b.red && a.green==b.green && a.blue==b.blue && a.alpha==b.alpha);
-    }
-
-}
 
 namespace  
 {
@@ -422,7 +401,89 @@ namespace
         dlib::deserialize(item.b_true,in);
         dlib::deserialize(item.b_false,in);
     }
+    
+    template<typename T>
+    bool pointers_values_equal(const unique_ptr<T>& l, const unique_ptr<T>& r)
+    {
+        return l && r ? *l == *r : l == r;
+    }
 
+    template<typename T>
+    bool pointers_values_equal(const shared_ptr<T>& l, const shared_ptr<T>& r)
+    {
+        return l && r ? *l == *r : l == r;
+    }
+    
+    struct immutable_type
+    {
+        immutable_type() = default;
+        immutable_type(const immutable_type& other)             = delete;
+        immutable_type& operator=(const immutable_type& other)  = delete;
+        immutable_type(immutable_type&& other)                  = delete;
+        immutable_type& operator=(immutable_type&& other)       = delete;
+        
+        friend void serialize(const immutable_type&, std::ostream&) {}
+        friend void deserialize(immutable_type&, std::istream&) {}
+        bool operator==(const immutable_type&) const {return true;}
+    };
+    
+    struct my_custom_type
+    {
+        int a;
+        float b;
+        std::vector<float> c;
+        std::list<string> d;
+        std::forward_list<string> e;
+        std::pair<int,string> f;
+        std::tuple<int,string,float> g;
+        std::map<string,int> h;
+        std::unordered_map<string, int> i;
+        std::multimap<string, int> j;
+        std::unordered_multimap<string, int> k;
+        std::set<string> l;
+        std::unordered_set<string> m;
+        std::multiset<string> n;
+        std::unordered_multiset<string> o;
+        std::shared_ptr<string> ptr_shared1;
+        std::shared_ptr<string> ptr_shared2;
+        std::vector<std::complex<double>> p; 
+#if __cplusplus >= 201703L
+        std::variant<int,float,std::string,immutable_type> q;
+        std::optional<std::vector<std::string>> r;
+#endif
+
+        bool operator==(const my_custom_type& rhs) const
+        {         
+#if __cplusplus >= 201703L
+            const bool cpp17_ok = std::tie(q, r) == std::tie(rhs.q, rhs.r);
+#else
+            const bool cpp17_ok = true;
+#endif
+            return std::tie(a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p) == std::tie(rhs.a,rhs.b,rhs.c,rhs.d,rhs.e,rhs.f,rhs.g,rhs.h,rhs.i,rhs.j,rhs.k,rhs.l,rhs.m,rhs.n,rhs.o,rhs.p)
+                    && cpp17_ok
+                    && pointers_values_equal(ptr_shared1, rhs.ptr_shared1)
+                    && pointers_values_equal(ptr_shared2, rhs.ptr_shared2);
+        }
+
+#if __cplusplus >= 201703L
+        DLIB_DEFINE_DEFAULT_SERIALIZATION(my_custom_type, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, ptr_shared1, ptr_shared2, q, r);
+#else
+        DLIB_DEFINE_DEFAULT_SERIALIZATION(my_custom_type, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, ptr_shared1, ptr_shared2);
+#endif
+    };
+
+    struct my_custom_type_array
+    {
+        std::vector<my_custom_type> v;
+
+        bool operator==(const my_custom_type_array& rhs) const
+        {
+            return v == rhs.v;
+        }
+
+        DLIB_DEFINE_DEFAULT_SERIALIZATION(my_custom_type_array, v);
+    };
+    
 // ----------------------------------------------------------------------------------------
 
     // This function returns the contents of the file 'stuff.bin' but using the old 
@@ -1049,6 +1110,170 @@ namespace
             DLIB_TEST(B == b);
         }
     }
+    
+    void test_macros_and_serializers()
+    {
+        std::unique_ptr<string> uptr1, uptr2, uptr3, uptr4;
+        uptr1.reset(new string("hello from uptr1"));
+    
+        my_custom_type t1, t2, t3, t4;
+        t1.a = 1;
+        t1.b = 2.5;
+        t1.c = {1.f, 2.f, 3.f, 4.f, 5.f};
+        t1.d.push_back("hello from back of list");
+        t1.d.push_back("world from back of list");
+        t1.d.push_front("world from front of list");
+        t1.d.push_front("hello from front of list");
+        t1.e.push_front("world from forward_list");
+        t1.e.push_front("hello from forward_list");
+        t1.f = make_pair(2, "hello from pair");
+        std::get<0>(t1.g) = 2;
+        std::get<1>(t1.g) = "hello from tuple";
+        std::get<2>(t1.g) = 1.4142;
+        t1.h["key"] = 15;
+        t1.i["key"] = 16;
+        t1.i.insert({"inserted key", 17});
+        t1.j.insert({"key", 21});
+        t1.j.insert({"key", 22});
+        t1.j.insert({"inserted key", 23});
+        t1.j.insert({"inserted key", 24});
+        t1.j.insert({"key", 25});
+        t1.j.insert({"key", 26});
+        t1.k.insert({"inserted key", 27});
+        t1.k.insert({"inserted key", 28});
+        t1.l.insert("hello from set");
+        t1.m.insert("hello from unordered_set");
+        t1.n.insert("hello from multiset");
+        t1.n.insert("hello from multiset");
+        t1.o.insert("hello from unordered_multiset");
+        t1.o.insert("hello from unordered_multiset");
+        t1.ptr_shared1 = make_shared<string>("hello from shared_ptr");
+        dlib::rand rng(std::time(NULL));
+        for (int i = 0 ; i < 1024 ; i++)
+            t1.p.push_back(rng.get_random_gaussian());
+#if __cplusplus >= 201703L
+        t1.q = "hello there from std::variant, welcome!";
+        t1.r = {"hello from optional vector of string"};
+#endif
+        t2.a = 2;
+        t2.b = 4.0;
+        t2.c.resize(10);
+
+        my_custom_type_array v1, v2;
+        v1.v.push_back(t1);
+        v1.v.push_back(t2);
+
+        {
+            dlib::serialize("serialization_test_macros.dat") << t1 << t2 << v1 << uptr1 << uptr2;
+            dlib::deserialize("serialization_test_macros.dat") >> t3 >> t4 >> v2 >> uptr3 >> uptr4;
+
+            DLIB_TEST(t1 == t3);
+            DLIB_TEST(t2 == t4);
+            DLIB_TEST(v1 == v2);
+            DLIB_TEST(pointers_values_equal(uptr1, uptr3));
+            DLIB_TEST(pointers_values_equal(uptr2, uptr4));
+        }
+        
+        {
+            std::stringstream ss;
+            dlib::serialize(ss) << t1 << t2 << v1 << uptr1 << uptr2;
+            dlib::deserialize(ss) >> t3 >> t4 >> v2 >> uptr3 >> uptr4;
+
+            DLIB_TEST(t1 == t3);
+            DLIB_TEST(t2 == t4);
+            DLIB_TEST(v1 == v2);
+            DLIB_TEST(pointers_values_equal(uptr1, uptr3));
+            DLIB_TEST(pointers_values_equal(uptr2, uptr4));
+        }
+        
+        {
+            std::ostringstream sout;
+            dlib::serialize(sout) << t1 << t2 << v1 << uptr1 << uptr2;
+            std::istringstream sin(sout.str());
+            dlib::deserialize(sin) >> t3 >> t4 >> v2 >> uptr3 >> uptr4;
+
+            DLIB_TEST(t1 == t3);
+            DLIB_TEST(t2 == t4);
+            DLIB_TEST(v1 == v2);
+            DLIB_TEST(pointers_values_equal(uptr1, uptr3));
+            DLIB_TEST(pointers_values_equal(uptr2, uptr4));
+        }
+        
+        {
+            std::vector<char> buf;
+            dlib::serialize(buf) << t1 << t2 << v1 << uptr1 << uptr2;
+            dlib::deserialize(buf) >> t3 >> t4 >> v2 >> uptr3 >> uptr4;
+
+            DLIB_TEST(t1 == t3);
+            DLIB_TEST(t2 == t4);
+            DLIB_TEST(v1 == v2);
+            DLIB_TEST(pointers_values_equal(uptr1, uptr3));
+            DLIB_TEST(pointers_values_equal(uptr2, uptr4));
+        }
+        
+        {
+            std::vector<int8_t> buf;
+            dlib::serialize(buf) << t1 << t2 << v1 << uptr1 << uptr2;
+            dlib::deserialize(buf) >> t3 >> t4 >> v2 >> uptr3 >> uptr4;
+
+            DLIB_TEST(t1 == t3);
+            DLIB_TEST(t2 == t4);
+            DLIB_TEST(v1 == v2);
+            DLIB_TEST(pointers_values_equal(uptr1, uptr3));
+            DLIB_TEST(pointers_values_equal(uptr2, uptr4));
+        }
+        
+        {
+            std::vector<uint8_t> buf;
+            dlib::serialize(buf) << t1 << t2 << v1 << uptr1 << uptr2;
+            dlib::deserialize(buf) >> t3 >> t4 >> v2 >> uptr3 >> uptr4;
+
+            DLIB_TEST(t1 == t3);
+            DLIB_TEST(t2 == t4);
+            DLIB_TEST(v1 == v2);
+            DLIB_TEST(pointers_values_equal(uptr1, uptr3));
+            DLIB_TEST(pointers_values_equal(uptr2, uptr4));
+        }
+        
+        {
+            std::vector<char> buf1;
+            dlib::serialize(buf1) << t1 << t2 << v1 << uptr1 << uptr2;
+            std::vector<int8_t> buf2(buf1.begin(), buf1.end());
+            dlib::deserialize(buf2) >> t3 >> t4 >> v2 >> uptr3 >> uptr4;
+
+            DLIB_TEST(t1 == t3);
+            DLIB_TEST(t2 == t4);
+            DLIB_TEST(v1 == v2);
+            DLIB_TEST(pointers_values_equal(uptr1, uptr3));
+            DLIB_TEST(pointers_values_equal(uptr2, uptr4));
+        }
+        
+        {
+            std::vector<char> buf1;
+            dlib::serialize(buf1) << t1 << t2 << v1 << uptr1 << uptr2;
+            std::vector<uint8_t> buf2(buf1.begin(), buf1.end());
+            dlib::deserialize(buf2) >> t3 >> t4 >> v2 >> uptr3 >> uptr4;
+
+            DLIB_TEST(t1 == t3);
+            DLIB_TEST(t2 == t4);
+            DLIB_TEST(v1 == v2);
+            DLIB_TEST(pointers_values_equal(uptr1, uptr3));
+            DLIB_TEST(pointers_values_equal(uptr2, uptr4));
+        }
+        
+         {
+            std::vector<int8_t> buf1;
+            dlib::serialize(buf1) << t1 << t2 << v1 << uptr1 << uptr2;
+            std::vector<uint8_t> buf2(buf1.begin(), buf1.end());
+            dlib::deserialize(buf2) >> t3 >> t4 >> v2 >> uptr3 >> uptr4;
+
+            DLIB_TEST(t1 == t3);
+            DLIB_TEST(t2 == t4);
+            DLIB_TEST(v1 == v2);
+            DLIB_TEST(pointers_values_equal(uptr1, uptr3));
+            DLIB_TEST(pointers_values_equal(uptr2, uptr4));
+        }
+    }
 
 // ----------------------------------------------------------------------------------------
 
@@ -1078,6 +1303,7 @@ namespace
             test_array2d_and_matrix_serialization();
             test_strings();
             test_std_array();
+            test_macros_and_serializers();
         }
     } a;
 

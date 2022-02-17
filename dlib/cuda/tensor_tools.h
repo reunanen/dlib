@@ -660,7 +660,7 @@ namespace dlib { namespace tt
             - means.nr() == invstds.nr() == src.nr()
             - means.nc() == invstds.nc() == src.nc()
             - means.k()  == invstds.k()  == src.k()
-            - #src == the batch normalized version of src.
+            - #dest == the batch normalized version of src.
             - #means == the mean values of the contents of src.
             - #invstds == 1/(the standard deviation values of the contents of src).
             - #running_means = (1-averaging_factor)*mat(#running_means) + averaging_factor*mat(#means);
@@ -760,7 +760,7 @@ namespace dlib { namespace tt
             - #means.num_samples()==means.nr()==means.nc() == 1
             - #invstds.num_samples() ==invstds.nr() ==invstds.nc() == 1
             - means.k()  == invstds.k()  == src.k()
-            - #src == the batch normalized version of src.
+            - #dest == the batch normalized version of src.
             - #means == the mean values of the contents of src.
             - #invstds == 1/(the standard deviation values of the contents of src).
             - #running_means = (1-averaging_factor)*mat(#running_means) + averaging_factor*mat(#means);
@@ -801,6 +801,63 @@ namespace dlib { namespace tt
     !*/
 
 // -----------------------------------------------------------------------------------
+
+    void layer_normalize (
+        const double eps,
+        resizable_tensor& dest,
+        resizable_tensor& means,
+        resizable_tensor& invstds,
+        const tensor& src,
+        const tensor& gamma,
+        const tensor& beta
+    );
+    /*!
+        requires
+            - eps > 0
+            - src.num_samples() == gamma.size() == beta.size()
+            - have_same_dimensions(gamma, beta) == true
+            - beta.num_samples() ==beta.nr() ==gamma.nc() == 1
+        ensures
+            - have_same_dimensions(#dest, src) == true
+            - #means.size() == invstds.size() == src.num_samples()
+            - #dest == the normalized version of src.
+            - #means == the mean values of the contents of src.
+            - #invstds == 1/(the standard deviation values of the contents of src).
+    !*/
+
+    void layer_normalize_gradient (
+        const double eps,
+            const tensor& gradient_input,
+            const tensor& means,
+            const tensor& invstds,
+            const tensor& src,
+            const tensor& gamma,
+            tensor& src_grad,
+            tensor& gamma_grad,
+            tensor& beta_grad
+    );
+    /*!
+        requires
+            - eps > 0
+            - invstds and means should be the output of a call to
+              layer_normalize(eps,dest,means,invstds,src,gamma,beta)
+            - have_same_dimensions(gradient_input, src) == true
+            - have_same_dimensions(src, src_grad) == true
+            - have_same_dimensions(gamma, gamma_grad) == true
+            - have_same_dimensions(gamma, beta_grad) == true
+            - means.size() == src.num_samples()
+            - invstds.size() == src.num_samples()
+            - have_same_dimensions(means, gamma) == true
+            - have_same_dimensions(invstds, gamma) == true
+        ensures
+            - Let f(src,gamma,beta) == dot(gradient_input, dest output of
+              layer_normalize(eps,dest,means,invstds,src,gamma,beta))
+            - Adds the gradient of f() with respect to src to #src_grad.
+            - Assigns the gradient of f() with respect to gamma to #gamma_grad.
+            - Assigns the gradient of f() with respect to beta to #beta_grad.
+    !*/
+
+    // -----------------------------------------------------------------------------------
 
     void threshold (
         tensor& data,
@@ -985,6 +1042,64 @@ namespace dlib { namespace tt
                 - #output.nc() == 1+(data.nc() + 2*padding_x - filters.nc())/stride_x
         !*/
 
+        void operator() (
+            const bool add_to_output,
+            tensor& output,
+            const tensor& data,
+            const tensor& filters,
+            const tensor& biases
+        ) { impl(add_to_output,output,data,filters,biases); }
+        /*!
+            requires
+                - setup() has been called.  Specifically, setup() has been called like this:
+                    this->setup(data, filters, stride_y, stride_x, padding_y, padding_x);
+                - is_same_object(output,data) == false
+                - is_same_object(output,filters) == false
+                - filters.k() == data.k()
+                - filters.nr() <= src.nr() + 2*padding_y
+                - filters.nc() <= src.nc() + 2*padding_x
+                - filters.num_samples() == biases.k()
+                - #output.num_samples() == data.num_samples()
+                - #output.k() == filters.num_samples()
+                - #output.nr() == 1+(data.nr() + 2*padding_y - filters.nr())/stride_y
+                - #output.nc() == 1+(data.nc() + 2*padding_x - filters.nc())/stride_x
+            ensures
+                - Convolves filters over data.  If add_to_output==true then we add the
+                  results to output, otherwise we assign to output, overwriting the
+                  previous values in output.
+                - Adds biases to the result of the convolved data
+                - filters contains filters.num_samples() filters.
+        !*/
+
+        void operator() (
+            const bool add_to_output,
+            resizable_tensor& output,
+            const tensor& data,
+            const tensor& filters,
+            const tensor& biases
+        ) { impl(add_to_output,output,data,filters, biases); }
+        /*!
+            requires
+                - setup() has been called.  Specifically, setup() has been called like this:
+                    this->setup(data, filters, stride_y, stride_x, padding_y, padding_x);
+                - is_same_object(output,data) == false
+                - is_same_object(output,filters) == false
+                - filters.k() == data.k()
+                - filters.nr() <= src.nr() + 2*padding_y
+                - filters.nc() <= src.nc() + 2*padding_x
+                - filters.num_samples() == biases.k()
+            ensures
+                - Convolves filters over data.  If add_to_output==true then we add the
+                  results to output, otherwise we assign to output, overwriting the
+                  previous values in output.
+                - Adds biases to the result of the convolved data
+                - filters contains filters.num_samples() filters.
+                - #output.num_samples() == data.num_samples()
+                - #output.k() == filters.num_samples()
+                - #output.nr() == 1+(data.nr() + 2*padding_y - filters.nr())/stride_y
+                - #output.nc() == 1+(data.nc() + 2*padding_x - filters.nc())/stride_x
+        !*/
+
         void get_gradient_for_data (
             const bool add_to_output,
             const tensor& gradient_input, 
@@ -1084,7 +1199,7 @@ namespace dlib { namespace tt
                   the tensors, or store any kind of references to the data or filter
                   tensors. 
         !*/
-       
+
     private:
 #ifdef DLIB_USE_CUDA
         cuda::tensor_conv impl;
@@ -1445,6 +1560,45 @@ namespace dlib { namespace tt
 
 // ----------------------------------------------------------------------------------------
 
+    void leaky_relu (
+        tensor& dest,
+        const tensor& src,
+        const float alpha
+    );
+    /*!
+        requires
+            - have_same_dimensions(dest, src) == true
+        ensures
+            - for all valid i:
+                - if (src.host()[i] > 0) then
+                    - #dest.host()[i] == src.host()[i]
+                - else
+                    - #dest.host()[i] == src.host()[i] * alpha
+    !*/
+
+    void leaky_relu_gradient (
+        tensor& grad,
+        const tensor& dest,
+        const tensor& gradient_input,
+        const float alpha
+    );
+    /*!
+        requires
+            - have_same_dimensions(dest,gradient_input) == true
+            - have_same_dimensions(dest,grad) == true
+        ensures
+            - Recalling that dest is the output of leaky_relu(dest,SRC) for some SRC tensor,
+              let f(SRC) == dot(gradient_input,dest).  Then this function computes the
+              gradient of f() with respect to SRC and stores it to grad.  Moreover, if
+              is_same_object(grad,gradient_input)==true then the output is assigned to
+              grad, replacing its previous contents.  Otherwise the output is added to
+              grad.
+            - This function supports in-place operation, i.e. having
+              is_same_object(grad, gradient_input)==true
+    !*/
+
+// ----------------------------------------------------------------------------------------
+
     void tanh (
         tensor& dest,
         const tensor& src
@@ -1475,6 +1629,120 @@ namespace dlib { namespace tt
               is_same_object(grad,gradient_input)==true then the output is assigned to
               grad, replacing its previous contents.  Otherwise the output is added to
               grad.
+            - This function supports in-place operation, i.e. having
+              is_same_object(grad, gradient_input)==true
+    !*/
+
+// ----------------------------------------------------------------------------------------
+
+    void clipped_relu (
+        tensor& dest,
+        const tensor& src,
+        const float ceiling
+    );
+    /*!
+        requires
+            - have_same_dimensions(dest, src) == true
+        ensures
+            - for all valid i:
+                - #dest.host()[i] == std::min(std::max(src.host()[i], 0), ceiling)
+            - This function supports in-place operation, i.e. having
+              is_same_object(dest, src)==true
+    !*/
+
+    void clipped_relu_gradient (
+        tensor& grad,
+        const tensor& dest,
+        const tensor& gradient_input,
+        const float ceiling
+    );
+    /*!
+        requires
+            - have_same_dimensions(dest,gradient_input) == true
+            - have_same_dimensions(dest,grad) == true
+        ensures
+            - Recalling that dest is the output of clipped_relu(dest,SRC,ceiling) for
+              some SRC tensor, let f(SRC) == dot(gradient_input,dest).  Then this
+              function computes the gradient of f() with respect to SRC and stores it
+              to grad.  Moreover, if is_same_object(grad,gradient_input)==true then the
+              output is assigned to grad, replacing its previous contents.  Otherwise
+              the output is added to grad.
+            - This function supports in-place operation, i.e. having
+              is_same_object(grad, gradient_input)==true
+    !*/
+
+// ----------------------------------------------------------------------------------------
+
+    void elu (
+        tensor& dest,
+        const tensor& src,
+        const float alpha
+    );
+    /*!
+        requires
+            - have_same_dimensions(dest, src) == true
+        ensures
+            - for all valid i:
+                - if (src.host()[i] > 0) then
+                    - #dest.host()[i] == src.host()[i]
+                - else
+                    - #dest.host()[i] == alpha * (std::exp(src.host()[i]) - 1)
+            - This function supports in-place operation, i.e. having
+              is_same_object(dest, src)==true
+    !*/
+
+    void elu_gradient (
+        tensor& grad,
+        const tensor& dest,
+        const tensor& gradient_input,
+        const float alpha
+    );
+    /*!
+        requires
+            - have_same_dimensions(dest,gradient_input) == true
+            - have_same_dimensions(dest,grad) == true
+        ensures
+            - Recalling that dest is the output of elu(dest,SRC) for some SRC tensor,
+              let f(SRC) == dot(gradient_input,dest).  Then this function computes the
+              gradient of f() with respect to SRC and stores it to grad.  Moreover, if
+              is_same_object(grad,gradient_input)==true then the output is assigned to
+              grad, replacing its previous contents.  Otherwise the output is added to
+              grad.
+            - This function supports in-place operation, i.e. having
+              is_same_object(grad, gradient_input)==true
+    !*/
+
+// ----------------------------------------------------------------------------------------
+
+    void gelu (
+        tensor& dest,
+        const tensor& src
+    );
+    /*!
+        requires
+            - have_same_dimensions(dest, src) == true
+        ensures
+            - for all valid i:
+                - #dest.host()[i] == src.host()[i]/2 * (1 + erf(src.host()[i]/sqrt(2))
+            - This function supports in-place operation, i.e. having
+              is_same_object(dest, src)==true
+    !*/
+
+    void gelu_gradient (
+        tensor& grad,
+        const tensor& src,
+        const tensor& gradient_input
+    );
+    /*!
+        requires
+            - have_same_dimensions(src,gradient_input) == true
+            - have_same_dimensions(src,grad) == true
+        ensures
+            - Recalling that dest is the output of gelu(dest,src), let f(src) ==
+              dot(gradient_input,dest). Then this function computes the gradient of f() with respect
+              to src and stores it to grad.  Moreover, if is_same_object(grad,gradient_input)==true
+              then the output is assigned to grad, replacing its previous contents.  Otherwise the
+              output is added to grad.
             - This function supports in-place operation, i.e. having
               is_same_object(grad, gradient_input)==true
     !*/
@@ -1563,6 +1831,59 @@ namespace dlib { namespace tt
               noted that we don't need to know the contents of DEST to compute this
               gradient.  All that matters is that gradient_input have the same dimensions
               as DEST.
+    !*/
+
+// ----------------------------------------------------------------------------------------
+
+    void reorg (
+        tensor& dest,
+        const int row_stride,
+        const int col_stride,
+        const tensor& src
+    );
+    /*!
+        requires
+            - is_same_object(dest, src)==false
+            - src.nr() % row_stride == 0
+            - src.nc() % col_stride == 0
+            - dest.num_samples() == src.num_samples()
+            - dest.k() == src.k() * row_stride * col_stride
+            - dest.nr() == src.nr() / row_stride
+            - dest.nc() == src.nc() / col_stride
+        ensures
+            - Converts the spatial resolution into channel information.  So all the values in the input tensor 
+              appear in the output tensor, just in different positions.  
+            - For all n, k, r, c in dest:
+                dest.host[tensor_index(dest, n, k, r, c)] ==
+                src.host[tensor_index(src,
+                                      n,
+                                      k % src.k(),
+                                      r * row_stride + (k / src.k()) / row_stride,
+                                      c * col_stride + (k / src.k()) % col_stride)]
+
+
+    !*/
+
+    void reorg_gradient (
+        tensor& grad,
+        const int row_stride,
+        const int col_stride,
+        const tensor& gradient_input
+    );
+    /*!
+        requires
+            - is_same_object(dest, src)==false
+            - gradient_input.nr % row_stride == 0
+            - gradient_input.nc % col_stride == 0
+            - dest.num_samples() == src.num_samples()
+            - grad.k() == gradient_input.k() / row_stride / col_stride
+            - grad.nr() == gradient_input.nr() * row_stride
+            - grad.nc() == gradient_input.nc() * col_stride
+        ensures
+            - Suppose that DEST is the output of reog(DEST, row_stride, col_stride, SRC)
+              for some SRC tensor, let f(SRC) == dot(gradient_input,DEST).  Then this
+              function computes the gradient of f() with respect to SRC and adds it to grad.
+            - It effectively reverts the reorg operation
     !*/
 
 // ----------------------------------------------------------------------------------------

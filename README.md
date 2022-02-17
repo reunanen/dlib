@@ -1,4 +1,4 @@
-# dlib C++ library [![Travis Status](https://travis-ci.org/davisking/dlib.svg?branch=master)](https://travis-ci.org/davisking/dlib)
+# dlib C++ library [![Travis Status](https://travis-ci.com/davisking/dlib.svg?branch=master)](https://app.travis-ci.com/github/davisking/dlib)
 
 Dlib is a modern C++ toolkit containing machine learning algorithms and tools for creating complex software in C++ to solve real world problems. See [http://dlib.net](http://dlib.net) for the main project documentation and API reference.
 
@@ -29,6 +29,11 @@ cmake .. -G "Visual Studio 14 2015 Win64" -T host=x64
 ## Compiling your own C++ programs that use dlib
 
 The examples folder has a [CMake tutorial](https://github.com/davisking/dlib/blob/master/examples/CMakeLists.txt) that tells you what to do.  There are also additional instructions on the [dlib web site](http://dlib.net/compile.html).
+
+Alternatively, if you are using the [vcpkg](https://github.com/Microsoft/vcpkg/) dependency manager you can download and install dlib with CMake integration in a single command:
+```bash
+vcpkg install dlib
+```
 
 ## Compiling dlib Python API
 

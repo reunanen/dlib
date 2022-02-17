@@ -2842,7 +2842,7 @@ namespace dlib
                 {
                     rgb_alpha_pixel color;
                     assign_pixel(color, graph_.node(i).data.color);
-                    // this node is in area so lets draw it and all of it's edges as well
+                    // this node is in area so lets draw it and all of its edges as well
                     draw_solid_circle(c,center,rad-3,color,area);
                     color.alpha = 240;
                     draw_circle(c,center,rad-3,color,area);
@@ -3492,6 +3492,12 @@ namespace dlib
         
         bool overlay_editing_is_enabled (
         ) const { auto_mutex M(m); return overlay_editing_enabled; }
+
+        void zoom_in (
+        );
+
+        void zoom_out (
+        );
 
     private:
 

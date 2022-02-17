@@ -3,9 +3,6 @@
 #undef DLIB_TYPE_SAFE_UNION_KERNEl_ABSTRACT_
 #ifdef DLIB_TYPE_SAFE_UNION_KERNEl_ABSTRACT_
 
-#include "../algs.h"
-#include "../noncopyable.h"
-
 namespace dlib
 {
 
@@ -21,29 +18,66 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
-    template <
-        typename T1,
-        typename T2 = _void,  // _void indicates parameter not used.
-        typename T3 = _void,
-        typename T4 = _void,
-        typename T5 = _void, 
-        typename T6 = _void,
-        typename T7 = _void,
-        typename T8 = _void,
-        typename T9 = _void,
-        typename T10 = _void,
-        typename T11 = _void,
-        typename T12 = _void,
-        typename T13 = _void,
-        typename T14 = _void,
-        typename T15 = _void,
-        typename T16 = _void,
-        typename T17 = _void,
-        typename T18 = _void,
-        typename T19 = _void,
-        typename T20 = _void
-        >
-    class type_safe_union : noncopyable
+    template<typename T>
+    struct in_place_tag { using type = T; };
+    /*!
+        This is an empty class type used as a special disambiguation tag to be
+        passed as the first argument to the constructor of type_safe_union that performs
+        in-place construction of an object.
+
+        Here is an example of its usage:
+
+            struct A
+            {
+                int i = 0;
+                int j = 0;
+
+                A(int i_, int j_) : i(i_), j(j_) {}
+            };
+
+            using tsu = type_safe_union<A,std::string>;
+            tsu a(in_place_tag<A>{}, 0, 1); // a now contains an object of type A
+        
+        It is also used with type_safe_union::for_each() to disambiguate types.
+    !*/
+
+// ----------------------------------------------------------------------------------------
+
+    template<typename TSU>
+    struct type_safe_union_size
+    {
+        static constexpr size_t value = The number of types in the TSU.
+    };
+    /*!
+        requires
+            - TSU must be of type type_safe_union<Types...> with possible cv qualification
+        ensures
+            - value contains the number of types in TSU, i.e. sizeof...(Types...)
+    !*/
+
+// ----------------------------------------------------------------------------------------
+
+    template <size_t I, typename TSU>
+    struct type_safe_union_alternative;
+    /*!
+        requires
+            - TSU is a type_safe_union
+        ensures
+            - type_safe_union_alternative<I, TSU>::type is the Ith type in the TSU.
+            - TSU::get_type_id<typename type_safe_union_alternative<I, TSU>::type>() == I
+    !*/
+
+    template<size_t I, typename TSU>
+    using type_safe_union_alternative_t = type_safe_union_alternative<I,TSU>::type;
+    /*!
+        ensures
+            - provides template alias for type_safe_union_alternative
+    !*/
+
+// ----------------------------------------------------------------------------------------
+
+    template <typename... Types>
+    class type_safe_union
     {
         /*!
             REQUIREMENTS ON ALL TEMPLATE ARGUMENTS
@@ -71,45 +105,91 @@ namespace dlib
 
     public:
 
-        typedef T1 type1;
-        typedef T2 type2;
-        typedef T3 type3;
-        typedef T4 type4;
-        typedef T5 type5;
-        typedef T6 type6;
-        typedef T7 type7;
-        typedef T8 type8;
-        typedef T9 type9;
-        typedef T10 type10;
-        typedef T11 type11;
-        typedef T12 type12;
-        typedef T13 type13;
-        typedef T14 type14;
-        typedef T15 type15;
-        typedef T16 type16;
-        typedef T17 type17;
-        typedef T18 type18;
-        typedef T19 type19;
-        typedef T20 type20;
-
         type_safe_union(
+        ) = default;
+        /*!
+            ensures
+                - #is_empty() == true
+        !*/
+
+        type_safe_union (
+            const type_safe_union& item
+        )
+        /*!
+            ensures
+                - copy constructs *this from item
+        !*/
+
+        type_safe_union& operator=(
+            const type_safe_union& item
         );
         /*!
             ensures
-                - this object is properly initialized
+                - copy assigns *this from item
         !*/
 
-        template <typename T>
         type_safe_union (
-            const T& item
+            type_safe_union&& item
+        );
+        /*!
+            ensures
+                - move constructs *this from item.
+        !*/
+
+        type_safe_union& operator= (
+            type_safe_union&& item
+        );
+        /*!
+            ensures
+                - move assigns *this from item.
+        !*/
+
+        template <
+            typename T
+        >
+        type_safe_union (
+            T&& item
+        );
+        /*!
+            requires
+                - std::decay_t<T> must be one of the types given to this object's template arguments
+            ensures
+                - constructs *this from item using perfect forwarding (converting constructor)
+                - #get<T>() == std::forward<T>(item)
+                  (i.e. this object will either contain a copy of item or will have moved item into *this
+                   depending on the reference type)
+        !*/
+
+        template <
+            typename T
+        >
+        type_safe_union& operator= (
+            T&& item
+        );
+        /*!
+            requires
+                - std::decay_t<T> must be one of the types given to this object's template arguments
+            ensures
+                - assigns *this from item using perfect forwarding (converting assignment)
+                - #get<T> == std::forward<T>(item)
+                  (i.e. this object will either contain a copy of item or will have moved item into *this
+                   depending on the reference type)
+        !*/
+
+        template <
+            typename T,
+            typename... Args
+        >
+        type_safe_union (
+            in_place_tag<T>,
+            Args&&... args
         );
         /*!
             requires
                 - T must be one of the types given to this object's template arguments
             ensures
-                - this object is properly initialized
-                - #get<T>() == item
-                  (i.e. this object will contain a copy of item)
+                - constructs *this with type T using constructor-arguments args...
+                  (i.e. efficiently performs *this = T(args...))
         !*/
 
         ~type_safe_union(
@@ -119,16 +199,40 @@ namespace dlib
                 - all resources associated with this object have been freed
         !*/
 
+        void clear();
+        /*!
+            ensures
+                - all resources associated with this object have been freed
+                - #is_empty() == true
+        !*/
+
+        template <
+            typename T,
+            typename... Args
+        >
+        void emplace(
+            Args&&... args
+        );
+        /*!
+            requires
+                - T must be one of the types given to this object's template arguments
+            ensures
+                - re-assigns *this with type T using constructor-arguments args...
+                  (i.e. efficiently performs *this = T(args...))
+        !*/
+
         template <typename T>
-        static int get_type_id (
+        static constexpr int get_type_id (
         );
         /*!
            ensures
-              - if (T is the same type as one of the template arguments) then
-                 - returns a number indicating which template argument it is.
-                   (e.g. if T is the same type as T3 then this function returns 3)
-               - else
-                  - returns -1
+                - if (T is the same type as one of the template arguments) then
+                    - returns a number indicating which template argument it is. In particular,
+                      if it's the first template argument it returns 1, if the second then 2, and so on.
+                - else if (T is in_place_tag<U>) then 
+                    - equivalent to returning get_type_id<U>())
+                - else
+                    - returns -1
         !*/
 
         template <typename T>
@@ -152,68 +256,48 @@ namespace dlib
                     - returns false
         !*/
 
-        template <typename T>
-        void apply_to_contents (
-            T& obj
+        int get_current_type_id(
+        ) const;
+        /*!
+            ensures
+                - if (is_empty()) then
+                    - returns 0
+                - else
+                    - Returns the type id of the currently held type.  This is the same as
+                      get_type_id<WhateverTypeIsCurrentlyHeld>().  Therefore, if the current type is
+                      the first template argument it returns 1, if it's the second then 2, and so on.
+        !*/
+
+        template <typename F>
+        void apply_to_contents(
+            F&& f
         );
         /*!
             requires
-                - obj is a function object capable of operating on all the types contained
-                  in this type_safe_union.  I.e.  obj(this->get<U>()) must be a valid
+                - f is a callable object capable of operating on all the types contained
+                  in this type_safe_union.  I.e.  std::forward<F>(f)(this->get<U>()) must be a valid
                   expression for all the possible U types.
             ensures
                 - if (is_empty() == false) then
                     - Let U denote the type of object currently contained in this type_safe_union
-                    - calls obj(this->get<U>())
-                    - The object returned by this->get<U>() will be non-const
+                    - calls std::forward<F>(f)(this->get<U>())
+                    - The object passed to f() (i.e. by this->get<U>()) will be non-const.
         !*/
 
-        template <typename T>
-        void apply_to_contents (
-            const T& obj
-        );
-        /*!
-            requires
-                - obj is a function object capable of operating on all the types contained
-                  in this type_safe_union.  I.e.  obj(this->get<U>()) must be a valid
-                  expression for all the possible U types.
-            ensures
-                - if (is_empty() == false) then
-                    - Let U denote the type of object currently contained in this type_safe_union
-                    - calls obj(this->get<U>())
-                    - The object returned by this->get<U>() will be non-const
-        !*/
-
-        template <typename T>
-        void apply_to_contents (
-            T& obj
+        template <typename F>
+        void apply_to_contents(
+            F&& f
         ) const;
         /*!
             requires
-                - obj is a function object capable of operating on all the types contained
-                  in this type_safe_union.  I.e.  obj(this->get<U>()) must be a valid
+                - f is a callable object capable of operating on all the types contained
+                  in this type_safe_union.  I.e.  std::forward<F>(f)(this->get<U>()) must be a valid
                   expression for all the possible U types.
             ensures
                 - if (is_empty() == false) then
                     - Let U denote the type of object currently contained in this type_safe_union
-                    - calls obj(this->get<U>())
-                    - The object returned by this->get<U>() will be const
-        !*/
-
-        template <typename T>
-        void apply_to_contents (
-            const T& obj
-        ) const;
-        /*!
-            requires
-                - obj is a function object capable of operating on all the types contained
-                  in this type_safe_union.  I.e.  obj(this->get<U>()) must be a valid
-                  expression for all the possible U types.
-            ensures
-                - if (is_empty() == false) then
-                    - Let U denote the type of object currently contained in this type_safe_union
-                    - calls obj(this->get<U>())
-                    - The object returned by this->get<U>() will be const
+                    - calls std::forward<F>(f)(this->get<U>())
+                    - The object passed to f() (i.e. by this->get<U>()) will be const.
         !*/
 
         template <typename T> 
@@ -232,6 +316,15 @@ namespace dlib
                     - Any previous object stored in this type_safe_union is destructed and its
                       state is lost.
                     - returns a non-const reference to the newly created T object.
+        !*/
+
+        template <typename T>
+        T& get(
+            const in_place_tag<T>& tag
+        );
+        /*!
+            ensures
+                - equivalent to calling get<T>()
         !*/
 
         template <typename T>
@@ -260,19 +353,6 @@ namespace dlib
                     - throws bad_type_safe_union_cast
         !*/
 
-        template <typename T>
-        type_safe_union& operator= (
-            const T& item
-        );
-        /*!
-            requires
-                - T must be one of the types given to this object's template arguments
-            ensures
-                - #get<T>() == item
-                  (i.e. this object will contain a copy of item)
-                - returns *this
-        !*/
-
         void swap (
             type_safe_union& item
         );
@@ -285,10 +365,10 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
-    template < ...  >
+    template<typename... Types>
     inline void swap (
-        type_safe_union<...>& a, 
-        type_safe_union<...>& b 
+        type_safe_union<Types...>& a, 
+        type_safe_union<Types...>& b 
     ) { a.swap(b); }   
     /*!
         provides a global swap function
@@ -296,9 +376,54 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
-    template < ... >
+    template<
+        typename TSU,
+        typename F
+    >
+    void for_each_type(
+        F&& f,
+        TSU&& tsu
+    );
+    /*!
+        requires
+            - tsu is an object of type type_safe_union<Types...> for some types Types...
+            - f is a callable object such that the following expression is valid for
+              all types U in Types...:
+                std::forward<F>(f)(in_place_tag<U>{}, std::forward<TSU>(tsu))
+        ensures
+            - This function iterates over all types U in Types... and calls:
+                std::forward<F>(f)(in_place_tag<U>{}, std::forward<TSU>(tsu))
+    !*/
+
+// ----------------------------------------------------------------------------------------
+
+    template<
+        typename F,
+        typename TSU
+    >
+    auto visit(
+        F&& f,
+        TSU&& tsu
+    );
+    /*!
+        requires
+            - tsu is an object of type type_safe_union<Types...> for some types Types...
+            - f is a callable object capable of operating on all the types contained
+              in tsu.  I.e.  std::forward<F>(f)(this->get<U>()) must be a valid
+              expression for all the possible U types.
+        ensures
+            - if (tsu.is_empty() == false) then
+                - Let U denote the type of object currently contained in tsu.
+                - returns std::forward<F>(f)(this->get<U>())
+                - The object passed to f() (i.e. by this->get<U>()) will have the same reference
+                  type as TSU.
+    !*/
+
+// ----------------------------------------------------------------------------------------
+
+    template<typename... Types>
     void serialize (
-        const type_safe_union<...>& item, 
+        const type_safe_union<Types...>& item, 
         std::ostream& out 
     );   
     /*!
@@ -312,9 +437,9 @@ namespace dlib
                        serialize(item.get<type_of_object_in_item>(), out);
     !*/
 
-    template < ...  >
+    template<typename... Types>
     void deserialize (
-        type_safe_union<...>& item, 
+        type_safe_union<Types...>& item, 
         std::istream& in
     );   
     /*!
@@ -323,7 +448,67 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
+    template<typename... T>
+    overloaded_helper<typename std::decay<T>::type...> overloaded(T&&... t)
+    {
+        return overloaded_helper<typename std::decay<T>::type...>{std::forward<T>(t)...};
+    }
+    /*!
+        This is a helper function for passing many callable objects (usually lambdas)
+        to either apply_to_contents(), visit() or for_each(), that combine to make a complete
+        visitor. A picture paints a thousand words:
+
+        using tsu = type_safe_union<int,float,std::string>;
+
+        tsu a = std::string("hello there");
+
+        std::string result;
+
+        a.apply_to_contents(overloaded(
+            [&result](int) {
+                result = std::string("int");
+            },
+            [&result](float) {
+                result = std::string("float");
+            },
+            [&result](const std::string& item) {
+                result = item;
+            }
+        ));
+
+        assert(result == "hello there");
+        result = "";
+
+        result = visit(overloaded(
+            [](int) {
+                return std::string("int");
+            },
+            [](float) {
+                return std::string("float");
+            },
+            [](const std::string& item) {
+                return item;
+            }
+        ), a);
+
+        assert(result == "hello there");
+
+        std::vector<int> type_ids;
+
+        for_each_type(a, overloaded(
+            [&type_ids](in_place_tag<int>, tsu& me) {
+                type_ids.push_back(me.get_type_id<int>());
+            },
+            [&type_ids](in_place_tag<float>, tsu& me) {
+                type_ids.push_back(me.get_type_id<float>());
+            },
+            [&type_ids](in_place_tag<std::string>, tsu& me) {
+                type_ids.push_back(me.get_type_id<std::string>());
+            }
+        ));
+
+        assert(type_ids == vector<int>({0,1,2}));
+    !*/
 }
 
 #endif // DLIB_TYPE_SAFE_UNION_KERNEl_ABSTRACT_
-

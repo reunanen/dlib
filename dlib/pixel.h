@@ -132,6 +132,12 @@ namespace dlib
                 && this->green == that.green
                 && this->blue  == that.blue;
         }
+
+        bool operator != (const rgb_pixel& that) const
+        {
+            return !(*this == that);
+        }
+
     };
 
 // ----------------------------------------------------------------------------------------
@@ -165,6 +171,12 @@ namespace dlib
                 && this->green == that.green
                 && this->red   == that.red;
         }
+
+        bool operator != (const bgr_pixel& that) const
+        {
+            return !(*this == that);
+        }
+
     };
 
 // ----------------------------------------------------------------------------------------
@@ -199,6 +211,12 @@ namespace dlib
                 && this->blue  == that.blue
                 && this->alpha == that.alpha;
         }
+
+        bool operator != (const rgb_alpha_pixel& that) const
+        {
+            return !(*this == that);
+        }
+
     };
 
 // ----------------------------------------------------------------------------------------
@@ -229,7 +247,14 @@ namespace dlib
                 && this->s == that.s
                 && this->i == that.i;
         }
+
+        bool operator != (const hsi_pixel& that) const
+        {
+            return !(*this == that);
+        }
+
     };
+
     // ----------------------------------------------------------------------------------------
 
     struct lab_pixel
@@ -258,7 +283,13 @@ namespace dlib
                 && this->a == that.a
                 && this->b == that.b;
         }
-    };
+
+        bool operator != (const lab_pixel& that) const
+        {
+            return !(*this == that);
+        }
+
+    };    
 
 // ----------------------------------------------------------------------------------------
 
@@ -978,9 +1009,9 @@ namespace dlib
             }
 
             //clamping
-            c2.l = max(0.0, (116.0 * var_Y) - 16);
-            c2.a = max(-128.0, min(127.0, 500.0 * (var_X - var_Y)));
-            c2.b = max(-128.0, min(127.0, 200.0 * (var_Y - var_Z)));
+            c2.l = std::max(0.0, (116.0 * var_Y) - 16);
+            c2.a = std::max(-128.0, std::min(127.0, 500.0 * (var_X - var_Y)));
+            c2.b = std::max(-128.0, std::min(127.0, 200.0 * (var_Y - var_Z)));
 
             return c2;
         }
@@ -1049,9 +1080,9 @@ namespace dlib
             }
 
             // clamping
-            c2.r = max(0.0, min(1.0, var_R));
-            c2.g = max(0.0, min(1.0, var_G));
-            c2.b = max(0.0, min(1.0, var_B));
+            c2.r = std::max(0.0, std::min(1.0, var_R));
+            c2.g = std::max(0.0, std::min(1.0, var_G));
+            c2.b = std::max(0.0, std::min(1.0, var_B));
 
             return (c2);
         }

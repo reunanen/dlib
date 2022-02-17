@@ -6,25 +6,10 @@
 
 #include "tensor.h"
 #include "../geometry/rectangle.h"
+#include "../dnn/misc.h"
 
 namespace dlib
 {
-    // TODO: introduce this weighted_label struct in some other header file, which
-    //       will then be #included from here and also from dlib/dnn/loss.h
-    struct weighted_label
-    {
-        weighted_label()
-        {}
-
-        weighted_label(uint16_t label, float weight = 1.f)
-            : label(label), weight(weight)
-        {}
-
-        // In semantic segmentation, 65536 classes ought to be enough for anybody.
-        uint16_t label = 0;
-        float weight = 1.f;
-    };
-
     namespace cuda 
     {
 
@@ -353,6 +338,30 @@ namespace dlib
 
     // -----------------------------------------------------------------------------------
 
+        void layer_normalize (
+            const double eps,
+            resizable_tensor& dest,
+            resizable_tensor& means,
+            resizable_tensor& invstds,
+            const tensor& src,
+            const tensor& gamma,
+            const tensor& beta
+        );
+
+        void layer_normalize_gradient (
+            const double eps,
+            const tensor& gradient_input,
+            const tensor& means,
+            const tensor& invstds,
+            const tensor& src,
+            const tensor& gamma,
+            tensor& src_grad,
+            tensor& gamma_grad,
+            tensor& beta_grad
+        );
+
+    // -----------------------------------------------------------------------------------
+
         void threshold (
             tensor& data,
             float thresh
@@ -385,12 +394,70 @@ namespace dlib
 
     // ----------------------------------------------------------------------------------------
 
+        void leaky_relu (
+            tensor& dest,
+            const tensor& src,
+            const float alpha
+        );
+
+        void leaky_relu_gradient (
+            tensor& grad,
+            const tensor& src,
+            const tensor& gradient_input,
+            const float alpha
+        );
+
+    // ----------------------------------------------------------------------------------------
+
         void mish (
             tensor& dest,
             const tensor& src
         );
 
         void mish_gradient (
+            tensor& grad,
+            const tensor& src,
+            const tensor& gradient_input
+        );
+
+    // ----------------------------------------------------------------------------------------
+
+        void clipped_relu (
+            tensor& dest,
+            const tensor& src,
+            const float coef
+        );
+
+        void clipped_relu_gradient (
+            tensor& grad,
+            const tensor& dest,
+            const tensor& gradient_input,
+            const float ceiling
+        );
+
+    // ------------------------------------------------------------------------------------
+
+        void elu (
+            tensor& dest,
+            const tensor& src,
+            const float alpha
+        );
+
+        void elu_gradient (
+            tensor& grad,
+            const tensor& dest,
+            const tensor& gradient_input,
+            const float alpha
+        );
+
+    // ----------------------------------------------------------------------------------------
+
+        void gelu (
+            tensor& dest,
+            const tensor& src
+        );
+
+        void gelu_gradient (
             tensor& grad,
             const tensor& src,
             const tensor& gradient_input
@@ -428,6 +495,22 @@ namespace dlib
 
     // ----------------------------------------------------------------------------------------
 
+        void reorg (
+            tensor& dest,
+            const int row_stride,
+            const int col_stride,
+            const tensor& src
+        );
+
+        void reorg_gradient (
+            tensor& grad,
+            const int row_stride,
+            const int col_stride,
+            const tensor& gradient_input
+        );
+
+    // ----------------------------------------------------------------------------------------
+
         void copy_tensor(
             bool add_to,
             tensor& dest,
@@ -440,11 +523,72 @@ namespace dlib
 
     // ----------------------------------------------------------------------------------------
 
+        class compute_loss_binary_log_per_pixel
+        {
+            /*!
+                The point of this class is to compute the loss computed by
+                loss_binary_log_per_pixel_, but to do so with CUDA.
+            !*/
+        public:
+
+            compute_loss_binary_log_per_pixel(
+            )
+            {
+            }
+
+            template <
+                typename const_label_iterator
+                >
+            void operator() (
+                const_label_iterator truth,
+                const tensor& subnetwork_output,
+                tensor& gradient,
+                double& loss
+            ) const
+            {
+                const auto image_size = subnetwork_output.nr()*subnetwork_output.nc();
+                const size_t bytes_per_plane = image_size*sizeof(float);
+                // Allocate a cuda buffer to store all the truth images and also one float
+                // for the scalar loss output.
+                buf = device_global_buffer(subnetwork_output.num_samples()*bytes_per_plane + sizeof(float));
+
+                cuda_data_ptr<float> loss_buf = static_pointer_cast<float>(buf, 1);
+                buf = buf+sizeof(float);
+
+                // copy the truth data into a cuda buffer.
+                for (long i = 0; i < subnetwork_output.num_samples(); ++i, ++truth)
+                {
+                    const matrix<float>& t = *truth;
+                    DLIB_ASSERT(t.nr() == subnetwork_output.nr());
+                    DLIB_ASSERT(t.nc() == subnetwork_output.nc());
+                    memcpy(buf + i*bytes_per_plane, &t(0,0), bytes_per_plane);
+                }
+
+                auto truth_buf = static_pointer_cast<const float>(buf, subnetwork_output.num_samples()*image_size);
+
+                do_work(loss_buf, truth_buf, subnetwork_output, gradient, loss);
+            }
+
+        private:
+
+            static void do_work(
+                cuda_data_ptr<float> loss_work_buffer,
+                cuda_data_ptr<const float> truth_buffer,
+                const tensor& subnetwork_output,
+                tensor& gradient,
+                double& loss
+            );
+
+            mutable cuda_data_void_ptr buf;
+        };
+
+    // ----------------------------------------------------------------------------------------
+
         class compute_loss_multiclass_log_per_pixel
         {
             /*!
                 The point of this class is to compute the loss computed by
-                loss_multiclass_log_per_pixel, but to do so with CUDA.
+                loss_multiclass_log_per_pixel_, but to do so with CUDA.
             !*/
         public:
 
@@ -463,12 +607,13 @@ namespace dlib
                 double& loss
             ) const
             {
-                const size_t bytes_per_plane = subnetwork_output.nr()*subnetwork_output.nc()*sizeof(uint16_t);
+                const auto image_size = subnetwork_output.nr()*subnetwork_output.nc();
+                const size_t bytes_per_plane = image_size*sizeof(uint16_t);
                 // Allocate a cuda buffer to store all the truth images and also one float
                 // for the scalar loss output.
                 buf = device_global_buffer(subnetwork_output.num_samples()*bytes_per_plane + sizeof(float));
 
-                cuda_data_void_ptr loss_buf = buf;
+                cuda_data_ptr<float> loss_buf = static_pointer_cast<float>(buf, 1);
                 buf = buf+sizeof(float);
 
                 // copy the truth data into a cuda buffer.
@@ -480,14 +625,16 @@ namespace dlib
                     memcpy(buf + i*bytes_per_plane, &t(0,0), bytes_per_plane);
                 }
 
-                do_work(static_cast<float*>(loss_buf.data()), static_cast<uint16_t*>(buf.data()), subnetwork_output, gradient, loss);
+                auto truth_buf = static_pointer_cast<const uint16_t>(buf, subnetwork_output.num_samples()*image_size);
+
+                do_work(loss_buf, truth_buf, subnetwork_output, gradient, loss);
             }
 
         private:
 
             static void do_work(
-                float* loss_cuda_work_buffer,
-                const uint16_t* truth_buffer,
+                cuda_data_ptr<float> loss_work_buffer,
+                cuda_data_ptr<const uint16_t> truth_buffer,
                 const tensor& subnetwork_output,
                 tensor& gradient,
                 double& loss
@@ -496,11 +643,13 @@ namespace dlib
             mutable cuda_data_void_ptr buf;
         };
 
+    // ----------------------------------------------------------------------------------------
+
         class compute_loss_multiclass_log_per_pixel_weighted
         {
             /*!
                 The point of this class is to compute the loss computed by
-                loss_multiclass_log_per_pixel_weighted, but to do so with CUDA.
+                loss_multiclass_log_per_pixel_weighted_, but to do so with CUDA.
             !*/
         public:
 
@@ -519,31 +668,115 @@ namespace dlib
                 double& loss
             ) const
             {
-                const size_t bytes_per_plane = subnetwork_output.nr()*subnetwork_output.nc() * sizeof(weighted_label);
+                const auto image_size = subnetwork_output.nr()*subnetwork_output.nc();
+                const size_t bytes_per_plane = image_size*sizeof(uint16_t);
+                const size_t weight_bytes_per_plane = image_size*sizeof(float);
+                matrix<uint16_t> labels(truth->nr(), truth->nc());
+                matrix<float> weights(truth->nr(), truth->nc());
                 // Allocate a cuda buffer to store all the truth images and also one float
                 // for the scalar loss output.
-                buf = device_global_buffer(subnetwork_output.num_samples()*bytes_per_plane + sizeof(float));
+                buf = device_global_buffer(subnetwork_output.num_samples()*(bytes_per_plane + weight_bytes_per_plane) + sizeof(float));
 
-                cuda_data_void_ptr loss_buf = buf;
-                buf = buf + sizeof(float);
-
+                cuda_data_ptr<float> loss_buf = static_pointer_cast<float>(buf, 1);
+                buf = buf+sizeof(float);
+                const auto weights_offset = subnetwork_output.num_samples() * bytes_per_plane;
                 // copy the truth data into a cuda buffer.
                 for (long i = 0; i < subnetwork_output.num_samples(); ++i, ++truth)
                 {
-                    const matrix<weighted_label>& t = *truth;
+                    const matrix<weighted_label<uint16_t>>& t = *truth;
                     DLIB_ASSERT(t.nr() == subnetwork_output.nr());
                     DLIB_ASSERT(t.nc() == subnetwork_output.nc());
-                    memcpy(buf + i*bytes_per_plane, &t(0, 0), bytes_per_plane);
+                    for (long r = 0; r < t.nr(); ++r)
+                    {
+                        for (long c = 0; c < t.nc(); ++c)
+                        {
+                            labels(r, c) = t(r, c).label;
+                            weights(r, c) = t(r, c).weight;
+                        }
+                    }
+                    memcpy(buf + i*bytes_per_plane, &labels(0,0), bytes_per_plane);
+                    memcpy(buf + weights_offset + i*weight_bytes_per_plane, &weights(0, 0), weight_bytes_per_plane);
                 }
 
-                do_work(static_cast<float*>(loss_buf.data()), static_cast<weighted_label*>(buf.data()), subnetwork_output, gradient, loss);
+                auto truth_buf = static_pointer_cast<const uint16_t>(buf, subnetwork_output.num_samples()*image_size);
+                buf = buf+weights_offset;
+                auto weights_buf = static_pointer_cast<const float>(buf, subnetwork_output.num_samples()*image_size);
+
+                do_work(loss_buf, truth_buf, weights_buf, subnetwork_output, gradient, loss);
             }
 
         private:
 
             static void do_work(
-                float* loss_cuda_work_buffer,
-                const weighted_label* truth_buffer,
+                cuda_data_ptr<float> loss_work_buffer,
+                cuda_data_ptr<const uint16_t> truth_buffer,
+                cuda_data_ptr<const float> weights_buffer,
+                const tensor& subnetwork_output,
+                tensor& gradient,
+                double& loss
+            );
+
+            mutable cuda_data_void_ptr buf;
+        };
+
+    // ----------------------------------------------------------------------------------------
+
+        class compute_loss_mean_squared_per_channel_and_pixel
+        {
+            /*!
+                The point of this class is to compute the loss computed by
+                loss_mean_squared_per_channel_and_pixel_, but to do so with CUDA.
+            !*/
+        public:
+
+            compute_loss_mean_squared_per_channel_and_pixel(
+            )
+            {
+            }
+
+            template <
+                typename const_label_iterator
+                >
+            void operator() (
+                const_label_iterator truth,
+                const tensor& subnetwork_output,
+                tensor& gradient,
+                double& loss
+            ) const
+            {
+                const auto image_size = subnetwork_output.nr()*subnetwork_output.nc()*subnetwork_output.k();
+                const size_t bytes_per_image = image_size*sizeof(float);
+                // Allocate a cuda buffer to store all the truth images and also one float
+                // for the scalar loss output.
+                buf = device_global_buffer(subnetwork_output.num_samples()*bytes_per_image + sizeof(float));
+
+                cuda_data_ptr<float> loss_buf = static_pointer_cast<float>(buf, 1);
+                buf = buf+sizeof(float);
+
+                const size_t bytes_per_plane = subnetwork_output.nr()*subnetwork_output.nc()*sizeof(float);
+
+                // copy the truth data into a cuda buffer.
+                for (long i = 0; i < subnetwork_output.num_samples(); ++i, ++truth)
+                {
+                    const auto& t = *truth;
+                    DLIB_ASSERT(static_cast<long>(t.size()) == subnetwork_output.k());
+                    for (size_t j = 0; j < t.size(); ++j) {
+                        DLIB_ASSERT(t[j].nr() == subnetwork_output.nr());
+                        DLIB_ASSERT(t[j].nc() == subnetwork_output.nc());
+                        memcpy(buf + i*bytes_per_image + j*bytes_per_plane, &t[j](0,0), bytes_per_plane);
+                    }
+                }
+
+                auto truth_buf = static_pointer_cast<const float>(buf, subnetwork_output.num_samples()*image_size);
+
+                do_work(loss_buf, truth_buf, subnetwork_output, gradient, loss);
+            }
+
+        private:
+
+            static void do_work(
+                cuda_data_ptr<float> loss_work_buffer,
+                cuda_data_ptr<const float> truth_buffer,
                 const tensor& subnetwork_output,
                 tensor& gradient,
                 double& loss

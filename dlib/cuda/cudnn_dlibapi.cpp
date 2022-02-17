@@ -7,6 +7,7 @@
 
 #include "cudnn_dlibapi.h"
 #include "tensor.h"
+#include <cudnn.h>
 #include <tuple>
 #include <map>
 #include <iostream>
@@ -71,56 +72,53 @@ namespace dlib
 
     // ------------------------------------------------------------------------------------
 
-        cudnn_context::cudnn_context()
+        class cudnn_context
         {
-            handles.resize(16);
-        }
-        cudnn_context::~cudnn_context()
-        {
-            destroy_all_handles();
-        }
+        public:
+            // not copyable
+            cudnn_context(const cudnn_context&) = delete;
+            cudnn_context& operator=(const cudnn_context&) = delete;
 
-        void cudnn_context::destroy_all_handles(
-        )
-        {
-            for (auto& h : handles)
+            cudnn_context()
             {
-                if (h)
+                handles.resize(16);
+            }
+            ~cudnn_context()
+            {
+                for (auto h : handles)
                 {
-                    cudnnDestroy(h);
-                    h = 0;
+                    if (h)
+                        cudnnDestroy(h);
                 }
             }
-        }
 
-        cudnnHandle_t cudnn_context::get_handle (
-        )  
-        { 
-            int new_device_id;
-            CHECK_CUDA(cudaGetDevice(&new_device_id));
-            // make room for more devices if needed
-            if (new_device_id >= (long)handles.size())
-                handles.resize(new_device_id+16);
+            cudnnHandle_t get_handle (
+            )  
+            { 
+                int new_device_id;
+                CHECK_CUDA(cudaGetDevice(&new_device_id));
+                // make room for more devices if needed
+                if (new_device_id >= (long)handles.size())
+                    handles.resize(new_device_id+16);
 
-            // If we don't have a handle already for this device then make one
-            if (!handles[new_device_id])
-                CHECK_CUDNN(cudnnCreate(&handles[new_device_id]));
+                // If we don't have a handle already for this device then make one
+                if (!handles[new_device_id])
+                    CHECK_CUDNN(cudnnCreate(&handles[new_device_id]));
 
-            // Finally, return the handle for the current device
-            return handles[new_device_id];
-        }
+                // Finally, return the handle for the current device
+                return handles[new_device_id];
+            }
 
-        cudnn_context& cudnn_ctx()
-        {
-            thread_local cudnn_context c;
-            return c;
-        }
+        private:
+
+            std::vector<cudnnHandle_t> handles;
+        };
 
         static cudnnHandle_t context()
         {
-            return cudnn_ctx().get_handle();
+            thread_local cudnn_context c;
+            return c.get_handle();
         }
-
     // ------------------------------------------------------------------------------------
 
         class cudnn_activation_descriptor
@@ -133,11 +131,11 @@ namespace dlib
             cudnn_activation_descriptor(
                 cudnnActivationMode_t mode,
                 cudnnNanPropagation_t reluNanOpt,
-                double reluCeiling
+                double coef
             )
             {
                 CHECK_CUDNN(cudnnCreateActivationDescriptor(&handle));
-                CHECK_CUDNN(cudnnSetActivationDescriptor(handle, mode, reluNanOpt, reluCeiling));
+                CHECK_CUDNN(cudnnSetActivationDescriptor(handle, mode, reluNanOpt, coef));
             }
 
             ~cudnn_activation_descriptor()
@@ -153,6 +151,12 @@ namespace dlib
         private:
             cudnnActivationDescriptor_t handle;
         };
+
+        static cudnnActivationDescriptor_t identity_activation_descriptor()
+        {
+            thread_local cudnn_activation_descriptor des(CUDNN_ACTIVATION_IDENTITY, CUDNN_PROPAGATE_NAN,0);
+            return des.get_handle();
+        }
 
         static cudnnActivationDescriptor_t relu_activation_descriptor()
         {
@@ -807,9 +811,9 @@ namespace dlib
             cudnnConvolutionFwdAlgo_t forward_best_algo;
 #if CUDNN_MAJOR >= 8
             {
-                int num_possilbe_algorithms = 0;
-                CHECK_CUDNN(cudnnGetConvolutionForwardAlgorithmMaxCount(context(), &num_possilbe_algorithms));
-                std::vector<cudnnConvolutionFwdAlgoPerf_t> perf_results(num_possilbe_algorithms);
+                int num_possible_algorithms = 0;
+                CHECK_CUDNN(cudnnGetConvolutionForwardAlgorithmMaxCount(context(), &num_possible_algorithms));
+                std::vector<cudnnConvolutionFwdAlgoPerf_t> perf_results(num_possible_algorithms);
                 int num_algorithms = 0;
                 CHECK_CUDNN(cudnnFindConvolutionForwardAlgorithm(
                         context(), 
@@ -817,7 +821,7 @@ namespace dlib
                         (const cudnnFilterDescriptor_t)filter_handle,
                         (const cudnnConvolutionDescriptor_t)conv_handle,
                         descriptor(dest_desc),
-                        num_possilbe_algorithms,
+                        num_possible_algorithms,
                         &num_algorithms,
                         perf_results.data()));
                 perf_results.resize(num_algorithms);
@@ -843,9 +847,9 @@ namespace dlib
             cudnnConvolutionBwdDataAlgo_t backward_data_best_algo;
 #if CUDNN_MAJOR >= 8
             {
-                int num_possilbe_algorithms = 0;
-                CHECK_CUDNN(cudnnGetConvolutionBackwardFilterAlgorithmMaxCount(context(), &num_possilbe_algorithms));
-                std::vector<cudnnConvolutionBwdDataAlgoPerf_t> perf_results(num_possilbe_algorithms);
+                int num_possible_algorithms = 0;
+                CHECK_CUDNN(cudnnGetConvolutionBackwardFilterAlgorithmMaxCount(context(), &num_possible_algorithms));
+                std::vector<cudnnConvolutionBwdDataAlgoPerf_t> perf_results(num_possible_algorithms);
                 int num_algorithms = 0;
                 CHECK_CUDNN(cudnnFindConvolutionBackwardDataAlgorithm(
                         context(),
@@ -853,7 +857,7 @@ namespace dlib
                         descriptor(dest_desc),
                         (const cudnnConvolutionDescriptor_t)conv_handle,
                         descriptor(data),
-                        num_possilbe_algorithms,
+                        num_possible_algorithms,
                         &num_algorithms,
                         perf_results.data()));
                 perf_results.resize(num_algorithms);
@@ -880,9 +884,9 @@ namespace dlib
             cudnnConvolutionBwdFilterAlgo_t backward_filters_best_algo;
 #if CUDNN_MAJOR >= 8
             {
-                int num_possilbe_algorithms = 0;
-                CHECK_CUDNN(cudnnGetConvolutionBackwardFilterAlgorithmMaxCount(context(), &num_possilbe_algorithms));
-                std::vector<cudnnConvolutionBwdFilterAlgoPerf_t> perf_results(num_possilbe_algorithms);
+                int num_possible_algorithms = 0;
+                CHECK_CUDNN(cudnnGetConvolutionBackwardFilterAlgorithmMaxCount(context(), &num_possible_algorithms));
+                std::vector<cudnnConvolutionBwdFilterAlgoPerf_t> perf_results(num_possible_algorithms);
                 int num_algorithms = 0;
                 CHECK_CUDNN(cudnnFindConvolutionBackwardFilterAlgorithm(
                         context(),
@@ -890,7 +894,7 @@ namespace dlib
                         descriptor(dest_desc),
                         (const cudnnConvolutionDescriptor_t)conv_handle,
                         (const cudnnFilterDescriptor_t)filter_handle,
-                        num_possilbe_algorithms,
+                        num_possible_algorithms,
                         &num_algorithms,
                         perf_results.data()));
                 perf_results.resize(num_algorithms);
@@ -1130,6 +1134,89 @@ namespace dlib
                     &beta,
                     descriptor(output),
                     output.device()));
+
+        }
+
+        void tensor_conv::operator() (
+            const bool add_to_output,
+            resizable_tensor& output,
+            const tensor& data,
+            const tensor& filters,
+            const tensor& biases
+        )
+        {
+            DLIB_CASSERT(stride_y > 0 && stride_x > 0, "You must call setup() before calling this function");
+
+            output.set_size(out_num_samples, out_k, out_nr, out_nc);
+            (*this)(add_to_output, static_cast<tensor&>(output), data, filters, biases);
+        }
+
+        void tensor_conv::operator() (
+            const bool add_to_output,
+            tensor& output,
+            const tensor& data,
+            const tensor& filters,
+            const tensor& biases
+        )
+        {
+            DLIB_CASSERT(is_same_object(output,data) == false);
+            DLIB_CASSERT(is_same_object(output,filters) == false);
+            DLIB_CASSERT(filters.k() == data.k());
+            DLIB_CASSERT(stride_y > 0 && stride_x > 0, "You must call setup() before calling this function");
+            DLIB_CASSERT(filters.nc() <= data.nc() + 2*padding_x,
+                "Filter windows must be small enough to fit into the padded image."
+                << "\n\t filters.nc(): " << filters.nc()
+                << "\n\t data.nc():  " << data.nc()
+                << "\n\t padding_x: " << padding_x
+                );
+            DLIB_CASSERT(filters.nr() <= data.nr() + 2*padding_y,
+                "Filter windows must be small enough to fit into the padded image."
+                << "\n\t filters.nr(): " << filters.nr()
+                << "\n\t data.nr():  " << data.nr()
+                << "\n\t padding_y: " << padding_y
+                );
+
+
+            DLIB_CASSERT(output.num_samples() == data.num_samples(),out_num_samples << "  " << data.num_samples());
+            DLIB_CASSERT(output.k() == filters.num_samples());
+            DLIB_CASSERT(output.nr() == 1+(data.nr()+2*padding_y-filters.nr())/stride_y);
+            DLIB_CASSERT(output.nc() == 1+(data.nc()+2*padding_x-filters.nc())/stride_x);
+            DLIB_CASSERT(filters.num_samples() == biases.k());
+
+
+
+            const float alpha1 = 1;
+            const float alpha2 = add_to_output ? 1 : 0;
+
+            // Since cudnnConvolutionBiasActivationForward() is an asynchronous call,
+            // we need to hold a reference to the workspace buffer so we can be sure it
+            // isn't reallocated while the function is still executing on the device.
+            // But each time we come here, we make sure to grab the latest workspace
+            // buffer so that, globally, we minimize the number of such buffers.
+            forward_workspace = device_global_buffer(forward_workspace_size_in_bytes);
+
+            float* out = output.device();
+            const cudnnTensorDescriptor_t out_desc = descriptor(output);
+
+            CHECK_CUDNN(cudnnConvolutionBiasActivationForward(
+                    context(),
+                    &alpha1,
+                    descriptor(data),
+                    data.device(),
+                    (const cudnnFilterDescriptor_t)filter_handle,
+                    filters.device(),
+                    (const cudnnConvolutionDescriptor_t)conv_handle,
+                    (cudnnConvolutionFwdAlgo_t)forward_algo,
+                    forward_workspace,
+                    forward_workspace_size_in_bytes,
+                    &alpha2,
+                    out_desc,
+                    out,
+                    descriptor(biases),
+                    biases.device(),
+                    identity_activation_descriptor(),
+                    out_desc,
+                    out));
         }
 
         void tensor_conv::get_gradient_for_data (
@@ -1670,6 +1757,7 @@ namespace dlib
         }
 
     // ------------------------------------------------------------------------------------
+
     }
 }
 
