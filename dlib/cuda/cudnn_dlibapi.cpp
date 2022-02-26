@@ -908,6 +908,7 @@ namespace dlib
                     &backward_filters_best_algo));
 #endif
 
+#if CUDNN_MAJOR < 7
             // cuDNN 5.1 has a bug that causes
             // cudnnGetConvolutionBackwardFilterAlgorithm() to pick the winograd
             // algorithm even for cases where cuDNN doesn't support it, leading to
@@ -922,7 +923,7 @@ namespace dlib
                 backward_filters_best_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0;
             }
             backward_filters_algo = backward_filters_best_algo;
-
+#endif
 
             // Save this algorithm selection in the cache
             config_to_algo_cache[cache_key] = std::make_tuple(forward_algo, backward_data_algo, backward_filters_algo);
