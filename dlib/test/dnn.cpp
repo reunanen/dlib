@@ -3266,6 +3266,7 @@ namespace
 
 // ----------------------------------------------------------------------------------------
     
+#ifdef STANDARD_MMOD_INTERFACE
     // This test really just checks if the mmod loss goes negative when a whole lot of overlapping
     // truth rectangles are given.  
     void test_loss_mmod()
@@ -3445,6 +3446,7 @@ namespace
             DLIB_TEST_MSG(threshold8 < 1.0, "threshold8 must be less than 1.0");
         }
     }
+#endif
 
 // ----------------------------------------------------------------------------------------
 
@@ -3537,8 +3539,10 @@ namespace
             test_serialization();
             test_loss_dot();
             test_loss_multimulticlass_log();
+#ifdef STANDARD_MMOD_INTERFACE
             test_loss_mmod();
             test_find_optimal_threshold();
+#endif
         }
 
         void perform_test()
