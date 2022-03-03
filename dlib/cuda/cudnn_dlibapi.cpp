@@ -790,7 +790,7 @@ namespace dlib
             // Calling the cuDNN "find the best algorithm" functions is really slow.  So we keep a
             // cache that tells us what method was best for a particular configuration.
             thread_local std::map<std::tuple<int,int,int,int,long,long>,
-                                  std::tuple<int,int,int>> config_to_algo_cache;
+                                  std::tuple<int,int,int,long,long,long,long,long,long>> config_to_algo_cache;
 
             // If we have already found good algorithms for this setting then just pull them from
             // the cache.
@@ -798,7 +798,36 @@ namespace dlib
             const auto iter = config_to_algo_cache.find(cache_key);
             if (iter != config_to_algo_cache.end() && allow_cache_use == allow_cache_use::yes)
             {
-                std::tie(forward_algo, backward_data_algo, backward_filters_algo) = iter->second;
+                long filters_num_samples_ = 0, filters_k_ = 0, data_nr_ = 0, data_nc_ = 0, data_num_samples_ = 0, data_k_ = 0;
+
+                std::tie(forward_algo, backward_data_algo, backward_filters_algo, filters_num_samples_, filters_k_, data_nr_, data_nc_, data_num_samples_, data_k_) = iter->second;
+
+                std::cout << "Using cached item for: " << std::endl;
+                std::cout << " * stride_y = " << stride_y << std::endl;
+                std::cout << " * stride_x = " << stride_x << std::endl;
+                std::cout << " * padding_y = " << padding_y << std::endl;
+                std::cout << " * padding_x = " << padding_x << std::endl;
+                std::cout << " * filters_nr = " << filters_nr << std::endl;
+                std::cout << " * filters_nc = " << filters_nc << std::endl;
+                std::cout << "Cached best algorithms: " << std::endl;
+                std::cout << " * forward_algo = " << forward_algo << std::endl;
+                std::cout << " * backward_data_algo = " << backward_data_algo << std::endl;
+                std::cout << " * backward_filters_algo = " << backward_filters_algo << std::endl;
+                std::cout << "Cached best algorithms were obtained using: " << std::endl;
+                std::cout << " * filters_num_samples = " << filters_num_samples_ << std::endl;
+                std::cout << " * filters_k = " << filters_k_ << std::endl;
+                std::cout << " * data_nr = " << data_nr_ << std::endl;
+                std::cout << " * data_nc = " << data_nc_ << std::endl;
+                std::cout << " * data_num_samples = " << data_num_samples_ << std::endl;
+                std::cout << " * data_k = " << data_k_ << std::endl;
+                std::cout << "Now using cached best algorithms for: " << std::endl;
+                std::cout << " * filters_num_samples = " << filters_num_samples << std::endl;
+                std::cout << " * filters_k = " << filters_k << std::endl;
+                std::cout << " * data_nr = " << data_nr << std::endl;
+                std::cout << " * data_nc = " << data_nc << std::endl;
+                std::cout << " * data_num_samples = " << data_num_samples << std::endl;
+                std::cout << " * data_k = " << data_k << std::endl;
+
                 return;
             }
 
@@ -927,7 +956,7 @@ namespace dlib
 #endif
 
             // Save this algorithm selection in the cache
-            config_to_algo_cache[cache_key] = std::make_tuple(forward_algo, backward_data_algo, backward_filters_algo);
+            config_to_algo_cache[cache_key] = std::make_tuple(forward_algo, backward_data_algo, backward_filters_algo, filters_num_samples, filters_k, data_nr, data_nc, data_num_samples, data_k);
         }
 
         void tensor_conv::
@@ -1062,7 +1091,15 @@ namespace dlib
                     // Sometimes the values stored in `config_to_algo_cache` do not quite work -
                     // so let's get a fresh estimate, instead of using a cached value.
                     select_best_algorithms(data, dest_desc, allow_cache_use::no);
+
+                    std::cout << "New best algorithms: " << std::endl;
+                    std::cout << " * forward_algo = " << forward_algo << std::endl;
+                    std::cout << " * backward_data_algo = " << backward_data_algo << std::endl;
+                    std::cout << " * backward_filters_algo = " << backward_filters_algo << std::endl;
+
                     update_convolution_data_workspace_sizes(data, dest_desc);
+
+                    throw;
                 }
             }
             catch(...)
