@@ -815,12 +815,13 @@ namespace dlib
             const tensor& input_tensor,
             const SUB_TYPE& sub,
             label_iterator iter,
+            batch_position batch_position,
             double adjust_threshold = 0,
             size_t desired_min_detection_count = 0,
             size_t desired_bubbling_under_count = 0,
             const std::vector<double>& gain_factors = std::vector<double>(),
             int margin = 0,
-            const matrix<uint8_t>* optional_mask = nullptr
+            const std::vector<matrix<uint8_t>>& optional_masks = std::vector<matrix<uint8_t>>()
         ) const;
         /*!
             This function has the same interface as EXAMPLE_LOSS_LAYER_::to_label() except

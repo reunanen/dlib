@@ -1091,12 +1091,13 @@ namespace dlib
             const tensor& input_tensor,
             const SUB_TYPE& sub,
             label_iterator iter,
+            batch_position batch_position = batch_position::batch_mode_disabled(),
             double adjust_threshold = 0,
             size_t desired_min_detection_count = 0,
             size_t desired_bubbling_under_count = 0,
             std::vector<double> gain_factors = std::vector<double>(),
             int margin = 0,
-            const matrix<uint8_t>* optional_mask = nullptr
+            const std::vector<matrix<uint8_t>>& optional_masks = std::vector<matrix<uint8_t>>()
         ) const
         {
             const tensor& output_tensor = sub.get_output();
@@ -1122,19 +1123,28 @@ namespace dlib
             output_label_type final_dets;
 
             matrix<uint8_t> resized_mask;
-            if (optional_mask && (optional_mask->nr() != input_tensor.nr() || optional_mask->nc() != input_tensor.nc()))
-            {
-                DLIB_CASSERT(options.assume_image_pyramid == use_image_pyramid::yes);
-                resized_mask.set_size(input_tensor.nr(), input_tensor.nc());
-                resize_image(*optional_mask, resized_mask, interpolate_nearest_neighbor());
-                optional_mask = &resized_mask;
-            }
 
-            DLIB_CASSERT(optional_mask == nullptr || (optional_mask->nr() == input_tensor.nr() && optional_mask->nc() == input_tensor.nc()));
+            DLIB_CASSERT(optional_masks.empty() || batch_position.is_batch_mode_enabled());
+            DLIB_CASSERT(!batch_position.is_batch_mode_enabled() || batch_position.position() + output_tensor.num_samples() <= optional_masks.size());
 
             for (long i = 0; i < output_tensor.num_samples(); ++i)
             {
                 tensor_to_dets(input_tensor, output_tensor, i, dets_accum, effective_threshold, sub, gain_factors);
+
+                // figure out if we want to use a mask, and resize it if needed
+                const matrix<uint8_t>* optional_mask = optional_masks.empty()
+                    ? nullptr
+                    : &optional_masks[batch_position.position() + i];
+
+                if (optional_mask && (optional_mask->nr() != input_tensor.nr() || optional_mask->nc() != input_tensor.nc()))
+                {
+                    DLIB_CASSERT(options.assume_image_pyramid == use_image_pyramid::yes);
+                    resized_mask.set_size(input_tensor.nr(), input_tensor.nc());
+                    resize_image(*optional_mask, resized_mask, interpolate_nearest_neighbor());
+                    optional_mask = &resized_mask;
+                }
+
+                DLIB_CASSERT(optional_mask == nullptr || (optional_mask->nr() == input_tensor.nr() && optional_mask->nc() == input_tensor.nc()));
 
                 // Do non-max suppression
                 final_dets.clear();

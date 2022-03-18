@@ -2142,6 +2142,36 @@ namespace dlib
         template < typename net_type, typename solver_type > friend class dnn_trainer; 
     };
 
+    class batch_position
+    {
+    public:
+        static batch_position batch_mode_disabled()
+        {
+            return batch_position();
+        };
+
+        explicit batch_position(size_t position)
+            : batch_mode_enabled(true)
+            , pos(position)
+        {}
+
+        bool is_batch_mode_enabled() const
+        {
+            return batch_mode_enabled;
+        }
+
+        size_t position() const
+        {
+            return pos;
+        }
+
+    private:
+        batch_position() {};
+
+        const bool batch_mode_enabled = false;
+        const size_t pos = 0;
+    };
+
 // ----------------------------------------------------------------------------------------
 
     template <typename LOSS_DETAILS, typename SUBNET>
@@ -2295,6 +2325,7 @@ namespace dlib
             std::vector<output_label_type> results(std::distance(data.begin(), data.end()));
             auto o = results.begin();
             auto i = data.begin();
+            size_t j = 0;
             auto num_remaining = results.size();
             while(num_remaining != 0)
             {
@@ -2302,9 +2333,10 @@ namespace dlib
                 to_tensor(i,i+inc,temp_tensor);
                 subnetwork.forward(temp_tensor);
                 const dimpl::subnet_wrapper<subnet_type> wsub(subnetwork);
-                loss.to_label(temp_tensor, wsub, o, std::forward<T>(args)...);
+                loss.to_label(temp_tensor, wsub, o, batch_position{ j }, std::forward<T>(args)...);
 
                 i += inc;
+                j += inc;
                 o += inc;
                 num_remaining -= inc;
             }

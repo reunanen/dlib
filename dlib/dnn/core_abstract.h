@@ -588,6 +588,11 @@ namespace dlib
 
     class no_label_type;
 
+    class batch_position
+    {
+        batch_position batch_mode_disabled();
+    };
+
     template <
         typename LOSS_DETAILS, 
         typename SUBNET
