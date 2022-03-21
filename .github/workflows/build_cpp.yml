@@ -3,7 +3,7 @@ name: C++
 on:
   push:
     branches:
-    - master
+    - test-2506
   pull_request:
     branches:
     - master
@@ -32,7 +32,7 @@ jobs:
       run: cmake --build ${{ env.build_dir }} --config ${{ env.config }} --parallel 2
 
   ubuntu-latest-gcc-11:
-    if: ${{ false }}  # disabled until https://github.com/davisking/dlib/issues/2506 has been resolved
+    #if: ${{ false }}  # disabled until https://github.com/davisking/dlib/issues/2506 has been resolved
     runs-on: 'ubuntu-latest'
     steps:
     - uses: actions/checkout@v2
