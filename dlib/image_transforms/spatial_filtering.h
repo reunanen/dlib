@@ -1110,7 +1110,7 @@ namespace dlib
         typename U,
         typename in_image_type
         >
-    inline void separable_3x3_filter_block_rgb (
+    inline void separable_3x3_filter_block_rgb_alpha (
         T (&block)[NR][NC],
         const in_image_type& img_,
         const long& r,
@@ -1124,7 +1124,7 @@ namespace dlib
         // make sure requires clause is not broken
         DLIB_ASSERT(shrink_rect(get_rect(img),1).contains(c,r) &&
                     shrink_rect(get_rect(img),1).contains(c+NC-1,r+NR-1),
-            "\t void separable_3x3_filter_block_rgb()"
+            "\t void separable_3x3_filter_block_rgb_alpha()"
             << "\n\t The sub-window doesn't fit inside the given image."
             << "\n\t get_rect(img):       " << get_rect(img) 
             << "\n\t (c,r):               " << point(c,r) 
@@ -1139,6 +1139,7 @@ namespace dlib
                 row_filt[rr][cc].red   = img[r+rr-1][c+cc-1].red*fe1   + img[r+rr-1][c+cc].red*fm   + img[r+rr-1][c+cc+1].red*fe2;
                 row_filt[rr][cc].green = img[r+rr-1][c+cc-1].green*fe1 + img[r+rr-1][c+cc].green*fm + img[r+rr-1][c+cc+1].green*fe2;
                 row_filt[rr][cc].blue  = img[r+rr-1][c+cc-1].blue*fe1  + img[r+rr-1][c+cc].blue*fm  + img[r+rr-1][c+cc+1].blue*fe2;
+                row_filt[rr][cc].alpha = img[r+rr-1][c+cc-1].alpha*fe1 + img[r+rr-1][c+cc].alpha*fm + img[r+rr-1][c+cc+1].alpha*fe2;
             }
         }
 
@@ -1149,6 +1150,7 @@ namespace dlib
                 block[rr][cc].red   = row_filt[rr][cc].red*fe1   + row_filt[rr+1][cc].red*fm   + row_filt[rr+2][cc].red*fe2;
                 block[rr][cc].green = row_filt[rr][cc].green*fe1 + row_filt[rr+1][cc].green*fm + row_filt[rr+2][cc].green*fe2;
                 block[rr][cc].blue  = row_filt[rr][cc].blue*fe1  + row_filt[rr+1][cc].blue*fm  + row_filt[rr+2][cc].blue*fe2;
+                block[rr][cc].alpha = row_filt[rr][cc].alpha*fe1 + row_filt[rr+1][cc].alpha*fm + row_filt[rr+2][cc].alpha*fe2;
             }
         }
 

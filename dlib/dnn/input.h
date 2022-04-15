@@ -1146,27 +1146,28 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
-    struct rgb_pixel_float_values {
+    struct rgba_pixel_float_values {
         float red   = std::numeric_limits<float>::quiet_NaN();
         float green = std::numeric_limits<float>::quiet_NaN();
         float blue  = std::numeric_limits<float>::quiet_NaN();
+        float alpha = std::numeric_limits<float>::quiet_NaN();
     };
 
-    class input_rgb_image_stack
+    class input_rgba_image_stack
     {
     public:
-        typedef std::vector<matrix<rgb_pixel>> input_type;
+        typedef std::vector<matrix<rgb_alpha_pixel>> input_type;
 
-        input_rgb_image_stack( // If average values are not passed, then the values defined already in input_rgb_image are assumed
+        input_rgba_image_stack( // If average values are not passed, then the values defined already in input_rgba_image are assumed
         )
         {}
 
-        input_rgb_image_stack(
-            const std::vector<rgb_pixel_float_values>& average_values_
+        input_rgba_image_stack(
+            const std::vector<rgba_pixel_float_values>& average_values_
         ) : average_values(average_values_)
         {}
 
-        const std::vector<rgb_pixel_float_values>& get_average_values() const { return average_values; }
+        const std::vector<rgba_pixel_float_values>& get_average_values() const { return average_values; }
 
         bool image_contained_point(const tensor& data, const point& p) const { return get_rect(data).contains(p); }
         drectangle tensor_space_to_image_space(const tensor& /*data*/, drectangle r) const { return r; }
@@ -1188,7 +1189,7 @@ namespace dlib
             for (auto i = ibegin; i != iend; ++i)
             {
                 DLIB_CASSERT(i->size() == images_in_stack,
-                    "\t input_rgb_image_stack::to_tensor()"
+                    "\t input_rgba_image_stack::to_tensor()"
                     << "\n\t All image stacks given to to_tensor() must have the same size."
                     << "\n\t images_in_stack: " << images_in_stack
                     << "\n\t i->size: " << i->size()
@@ -1197,7 +1198,7 @@ namespace dlib
                 for (auto j = i->begin(); j != i->end(); ++j)
                 {
                     DLIB_CASSERT(j->nr() == nr && j->nc() == nc,
-                        "\t input_rgb_image_stack::to_tensor()"
+                        "\t input_rgba_image_stack::to_tensor()"
                         << "\n\t All matrices given to to_tensor() must have the same dimensions."
                         << "\n\t nr: " << nr
                         << "\n\t nc: " << nc
@@ -1209,7 +1210,7 @@ namespace dlib
 
 
             // initialize data to the right size to contain the stuff in the iterator range.
-            data.set_size(std::distance(ibegin, iend), 3 * images_in_stack, nr, nc);
+            data.set_size(std::distance(ibegin, iend), 4 * images_in_stack, nr, nc);
 
             // if average values are supplied, then they need to match the stack size
             // (if they are not supplied, then values defined already in input_rgb_image are assumed)
@@ -1230,13 +1231,16 @@ namespace dlib
                             const float avg_red   = has_average_values ? average_values[j].red   : 122.782;
                             const float avg_green = has_average_values ? average_values[j].green : 117.001;
                             const float avg_blue  = has_average_values ? average_values[j].blue  : 104.298;
+                            const float avg_alpha = has_average_values ? average_values[j].alpha : 255.000;
 
-                            const rgb_pixel& temp = (*i)[j](r, c);
+                            const rgb_alpha_pixel& temp = (*i)[j](r, c);
                             *p = (temp.red   - avg_red  ) / 256.0;
                             p += offset;
                             *p = (temp.green - avg_green) / 256.0;
                             p += offset;
                             *p = (temp.blue  - avg_blue ) / 256.0;
+                            p += offset;
+                            *p = (temp.alpha - avg_alpha) / 256.0;
                             p += offset;
                         }
                     }
@@ -1245,12 +1249,12 @@ namespace dlib
             }
         }
 
-        friend void serialize(const input_rgb_image_stack& item, std::ostream& out)
+        friend void serialize(const input_rgba_image_stack& item, std::ostream& out)
         {
-            serialize("input_rgb_image_stack", out);
+            serialize("input_rgba_image_stack", out);
             
             // TODO: this should use std::vector's serialization instead, but didn't know
-            //       where to put rgb_pixel_float_values's serialization so that it would
+            //       where to put rgba_pixel_float_values's serialization so that it would
             //       have been found correctly.
             serialize(item.average_values.size(), out);
             for (size_t j = 0; j < item.average_values.size(); ++j) {
@@ -1258,18 +1262,19 @@ namespace dlib
                 serialize(i.red,   out);
                 serialize(i.green, out);
                 serialize(i.blue,  out);
+                serialize(i.alpha, out);
             }
         }
 
-        friend void deserialize(input_rgb_image_stack& item, std::istream& in)
+        friend void deserialize(input_rgba_image_stack& item, std::istream& in)
         {
             std::string version;
             deserialize(version, in);
-            if (version != "input_rgb_image_stack")
-                throw serialization_error("Unexpected version found while deserializing dlib::input_rgb_image_stack.");
+            if (version != "input_rgba_image_stack")
+                throw serialization_error("Unexpected version found while deserializing dlib::input_rgba_image_stack.");
 
             // TODO: this should use std::vector's deserialization instead, but didn't know
-            //       where to put rgb_pixel_float_values's deserialization so that it would
+            //       where to put rgba_pixel_float_values's deserialization so that it would
             //       have been found correctly.
             size_t size;
             deserialize(size, in);
@@ -1279,12 +1284,13 @@ namespace dlib
                 deserialize(i.red,   in);
                 deserialize(i.green, in);
                 deserialize(i.blue,  in);
+                deserialize(i.alpha, in);
             }
         }
 
-        friend std::ostream& operator<<(std::ostream& out, const input_rgb_image_stack& item)
+        friend std::ostream& operator<<(std::ostream& out, const input_rgba_image_stack& item)
         {
-            out << "input_rgb_image_stack(";
+            out << "input_rgba_image_stack(";
             for (size_t j = 0; j < item.average_values.size(); ++j) {
                 if (j > 0) {
                     out << ";";
@@ -1292,26 +1298,28 @@ namespace dlib
                 out << "(" 
                     << item.average_values[j].red   << "," 
                     << item.average_values[j].green << "," 
-                    << item.average_values[j].blue  << ")";
+                    << item.average_values[j].blue  << ","
+                    << item.average_values[j].alpha << ")";
             }
             out << ")";
             return out;
         }
 
-        friend void to_xml(const input_rgb_image_stack& item, std::ostream& out)
+        friend void to_xml(const input_rgba_image_stack& item, std::ostream& out)
         {
-            out << "<input_rgb_image_stack>";
+            out << "<input_rgba_image_stack>";
             for (size_t j = 0; j < item.average_values.size(); ++j) {
                 out << "<stack_position index=\"" << j << "\" "
                     << " average_red=\""   << item.average_values[j].red   << "\""
                     << " average_green=\"" << item.average_values[j].green << "\""
-                    << " average_blue=\""  << item.average_values[j].blue  << "\"/>";
+                    << " average_blue=\""  << item.average_values[j].blue  << "\""
+                    << " average_alpha=\"" << item.average_values[j].alpha << "\"/>";
             }
-            out << "</input_rgb_image_stack>";
+            out << "</input_rgba_image_stack>";
         }
 
     private:
-        std::vector<rgb_pixel_float_values> average_values;
+        std::vector<rgba_pixel_float_values> average_values;
     };
 
 // ----------------------------------------------------------------------------------------
@@ -1331,6 +1339,7 @@ namespace dlib
         const long _nc;
     };
 
+#if 0
     template <typename PYRAMID_TYPE>
     class input_rgb_image_stack_pyramid : public detail::input_image_pyramid<PYRAMID_TYPE>
     {
@@ -1532,6 +1541,7 @@ namespace dlib
     private:
         std::vector<rgb_pixel_float_values> average_values;
     };
+#endif
 
 // ----------------------------------------------------------------------------------------
 

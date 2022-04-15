@@ -231,11 +231,11 @@ namespace dlib
 
         private:
             template <typename T, typename U>
-            struct both_images_rgb
+            struct both_images_rgb_alpha
             {
                 typedef typename image_traits<T>::pixel_type T_pix;
                 typedef typename image_traits<U>::pixel_type U_pix;
-                const static bool value = pixel_traits<T_pix>::rgb && pixel_traits<U_pix>::rgb;
+                const static bool value = pixel_traits<T_pix>::rgb_alpha && pixel_traits<U_pix>::rgb_alpha;
             };
         public:
 
@@ -243,7 +243,7 @@ namespace dlib
                 typename in_image_type,
                 typename out_image_type
                 >
-            typename disable_if<both_images_rgb<in_image_type,out_image_type> >::type operator() (
+            typename disable_if<both_images_rgb_alpha<in_image_type,out_image_type> >::type operator() (
                 const in_image_type& original_,
                 out_image_type& down_
             ) const
@@ -257,8 +257,8 @@ namespace dlib
 
                 typedef typename image_traits<in_image_type>::pixel_type in_pixel_type;
                 typedef typename image_traits<out_image_type>::pixel_type out_pixel_type;
-                COMPILE_TIME_ASSERT( pixel_traits<in_pixel_type>::has_alpha == false );
-                COMPILE_TIME_ASSERT( pixel_traits<out_pixel_type>::has_alpha == false );
+                COMPILE_TIME_ASSERT( pixel_traits<in_pixel_type>::has_alpha == true );
+                COMPILE_TIME_ASSERT( pixel_traits<out_pixel_type>::has_alpha == true );
 
                 const_image_view<in_image_type> original(original_);
                 image_view<out_image_type> down(down_);
@@ -330,21 +330,22 @@ namespace dlib
             }
 
         private:
-            struct rgbptype 
+            struct rgbaptype 
             {
                 uint16 red;
                 uint16 green;
                 uint16 blue;
+                uint16 alpha;
             };
         public:
         // ------------------------------------------
-        //       OVERLOAD FOR RGB TO RGB IMAGES
+        //       OVERLOAD FOR RGBA TO RGBA IMAGES
         // ------------------------------------------
             template <
                 typename in_image_type,
                 typename out_image_type
                 >
-            typename enable_if<both_images_rgb<in_image_type,out_image_type> >::type operator() (
+            typename enable_if<both_images_rgb_alpha<in_image_type,out_image_type> >::type operator() (
                 const in_image_type& original_,
                 out_image_type& down_
             ) const
@@ -358,8 +359,8 @@ namespace dlib
 
                 typedef typename image_traits<in_image_type>::pixel_type in_pixel_type;
                 typedef typename image_traits<out_image_type>::pixel_type out_pixel_type;
-                COMPILE_TIME_ASSERT( pixel_traits<in_pixel_type>::has_alpha == false );
-                COMPILE_TIME_ASSERT( pixel_traits<out_pixel_type>::has_alpha == false );
+                COMPILE_TIME_ASSERT( pixel_traits<in_pixel_type>::has_alpha == true );
+                COMPILE_TIME_ASSERT( pixel_traits<out_pixel_type>::has_alpha == true );
 
                 const_image_view<in_image_type> original(original_);
                 image_view<out_image_type> down(down_);
@@ -370,7 +371,7 @@ namespace dlib
                     return;
                 }
 
-                array2d<rgbptype> temp_img;
+                array2d<rgbaptype> temp_img;
                 temp_img.set_size(original.nr(), (original.nc()-3)/2);
                 down.set_size((original.nr()-3)/2, (original.nc()-3)/2);
 
@@ -387,11 +388,11 @@ namespace dlib
                     long oc = 0;
                     for (long c = 0; c < temp_img.nc(); ++c)
                     {
-                        rgbptype pix1;
-                        rgbptype pix2;
-                        rgbptype pix3;
-                        rgbptype pix4;
-                        rgbptype pix5;
+                        rgbaptype pix1;
+                        rgbaptype pix2;
+                        rgbaptype pix3;
+                        rgbaptype pix4;
+                        rgbaptype pix5;
 
                         pix1.red = original[r][oc].red;
                         pix2.red = original[r][oc+1].red;
@@ -408,6 +409,11 @@ namespace dlib
                         pix3.blue = original[r][oc+2].blue;
                         pix4.blue = original[r][oc+3].blue;
                         pix5.blue = original[r][oc+4].blue;
+                        pix1.alpha = original[r][oc].alpha;
+                        pix2.alpha = original[r][oc+1].alpha;
+                        pix3.alpha = original[r][oc+2].alpha;
+                        pix4.alpha = original[r][oc+3].alpha;
+                        pix5.alpha = original[r][oc+4].alpha;
 
                         pix2.red *= 4;
                         pix3.red *= 6;
@@ -420,11 +426,16 @@ namespace dlib
                         pix2.blue *= 4;
                         pix3.blue *= 6;
                         pix4.blue *= 4;
-                        
-                        rgbptype temp;
+
+                        pix2.alpha *= 4;
+                        pix3.alpha *= 6;
+                        pix4.alpha *= 4;
+
+                        rgbaptype temp;
                         temp.red = pix1.red + pix2.red + pix3.red + pix4.red + pix5.red;
                         temp.green = pix1.green + pix2.green + pix3.green + pix4.green + pix5.green;
                         temp.blue = pix1.blue + pix2.blue + pix3.blue + pix4.blue + pix5.blue;
+                        temp.alpha = pix1.alpha + pix2.alpha + pix3.alpha + pix4.alpha + pix5.alpha;
 
                         temp_img[r][c] = temp;
 
@@ -439,7 +450,7 @@ namespace dlib
                 {
                     for (long c = 0; c < temp_img.nc(); ++c)
                     {
-                        rgbptype temp;
+                        rgbaptype temp;
                         temp.red = temp_img[r-2][c].red + 
                                 temp_img[r-1][c].red*4 +  
                                 temp_img[r  ][c].red*6 +  
@@ -455,10 +466,16 @@ namespace dlib
                                     temp_img[r  ][c].blue*6 +  
                                     temp_img[r+1][c].blue*4 +  
                                     temp_img[r+2][c].blue;  
+                        temp.alpha = temp_img[r-2][c].alpha + 
+                                    temp_img[r-1][c].alpha*4 +
+                                    temp_img[r  ][c].alpha*6 +
+                                    temp_img[r+1][c].alpha*4 +
+                                    temp_img[r+2][c].alpha;
 
                         down[dr][c].red = temp.red/256;
                         down[dr][c].green = temp.green/256;
                         down[dr][c].blue = temp.blue/256;
+                        down[dr][c].alpha = temp.alpha/256;
                     }
                     ++dr;
                 }
@@ -572,11 +589,11 @@ namespace dlib
 
         private:
             template <typename T, typename U>
-            struct both_images_rgb
+            struct both_images_rgb_alpha
             {
                 typedef typename image_traits<T>::pixel_type T_pix;
                 typedef typename image_traits<U>::pixel_type U_pix;
-                const static bool value = pixel_traits<T_pix>::rgb && pixel_traits<U_pix>::rgb;
+                const static bool value = pixel_traits<T_pix>::rgb_alpha && pixel_traits<U_pix>::rgb_alpha;
             };
         public:
 
@@ -584,7 +601,7 @@ namespace dlib
                 typename in_image_type,
                 typename out_image_type
                 >
-            typename disable_if<both_images_rgb<in_image_type,out_image_type> >::type operator() (
+            typename disable_if<both_images_rgb_alpha<in_image_type,out_image_type> >::type operator() (
                 const in_image_type& original_,
                 out_image_type& down_
             ) const
@@ -680,22 +697,23 @@ namespace dlib
             }
 
         private:
-            struct rgbptype 
+            struct rgbaptype 
             {
                 uint32 red;
                 uint32 green;
                 uint32 blue;
+                uint32 alpha;
             };
 
         public:
         // ------------------------------------------
-        //       OVERLOAD FOR RGB TO RGB IMAGES
+        //       OVERLOAD FOR RGBA TO RGBA IMAGES
         // ------------------------------------------
             template <
                 typename in_image_type,
                 typename out_image_type
                 >
-            typename enable_if<both_images_rgb<in_image_type,out_image_type> >::type operator() (
+            typename enable_if<both_images_rgb_alpha<in_image_type,out_image_type> >::type operator() (
                 const in_image_type& original_,
                 out_image_type& down_
             ) const
@@ -739,41 +757,47 @@ namespace dlib
                     long c;
                     for (c = 0; c < full_nc; c+=size_out)
                     {
-                        rgbptype block[size_in][size_in];
-                        separable_3x3_filter_block_rgb(block, original_, rr, cc, 2, 12, 2);
+                        rgbaptype block[size_in][size_in];
+                        separable_3x3_filter_block_rgb_alpha(block, original_, rr, cc, 2, 12, 2);
 
                         // bi-linearly interpolate block 
                         down[r][c].red       = (block[0][0].red*9   + block[1][0].red*3   + block[0][1].red*3   + block[1][1].red)/(16*256);
                         down[r][c].green     = (block[0][0].green*9 + block[1][0].green*3 + block[0][1].green*3 + block[1][1].green)/(16*256);
                         down[r][c].blue      = (block[0][0].blue*9  + block[1][0].blue*3  + block[0][1].blue*3  + block[1][1].blue)/(16*256);
+                        down[r][c].alpha     = (block[0][0].alpha*9 + block[1][0].alpha*3 + block[0][1].alpha*3 + block[1][1].alpha)/(16*256);
 
                         down[r][c+1].red     = (block[0][2].red*9   + block[1][2].red*3   + block[0][1].red*3   + block[1][1].red)/(16*256);
                         down[r][c+1].green   = (block[0][2].green*9 + block[1][2].green*3 + block[0][1].green*3 + block[1][1].green)/(16*256);
                         down[r][c+1].blue    = (block[0][2].blue*9  + block[1][2].blue*3  + block[0][1].blue*3  + block[1][1].blue)/(16*256);
+                        down[r][c+1].alpha   = (block[0][2].alpha*9 + block[1][2].alpha*3 + block[0][1].alpha*3 + block[1][1].alpha)/(16*256);
 
                         down[r+1][c].red     = (block[2][0].red*9   + block[1][0].red*3   + block[2][1].red*3   + block[1][1].red)/(16*256);
                         down[r+1][c].green   = (block[2][0].green*9 + block[1][0].green*3 + block[2][1].green*3 + block[1][1].green)/(16*256);
                         down[r+1][c].blue    = (block[2][0].blue*9  + block[1][0].blue*3  + block[2][1].blue*3  + block[1][1].blue)/(16*256);
+                        down[r+1][c].alpha   = (block[2][0].alpha*9 + block[1][0].alpha*3 + block[2][1].alpha*3 + block[1][1].alpha)/(16*256);
 
                         down[r+1][c+1].red   = (block[2][2].red*9   + block[1][2].red*3   + block[2][1].red*3   + block[1][1].red)/(16*256);
                         down[r+1][c+1].green = (block[2][2].green*9 + block[1][2].green*3 + block[2][1].green*3 + block[1][1].green)/(16*256);
                         down[r+1][c+1].blue  = (block[2][2].blue*9  + block[1][2].blue*3  + block[2][1].blue*3  + block[1][1].blue)/(16*256);
+                        down[r+1][c+1].alpha = (block[2][2].alpha*9 + block[1][2].alpha*3 + block[2][1].alpha*3 + block[1][1].alpha)/(16*256);
 
                         cc += size_in;
                     }
                     if (part_nc - full_nc == 1)
                     {
-                        rgbptype block[size_in][2];
+                        rgbaptype block[size_in][2];
                         separable_3x3_filter_block_rgb(block, original_, rr, cc, 2, 12, 2);
 
                         // bi-linearly interpolate partial block 
                         down[r][c].red       = (block[0][0].red*9   + block[1][0].red*3   + block[0][1].red*3   + block[1][1].red)/(16*256);
                         down[r][c].green     = (block[0][0].green*9 + block[1][0].green*3 + block[0][1].green*3 + block[1][1].green)/(16*256);
                         down[r][c].blue      = (block[0][0].blue*9  + block[1][0].blue*3  + block[0][1].blue*3  + block[1][1].blue)/(16*256);
+                        down[r][c].alpha     = (block[0][0].alpha*9 + block[1][0].alpha*3 + block[0][1].alpha*3 + block[1][1].alpha)/(16*256);
 
                         down[r+1][c].red     = (block[2][0].red*9   + block[1][0].red*3   + block[2][1].red*3   + block[1][1].red)/(16*256);
                         down[r+1][c].green   = (block[2][0].green*9 + block[1][0].green*3 + block[2][1].green*3 + block[1][1].green)/(16*256);
                         down[r+1][c].blue    = (block[2][0].blue*9  + block[1][0].blue*3  + block[2][1].blue*3  + block[1][1].blue)/(16*256);
+                        down[r+1][c].alpha   = (block[2][0].alpha*9 + block[1][0].alpha*3 + block[2][1].alpha*3 + block[1][1].alpha)/(16*256);
                     }
                     rr += size_in;
                 }
@@ -783,29 +807,32 @@ namespace dlib
                     long c;
                     for (c = 0; c < full_nc; c+=size_out)
                     {
-                        rgbptype block[2][size_in];
+                        rgbaptype block[2][size_in];
                         separable_3x3_filter_block_rgb(block, original_, rr, cc, 2, 12, 2);
 
                         // bi-linearly interpolate partial block 
                         down[r][c].red       = (block[0][0].red*9   + block[1][0].red*3   + block[0][1].red*3   + block[1][1].red)/(16*256);
                         down[r][c].green     = (block[0][0].green*9 + block[1][0].green*3 + block[0][1].green*3 + block[1][1].green)/(16*256);
                         down[r][c].blue      = (block[0][0].blue*9  + block[1][0].blue*3  + block[0][1].blue*3  + block[1][1].blue)/(16*256);
+                        down[r][c].alpha     = (block[0][0].alpha*9 + block[1][0].alpha*3 + block[0][1].alpha*3 + block[1][1].alpha)/(16*256);
 
                         down[r][c+1].red     = (block[0][2].red*9   + block[1][2].red*3   + block[0][1].red*3   + block[1][1].red)/(16*256);
                         down[r][c+1].green   = (block[0][2].green*9 + block[1][2].green*3 + block[0][1].green*3 + block[1][1].green)/(16*256);
                         down[r][c+1].blue    = (block[0][2].blue*9  + block[1][2].blue*3  + block[0][1].blue*3  + block[1][1].blue)/(16*256);
+                        down[r][c+1].alpha   = (block[0][2].alpha*9 + block[1][2].alpha*3 + block[0][1].alpha*3 + block[1][1].alpha)/(16*256);
 
                         cc += size_in;
                     }
                     if (part_nc - full_nc == 1)
                     {
-                        rgbptype block[2][2];
+                        rgbaptype block[2][2];
                         separable_3x3_filter_block_rgb(block, original_, rr, cc, 2, 12, 2);
 
                         // bi-linearly interpolate partial block 
                         down[r][c].red       = (block[0][0].red*9   + block[1][0].red*3   + block[0][1].red*3   + block[1][1].red)/(16*256);
                         down[r][c].green     = (block[0][0].green*9 + block[1][0].green*3 + block[0][1].green*3 + block[1][1].green)/(16*256);
                         down[r][c].blue      = (block[0][0].blue*9  + block[1][0].blue*3  + block[0][1].blue*3  + block[1][1].blue)/(16*256);
+                        down[r][c].alpha     = (block[0][0].alpha*9 + block[1][0].alpha*3 + block[0][1].alpha*3 + block[1][1].alpha)/(16*256);
                     }
                 }
             }
