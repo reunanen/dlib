@@ -448,7 +448,13 @@ namespace
         std::shared_ptr<string> ptr_shared2;
         std::vector<std::complex<double>> p; 
 #if __cplusplus >= 201703L
-        std::variant<int,float,std::string,immutable_type> q;
+        std::variant<int,float,std::string
+#if !defined(__GNUC__) || __GNUC__ != 11
+            // We have trouble compiling this on gcc 11.
+            // See: https://github.com/davisking/dlib/issues/2506
+            ,immutable_type
+#endif // !defined(__GNUC__) || __GNUC__ != 11
+            > q;
         std::optional<std::vector<std::string>> r;
 #endif
 
