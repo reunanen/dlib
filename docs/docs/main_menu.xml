@@ -225,8 +225,16 @@
                   <link>dnn_introduction2_ex.cpp.html</link>
                </item>
                <item>
+                  <name>Deep Learning Introduction Part 3</name>
+                  <link>dnn_introduction3_ex.cpp.html</link>
+               </item>
+               <item>
                   <name>Deep Learning Imagenet Classifier</name>
                   <link>dnn_imagenet_ex.cpp.html</link>
+               </item>
+               <item>
+                  <name>Deep Learning DCGAN</name>
+                  <link>dnn_dcgan_train_ex.cpp.html</link>
                </item>
                <item>
                   <name>Deep Learning Imagenet Trainer </name>
@@ -287,6 +295,14 @@
                <item>
                   <name>Deep Learning Max-Margin Object Detection</name>
                   <link>dnn_mmod_ex.cpp.html</link>
+               </item>
+               <item>
+                  <name>Self-supervised deep feature learning</name>
+                  <link>dnn_self_supervised_learning_ex.cpp.html</link>
+               </item>
+               <item>
+                  <name>Training a YOLO object detector</name>
+                  <link>dnn_yolo_train_ex.cpp.html</link>
                </item>
 
                <item>

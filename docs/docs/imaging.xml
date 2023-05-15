@@ -68,6 +68,7 @@
          <item>rgb_pixel</item>
          <item>bgr_pixel</item>
          <item>rgb_alpha_pixel</item>
+         <item>bgr_alpha_pixel</item>
          <item>hsi_pixel</item>
          <item>lab_pixel</item>
          <item>pixel_traits</item>
@@ -89,6 +90,9 @@
          <item>save_dng</item> 
          <item>save_png</item> 
          <item>save_jpeg</item> 
+         <item>webp_loader</item>
+         <item>load_webp</item>
+         <item>save_webp</item>
       </section>
 
       <section>
@@ -98,6 +102,7 @@
          <item>evaluate_detectors</item>
          <item>full_object_detection</item>
          <item>mmod_rect</item>
+         <item>yolo_rect</item>
          <item>scan_image</item>
          <item>scan_image_movable_parts</item>
          <item>find_points_above_thresh</item>
@@ -226,6 +231,7 @@
          <item>transform_image</item> 
          <item>rotate_image</item> 
          <item>resize_image</item> 
+         <item>letterbox_image</item> 
          <item>flip_image_left_right</item> 
          <item>flip_image_up_down</item> 
          <item>add_image_left_right_flips</item> 
@@ -692,7 +698,7 @@
                 That is, the output vector has a dimensionality that is equal to the number
                 of hash bins times the dimensionality of the lower level vector plus one.
                 The value in the extra dimension concatenated onto the end of the vector is
-                always a constant value of of 1 and serves as a bias value.  This means
+                always a constant value of 1 and serves as a bias value.  This means
                 that, if there are N hash bins, these vectors are capable of representing N
                 different linear functions, each operating on the vectors that fall into
                 their corresponding hash bin.
@@ -850,7 +856,27 @@
          </description>
                                  
       </component>
-            
+
+   <!-- ************************************************************************* -->
+
+      <component>
+         <name>bgr_alpha_pixel</name>
+         <file>dlib/pixel.h</file>
+         <spec_file link="true">dlib/pixel.h</spec_file>
+         <description>
+            This is a simple struct that represents an BGR colored graphical pixel with an
+            alpha channel.
+            <p>
+            The difference between this object and the <a href="#rgb_alpha_pixel">rgb_alpha_pixel</a>
+            is just that this struct lays its pixels down in memory in BGR order rather
+            than RGB order.  You only care about this if you are doing something like
+            using the <a href="#cv_image">cv_image</a> object to map an OpenCV image
+            into a more object oriented form.
+            </p>
+         </description>
+
+      </component>
+
    <!-- ************************************************************************* -->
       
       <component>
@@ -1065,7 +1091,26 @@
          </description>
                                  
       </component>
-            
+
+   <!-- ************************************************************************* -->
+
+      <component>
+         <name>webp_loader</name>
+         <file>dlib/image_io.h</file>
+         <spec_file link="true">dlib/image_loader/webp_loader_abstract.h</spec_file>
+         <description>
+            This object loads a WebP image file into
+            an <a href="containers.html#array2d">array2d</a> of <a href="dlib/pixel.h.html">pixels</a>.
+            <p>
+               Note that you must define DLIB_WEBP_SUPPORT if you want to use this object.  You
+               must also set your build environment to link to the libwebp library.  However,
+               if you use CMake and dlib's default CMakeLists.txt file then it will get setup
+               automatically.
+            </p>
+         </description>
+
+      </component>
+
    <!-- ************************************************************************* -->
       
       <component>
@@ -1076,7 +1121,7 @@
             This function loads a JPEG image file into 
             an <a href="containers.html#array2d">array2d</a> of <a href="dlib/pixel.h.html">pixels</a>.
             <p>
-               Note that you must define DLIB_JPEG_SUPPORT if you want to use this object.  You
+               Note that you must define DLIB_JPEG_SUPPORT if you want to use this function.  You
                must also set your build environment to link to the libjpeg library.  However,
                if you use CMake and dlib's default CMakeLists.txt file then it will get setup
                automatically.
@@ -1098,6 +1143,24 @@
                                  
       </component>
             
+   <!-- ************************************************************************* -->
+
+      <component>
+         <name>load_webp</name>
+         <file>dlib/image_io.h</file>
+         <spec_file link="true">dlib/image_loader/image_loader_abstract.h</spec_file>
+         <description>
+            This function loads a WebP image file into
+            an <a href="containers.html#array2d">array2d</a> of <a href="dlib/pixel.h.html">pixels</a>.
+            <p>
+               Note that you must define DLIB_WEBP_SUPPORT if you want to use this function.  You
+               must also set your build environment to link to the libwebp library.  However,
+               if you use CMake and dlib's default CMakeLists.txt file then it will get setup
+               automatically.
+            </p>
+         </description>
+      </component>
+
    <!-- ************************************************************************* -->
       
       <component>
@@ -1167,7 +1230,32 @@
          </description>
                                  
       </component>
-            
+
+   <!-- ************************************************************************* -->
+
+      <component>
+         <name>save_webp</name>
+         <file>dlib/image_io.h</file>
+         <spec_file link="true">dlib/image_saver/save_webp_abstract.h</spec_file>
+         <description>
+      This global function writes an image to disk as a WebP file.
+            <p>
+               Note that you must define DLIB_WEBP_SUPPORT if you want to use this function.  You
+               must also set your build environment to link to the libwebp library.  However,
+               if you use CMake and dlib's default CMakeLists.txt file then it will get setup
+               automatically.
+            </p>
+            <p>
+               This routine can save images containing any type of pixel.  However, save_webp() can
+               only natively store the following pixel types: <b>rgb_pixel</b>,
+               <b>rgb_alpha_pixel</b>, <b>bgr_pixel</b>, and <b>bgr_alpha_pixel</b>.
+               All other pixel types will be converted into one of these types as appropriate
+               before being saved to disk.
+            </p>
+         </description>
+
+      </component>
+
    <!-- ************************************************************************* -->
       
       <component>
@@ -1217,7 +1305,7 @@
             This function loads a Portable Network Graphics (PNG) image file into 
             an <a href="containers.html#array2d">array2d</a> of <a href="dlib/pixel.h.html">pixels</a>.
             <p>
-               Note that you must define DLIB_PNG_SUPPORT if you want to use this object.  You
+               Note that you must define DLIB_PNG_SUPPORT if you want to use this function.  You
                must also set your build environment to link to the libpng library.  However,
                if you use CMake and dlib's default CMakeLists.txt file then it will get setup
                automatically.
@@ -1886,6 +1974,22 @@
    <!-- ************************************************************************* -->
 
       <component>
+         <name>letterbox_image</name>
+         <file>dlib/image_transforms.h</file>
+         <spec_file link="true">dlib/image_transforms/interpolation_abstract.h</spec_file>
+         <description>        
+            Scales an image so that it fits into a size * size square, while preserving the aspect
+            ratio of the actual contents by appropriate 0 padding.
+
+         <examples>
+            <example>dnn_yolo_train_ex.cpp.html</example>
+         </examples>
+         </description>
+      </component>
+
+   <!-- ************************************************************************* -->
+
+      <component>
          <name>extract_image_chips</name>
          <file>dlib/image_transforms.h</file>
          <spec_file link="true">dlib/image_transforms/interpolation_abstract.h</spec_file>
@@ -2095,21 +2199,6 @@
             supplied threshold.
          </description>
                                  
-      </component>
-            
-   <!-- ************************************************************************* -->
-      
-      <component>
-         <name>partition_pixels</name>
-         <file>dlib/image_transforms.h</file>
-         <spec_file link="true">dlib/image_transforms/thresholding_abstract.h</spec_file>
-         <description>        
-              Finds a threshold value that would be reasonable to use with
-              <a href="#threshold_image">threshold_image</a>.  It does this by
-              finding the threshold that partitions the pixels in an image into
-              two groups such that the sum of absolute deviations between each
-              pixel and the mean of its group is minimized.
-         </description>
       </component>
             
    <!-- ************************************************************************* -->
@@ -2534,6 +2623,19 @@
                                  
       </component>
             
+   <!-- ************************************************************************* -->
+
+      <component>
+         <name>yolo_rect</name>
+         <file>dlib/image_processing.h</file>
+         <spec_file link="true">dlib/image_processing/full_object_detection_abstract.h</spec_file>
+         <description>
+                This is a simple struct that is used to give training data and receive detections
+                from the <a href="ml.html#loss_yolo_">YOLO loss layer for object detection</a>.
+         </description>
+
+      </component>
+
    <!-- ************************************************************************* -->
 
       <component>

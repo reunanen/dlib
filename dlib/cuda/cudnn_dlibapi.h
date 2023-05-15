@@ -8,7 +8,6 @@
 #include "cuda_errors.h"
 #include <memory>
 #include "cuda_data_ptr.h"
-#include <cudnn.h>
 
 namespace dlib
 {
@@ -174,6 +173,13 @@ namespace dlib
 
             void operator() (
                 const bool add_to_output,
+                resizable_tensor& output,
+                const tensor& data,
+                const tensor& filters
+            );
+
+            void operator() (
+                const bool add_to_output,
                 tensor& output,
                 const tensor& data,
                 const tensor& filters
@@ -183,7 +189,16 @@ namespace dlib
                 const bool add_to_output,
                 resizable_tensor& output,
                 const tensor& data,
-                const tensor& filters
+                const tensor& filters,
+                const tensor& biases
+            );
+
+            void operator() (
+                const bool add_to_output,
+                tensor& output,
+                const tensor& data,
+                const tensor& filters,
+                const tensor& biases
             );
 
             void get_gradient_for_data (
@@ -203,6 +218,16 @@ namespace dlib
            void setup(
                 const tensor& data,
                 const tensor& filters,
+                int stride_y,
+                int stride_x,
+                int padding_y,
+                int padding_x
+            );
+
+           void setup(
+                const tensor& data,
+                const tensor& filters,
+                const tensor& biases,
                 int stride_y,
                 int stride_x,
                 int padding_y,
@@ -388,27 +413,7 @@ namespace dlib
 
     // ------------------------------------------------------------------------------------
 
-        class cudnn_context
-        {
-        public:
-            // not copyable
-            cudnn_context(const cudnn_context&) = delete;
-            cudnn_context& operator=(const cudnn_context&) = delete;
-
-            cudnn_context();
-            ~cudnn_context();
-
-            void destroy_all_handles();
-
-            cudnnHandle_t get_handle();
-
-        private:
-
-            std::vector<cudnnHandle_t> handles;
-        };
-
-        cudnn_context& cudnn_ctx();
-    } 
+    }
 }
 
 #endif // DLIB_USE_CUDA

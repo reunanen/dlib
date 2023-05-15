@@ -107,7 +107,7 @@ namespace dlib
             const solver_type& solver_,
             const std::vector<int>& cuda_extra_devices,
             std::shared_ptr<threads> thread_pools_ = std::shared_ptr<threads>()
-        ) : job_pipe(0), net(net_), thread_pools(thread_pools_)
+        ) : job_pipe(0), thread_pools(thread_pools_), net(net_)
         {
             devices.push_back(std::make_shared<device_data>(dlib::cuda::get_device(), net, solver_));
 
@@ -737,6 +737,11 @@ namespace dlib
             std::vector<dlib::future<double>> losses(devices.size());
 
             std::vector<tt::multi_device_tensor_averager> averagers;
+            // An array of all the parameter tensors in the first network.  We will
+            // periodically copy these tensors to all the other devices to make sure the
+            // different GPUs don't go out of sync.
+            std::vector<tensor*> reference_params;
+            visit_layer_parameters(devices[0]->net, [&](tensor& t) { reference_params.push_back(&t); });
 
             // If no external thread pools vector was passed, then create one that will
             // be automatically destructed as soon as the dnn_trainer object goes out of
@@ -833,7 +838,12 @@ namespace dlib
                         {
                             std::vector<tensor*> temp(all_tensors.size());
                             for (size_t j = 0; j < all_tensors.size(); ++j)
+                            {
                                 temp[j] = all_tensors[j][i];
+                                DLIB_CASSERT(temp[0]->size() == temp[j]->size(),
+                                "Make sure you don't modify the network structure "
+                                "or number of parameters after constructing the trainer.");
+                            }
                             // ignore layers that don't have parameters
                             if (temp[0]->size() != 0)
                                 averagers[i].set(temp);
@@ -867,15 +877,6 @@ namespace dlib
                 // issues.
                 if (devices.size() > 1 && main_iteration_counter%2000 == 1)
                 {
-                    // An array of all the parameter tensors in the first network.
-                    // We periodically copy these tensors to all the other devices
-                    // to make sure the different GPUs don't go out of sync.
-                    std::vector<tensor*> reference_params;
-                    visit_layer_parameters(devices[0]->net, [&](size_t, tensor& t)
-                    {
-                        reference_params.push_back(&t);
-                    });
-
                     for (size_t i = 1; i < devices.size(); ++i)
                     {
                         visit_layer_parameters(devices[i]->net, [&](size_t j, tensor& t) 
@@ -1124,7 +1125,7 @@ namespace dlib
                     // lower one instead.
                     if (prob_loss_increasing_thresh >= prob_loss_increasing_thresh_max_value)
                     {
-                        if (verbose)
+                        if (verbose && learning_rate_shrink != 1)
                             std::cout << "(and while at it, also shrinking the learning rate)" << std::endl;
 
                         learning_rate = learning_rate_shrink_in_case_loss_clearly_goes_up * learning_rate;
@@ -1176,29 +1177,21 @@ namespace dlib
             while (previous_loss_values_to_keep_until_disk_sync.size() > 2 * gradient_updates_since_last_sync)
                 previous_loss_values_to_keep_until_disk_sync.pop_front();
 
-            running_gradient g;
-
+            // Always retry if there are any nan or inf values
             for (auto x : previous_loss_values_to_keep_until_disk_sync)
             {
-                // If we get a NaN value of loss assume things have gone horribly wrong and
-                // we should reload the state of the trainer.
-                if (std::isnan(x))
+                if (std::isnan(x) || std::isinf(x))
                     return true;
-
-                g.add(x);
             }
 
             // if we haven't seen much data yet then just say false.
-            if (gradient_updates_since_last_sync < 30)
-                return false;
-
-            // if learning rate was changed from outside during training, for example
-            if (g.current_n() <= 2)
+            if (previous_loss_values_to_keep_until_disk_sync.size() < 30)
                 return false;
 
             // if the loss is very likely to be increasing then return true
-            const double prob = g.probability_gradient_greater_than(0);
-            if (prob > prob_loss_increasing_thresh)
+            const double prob1 = probability_values_are_increasing(previous_loss_values_to_keep_until_disk_sync);
+            const double prob2 = probability_values_are_increasing_robust(previous_loss_values_to_keep_until_disk_sync);
+            if (std::max(prob1, prob2) > prob_loss_increasing_thresh)
             {
                 // Exponentially decay the threshold towards 1 so that if we keep finding
                 // the loss to be increasing over and over we will make the test
@@ -1266,27 +1259,37 @@ namespace dlib
             job.test_only = test_only;
 
             // chop the data into devs blocks, each of about block_size elements.
-            size_t block_size = (num+devs-1)/devs;
+            const double block_size = num / static_cast<double>(devs);
 
             const auto prev_dev = dlib::cuda::get_device();
+
+            const bool has_unsupervised_loss = std::is_same<no_label_type, training_label_type>::value;
+
+            double j = 0;
+
             for (size_t i = 0; i < devs; ++i)
             {
                 dlib::cuda::set_device(devices[i]->device_id);
 
-                size_t start = i*block_size;
-                size_t stop  = std::min(num, start+block_size);
+                const size_t start = static_cast<size_t>(std::round(j));
+                const size_t stop  = static_cast<size_t>(std::round(j + block_size));
 
                 if (start < stop)
                 {
                     devices[i]->net.to_tensor(dbegin+start, dbegin+stop, job.t[i]);
-                    job.labels[i].assign(lbegin+start, lbegin+stop);
+                    if (!has_unsupervised_loss)
+                        job.labels[i].assign(lbegin+start, lbegin+stop);
                     job.have_data[i] = true;
                 }
                 else
                 {
                     job.have_data[i] = false;
                 }
+
+                j += block_size;
             }
+
+            DLIB_ASSERT(std::fabs(j - num) < 1e-10);
 
             dlib::cuda::set_device(prev_dev);
             job_pipe.enqueue(job);
@@ -1351,6 +1354,7 @@ namespace dlib
 
         std::vector<std::shared_ptr<device_data>> devices;
         dlib::pipe<job_t> job_pipe;
+        std::shared_ptr<threads> thread_pools;
         job_t job;
 
 
@@ -1361,7 +1365,6 @@ namespace dlib
         size_t mini_batch_size;
         bool verbose;
         net_type& net;
-        std::shared_ptr<threads> thread_pools;
         std::atomic<double> learning_rate;
         double min_learning_rate;
         std::atomic<unsigned long> iter_without_progress_thresh;
@@ -1428,14 +1431,20 @@ namespace dlib
         net_type temp = trainer.get_net(); // make a copy so that we can clean it without mutating the trainer's net.
         temp.clean();
         serialize(temp, sout);
-        out << "  net size: " << sout.str().size()/1024.0/1024.0 << "MB" << endl;
+        out << "  net size: " << sout.str().size()/1024.0/1024.0 << " MiB";
+        const auto num_params = count_parameters(temp);
+        if (num_params > 0)
+            out << " (" << num_params << " parameters)";
+        out << endl;
         // Don't include the loss params in the hash since we print them on the next line.
         // They also aren't really part of the "architecture" of the network.
         out << "  net architecture hash: " << md5(cast_to_string(trainer.get_net().subnet())) << endl;
         out << "  loss: " << trainer.get_net().loss_details() << endl;
 
+        out << "  get_train_one_step_calls():                 " << trainer.get_train_one_step_calls() << endl;
         out << "  synchronization file:                       " << trainer.get_synchronization_file() << endl;
         out << "  trainer.get_solvers()[0]:                   " << trainer.get_solvers()[0] << endl;
+        out << "  mini batch size:                            " << trainer.get_mini_batch_size() << endl;
         auto sched = trainer.get_learning_rate_schedule();
         if (sched.size() != 0)
         {

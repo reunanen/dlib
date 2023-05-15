@@ -10,11 +10,11 @@
 
 // this file contains miscellaneous stuff                      
 
-// Give people who forget the -std=c++11 option a reminder
-#if (defined(__GNUC__) && ((__GNUC__ >= 4 && __GNUC_MINOR__ >= 8) || (__GNUC__ > 4))) || \
+// Give people who forget the -std=c++14 option a reminder
+#if (defined(__GNUC__) && ((__GNUC__ >= 5 && __GNUC_MINOR__ >= 0) || (__GNUC__ > 5))) || \
     (defined(__clang__) && ((__clang_major__ >= 3 && __clang_minor__ >= 4) || (__clang_major__ >= 3)))
-    #if __cplusplus < 201103
-        #error "Dlib requires C++11 support.  Give your compiler the -std=c++11 option to enable it."
+    #if __cplusplus < 201402L
+        #error "Dlib requires C++14 support.  Give your compiler the -std=c++14 option to enable it."
     #endif
 #endif
 
@@ -22,7 +22,11 @@
     // Disable the "statement is unreachable" message since it will go off on code that is
     // actually reachable but just happens to not be reachable sometimes during certain
     // template instantiations.
+    #ifdef __NVCC_DIAG_PRAGMA_SUPPORT__
+    #pragma nv_diag_suppress code_is_unreachable
+    #else
     #pragma diag_suppress code_is_unreachable
+    #endif
 #endif
 
 
@@ -74,7 +78,7 @@
 
 // DNN module uses template-based network declaration that leads to very long
 // type names. Visual Studio will produce Warning C4503 in such cases. https://msdn.microsoft.com/en-us/library/074af4b6.aspx says
-// that correct binaries are still produced even when this warning happens, but linker errors from visual studio, if they occurr could be confusing.
+// that correct binaries are still produced even when this warning happens, but linker errors from visual studio, if they occur could be confusing.
 #pragma warning( disable: 4503 )
 
 
@@ -107,7 +111,8 @@ namespace std
 #include <new>          // for std::bad_alloc
 #include <cstdlib>
 #include <stddef.h>
-#include <limits> // for std::numeric_limits for is_finite()
+#include <limits>
+#include <cmath> // for std::isfinite for is_finite()
 #include "assert.h"
 #include "error.h"
 #include "noncopyable.h"
@@ -115,8 +120,7 @@ namespace std
 #include "uintn.h"
 #include "numeric_constants.h"
 #include "memory_manager_stateless/memory_manager_stateless_kernel_1.h" // for the default memory manager
-
-
+#include "type_traits.h"
 
 // ----------------------------------------------------------------------------------------
 /*!A _dT !*/
@@ -366,7 +370,7 @@ namespace dlib
         and the fact that this has a different name (global swap has the same name as
         the member functions called swap) makes them compile right.
 
-        So this is a workaround but not too ugly of one.  But hopefully I get get
+        So this is a workaround but not too ugly of one.  But hopefully I can get
         rid of this in a few years.  So this function is already deprecated. 
 
         This also means you should NOT use this function in your own code unless
@@ -377,142 +381,6 @@ namespace dlib
         using dlib::swap;
         swap(a,b);
     }
-
-// ----------------------------------------------------------------------------------------
-
-    /*!A is_pointer_type
-
-        This is a template where is_pointer_type<T>::value == true when T is a pointer 
-        type and false otherwise.
-    !*/
-
-    template <
-        typename T
-        >
-    class is_pointer_type
-    {
-    public:
-        enum { value = false };
-    private:
-        is_pointer_type();
-    };
-
-    template <
-        typename T
-        >
-    class is_pointer_type<T*>
-    {
-    public:
-        enum { value = true };
-    private:
-        is_pointer_type();
-    };
-
-// ----------------------------------------------------------------------------------------
-
-    /*!A is_const_type
-
-        This is a template where is_const_type<T>::value == true when T is a const 
-        type and false otherwise.
-    !*/
-
-    template <typename T>
-    struct is_const_type
-    {
-        static const bool value = false;
-    };
-    template <typename T>
-    struct is_const_type<const T>
-    {
-        static const bool value = true;
-    };
-    template <typename T>
-    struct is_const_type<const T&>
-    {
-        static const bool value = true;
-    };
-
-// ----------------------------------------------------------------------------------------
-
-    /*!A is_reference_type 
-
-        This is a template where is_reference_type<T>::value == true when T is a reference 
-        type and false otherwise.
-    !*/
-
-    template <typename T>
-    struct is_reference_type
-    {
-        static const bool value = false;
-    };
-
-    template <typename T> struct is_reference_type<const T&> { static const bool value = true; };
-    template <typename T> struct is_reference_type<T&> { static const bool value = true; };
-
-// ----------------------------------------------------------------------------------------
-
-    /*!A is_same_type 
-
-        This is a template where is_same_type<T,U>::value == true when T and U are the
-        same type and false otherwise.   
-    !*/
-
-    template <
-        typename T,
-        typename U
-        >
-    class is_same_type
-    {
-    public:
-        enum {value = false};
-    private:
-        is_same_type();
-    };
-
-    template <typename T>
-    class is_same_type<T,T>
-    {
-    public:
-        enum {value = true};
-    private:
-        is_same_type();
-    };
-
-// ----------------------------------------------------------------------------------------
-
-    /*!A is_float_type
-
-        This is a template that can be used to determine if a type is one of the built
-        int floating point types (i.e. float, double, or long double).
-    !*/
-
-    template < typename T > struct is_float_type  { const static bool value = false; };
-    template <> struct is_float_type<float>       { const static bool value = true; };
-    template <> struct is_float_type<double>      { const static bool value = true; };
-    template <> struct is_float_type<long double> { const static bool value = true; };
-
-// ----------------------------------------------------------------------------------------
-
-    /*!A is_convertible
-
-        This is a template that can be used to determine if one type is convertible 
-        into another type.
-
-        For example:
-            is_convertible<int,float>::value == true    // because ints are convertible to floats
-            is_convertible<int*,float>::value == false  // because int pointers are NOT convertible to floats
-    !*/
-
-    template <typename from, typename to>
-    struct is_convertible
-    {
-        struct yes_type { char a; };
-        struct no_type { yes_type a[2]; };
-        static const from& from_helper();
-        static yes_type test(to);
-        static no_type test(...);
-        const static bool value = sizeof(test(from_helper())) == sizeof(yes_type);
-    };
 
 // ----------------------------------------------------------------------------------------
 
@@ -532,7 +400,7 @@ namespace dlib
 
     // handle the case where T and U are unrelated types.
     template < typename T, typename U >
-    typename disable_if_c<is_convertible<T*, U*>::value || is_convertible<U*,T*>::value, bool>::type
+    std::enable_if_t<!std::is_convertible<T*, U*>::value && !std::is_convertible<U*,T*>::value, bool>
     is_same_object (
         const T& a, 
         const U& b
@@ -547,7 +415,7 @@ namespace dlib
     // valid way to convert between these two pointer types then we will take that route rather
     // than the void* approach used otherwise.
     template < typename T, typename U >
-    typename enable_if_c<is_convertible<T*, U*>::value || is_convertible<U*,T*>::value, bool>::type
+    std::enable_if_t<std::is_convertible<T*, U*>::value || std::is_convertible<U*,T*>::value, bool>
     is_same_object (
         const T& a, 
         const U& b
@@ -555,39 +423,6 @@ namespace dlib
     { 
         return (&a == &b); 
     }
-
-// ----------------------------------------------------------------------------------------
-
-    /*!A is_unsigned_type 
-
-        This is a template where is_unsigned_type<T>::value == true when T is an unsigned
-        scalar type and false when T is a signed scalar type.
-    !*/
-    template <
-        typename T
-        >
-    struct is_unsigned_type
-    {
-        static const bool value = static_cast<T>((static_cast<T>(0)-static_cast<T>(1))) > 0;
-    };
-    template <> struct is_unsigned_type<long double> { static const bool value = false; };
-    template <> struct is_unsigned_type<double>      { static const bool value = false; };
-    template <> struct is_unsigned_type<float>       { static const bool value = false; };
-
-// ----------------------------------------------------------------------------------------
-
-    /*!A is_signed_type 
-
-        This is a template where is_signed_type<T>::value == true when T is a signed
-        scalar type and false when T is an unsigned scalar type.
-    !*/
-    template <
-        typename T
-        >
-    struct is_signed_type
-    {
-        static const bool value = !is_unsigned_type<T>::value;
-    };
 
 // ----------------------------------------------------------------------------------------
 
@@ -644,47 +479,9 @@ namespace dlib
     template <> struct static_switch<0,0,0,0,0,0,0,0,0,0,0,0,0,0,1> { const static int value = 15; };
 
 // ----------------------------------------------------------------------------------------
-    /*!A is_built_in_scalar_type
-        
-        This is a template that allows you to determine if the given type is a built
-        in scalar type such as an int, char, float, short, etc.
-
-        For example, is_built_in_scalar_type<char>::value == true
-        For example, is_built_in_scalar_type<std::string>::value == false 
-    !*/
-
-    template <typename T> struct is_built_in_scalar_type        { const static bool value = false; };
-
-    template <> struct is_built_in_scalar_type<float>           { const static bool value = true; };
-    template <> struct is_built_in_scalar_type<double>          { const static bool value = true; };
-    template <> struct is_built_in_scalar_type<long double>     { const static bool value = true; };
-    template <> struct is_built_in_scalar_type<short>           { const static bool value = true; };
-    template <> struct is_built_in_scalar_type<int>             { const static bool value = true; };
-    template <> struct is_built_in_scalar_type<long>            { const static bool value = true; };
-    template <> struct is_built_in_scalar_type<unsigned short>  { const static bool value = true; };
-    template <> struct is_built_in_scalar_type<unsigned int>    { const static bool value = true; };
-    template <> struct is_built_in_scalar_type<unsigned long>   { const static bool value = true; };
-    template <> struct is_built_in_scalar_type<uint64>          { const static bool value = true; };
-    template <> struct is_built_in_scalar_type<int64>           { const static bool value = true; };
-    template <> struct is_built_in_scalar_type<char>            { const static bool value = true; };
-    template <> struct is_built_in_scalar_type<signed char>     { const static bool value = true; };
-    template <> struct is_built_in_scalar_type<unsigned char>   { const static bool value = true; };
-    // Don't define one for wchar_t when using a version of visual studio
-    // older than 8.0 (visual studio 2005) since before then they improperly set
-    // wchar_t to be a typedef rather than its own type as required by the C++ 
-    // standard.
-#if !defined(_MSC_VER) || _NATIVE_WCHAR_T_DEFINED
-    template <> struct is_built_in_scalar_type<wchar_t>         { const static bool value = true; };
-#endif
-
-// ----------------------------------------------------------------------------------------
     
-    template <
-        typename T
-        >
-    typename enable_if<is_built_in_scalar_type<T>,bool>::type is_finite (
-        const T& value
-    )
+    template <typename T>
+    std::enable_if_t<std::is_floating_point<T>::value, bool> is_finite(T value)
     /*!
         requires
             - value must be some kind of scalar type such as int or double
@@ -693,10 +490,13 @@ namespace dlib
               otherwise.
     !*/
     {
-        if (is_float_type<T>::value)
-            return -std::numeric_limits<T>::infinity() < value && value < std::numeric_limits<T>::infinity();
-        else
-            return true;
+        return std::isfinite(value);
+    }
+    
+    template <typename T>
+    std::enable_if_t<std::is_integral<T>::value, bool> is_finite(T value)
+    {
+        return std::isfinite((double)value);
     }
 
 // ----------------------------------------------------------------------------------------
@@ -731,25 +531,6 @@ namespace dlib
 
     template <typename T> inline typename disable_if<is_built_in_scalar_type<T>,void>::type assign_zero_if_built_in_scalar_type (T&){}
     template <typename T> inline typename enable_if<is_built_in_scalar_type<T>,void>::type assign_zero_if_built_in_scalar_type (T& a){a=0;}
-
-// ----------------------------------------------------------------------------------------
-
-    /*!A basic_type
-
-        This is a template that takes a type and strips off any const, volatile, or reference
-        qualifiers and gives you back the basic underlying type.  So for example:
-
-        basic_type<const int&>::type == int
-    !*/
-
-    template <typename T> struct basic_type { typedef T type; };
-    template <typename T> struct basic_type<const T> { typedef T type; };
-    template <typename T> struct basic_type<const T&> { typedef T type; };
-    template <typename T> struct basic_type<volatile const T&> { typedef T type; };
-    template <typename T> struct basic_type<T&> { typedef T type; };
-    template <typename T> struct basic_type<volatile T&> { typedef T type; };
-    template <typename T> struct basic_type<volatile T> { typedef T type; };
-    template <typename T> struct basic_type<volatile const T> { typedef T type; };
 
 // ----------------------------------------------------------------------------------------
 
@@ -884,47 +665,6 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
-    /*!A is_function 
-        
-        This is a template that allows you to determine if the given type is a function.
-
-        For example,
-            void funct();
-
-            is_built_in_scalar_type<funct>::value == true
-            is_built_in_scalar_type<int>::value == false 
-    !*/
-
-    template <typename T> struct is_function { static const bool value = false; };
-    template <typename T> 
-    struct is_function<T (void)> { static const bool value = true; };
-    template <typename T, typename A0> 
-    struct is_function<T (A0)> { static const bool value = true; };
-    template <typename T, typename A0, typename A1> 
-    struct is_function<T (A0, A1)> { static const bool value = true; };
-    template <typename T, typename A0, typename A1, typename A2> 
-    struct is_function<T (A0, A1, A2)> { static const bool value = true; };
-    template <typename T, typename A0, typename A1, typename A2, typename A3> 
-    struct is_function<T (A0, A1, A2, A3)> { static const bool value = true; };
-    template <typename T, typename A0, typename A1, typename A2, typename A3, typename A4> 
-    struct is_function<T (A0, A1, A2, A3, A4)> { static const bool value = true; };
-    template <typename T, typename A0, typename A1, typename A2, typename A3, typename A4,
-                          typename A5> 
-    struct is_function<T (A0,A1,A2,A3,A4,A5)> { static const bool value = true; };
-    template <typename T, typename A0, typename A1, typename A2, typename A3, typename A4,
-                          typename A5, typename A6> 
-    struct is_function<T (A0,A1,A2,A3,A4,A5,A6)> { static const bool value = true; };
-    template <typename T, typename A0, typename A1, typename A2, typename A3, typename A4,
-                          typename A5, typename A6, typename A7> 
-    struct is_function<T (A0,A1,A2,A3,A4,A5,A6,A7)> { static const bool value = true; };
-    template <typename T, typename A0, typename A1, typename A2, typename A3, typename A4,
-                          typename A5, typename A6, typename A7, typename A8> 
-    struct is_function<T (A0,A1,A2,A3,A4,A5,A6,A7,A8)> { static const bool value = true; };
-    template <typename T, typename A0, typename A1, typename A2, typename A3, typename A4,
-                          typename A5, typename A6, typename A7, typename A8, typename A9> 
-    struct is_function<T (A0,A1,A2,A3,A4,A5,A6,A7,A8,A9)> { static const bool value = true; };
-
-
     template <typename T> class funct_wrap0
     {
     public:
@@ -977,7 +717,7 @@ namespace dlib
     /*!A wrap_function 
         
         This is a template that allows you to turn a global function into a 
-        function object.  The reason for this template's existance is so you can
+        function object.  The reason for this template's existence is so you can
         do stuff like this:
             
             template <typename T>
@@ -1152,6 +892,27 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
+    namespace detail
+    {
+        template <class Tuple, class F, std::size_t... I>
+        constexpr void for_each_impl(Tuple&& t, F&& f, std::index_sequence<I...>)
+        {
+#ifdef __cpp_fold_expressions
+            (std::forward<F>(f)(std::get<I>(std::forward<Tuple>(t))),...);
+#else
+            (void)std::initializer_list<int>{(std::forward<F>(f)(std::get<I>(std::forward<Tuple>(t))),0)...};
+#endif
+        }
+    }
+
+    template <class Tuple, class F>
+    constexpr void for_each_in_tuple(Tuple&& t, F&& f)
+    {
+        detail::for_each_impl(std::forward<Tuple>(t), std::forward<F>(f),
+                              std::make_index_sequence<std::tuple_size<std::remove_reference_t<Tuple>>::value>{});
+    }
+
+// ----------------------------------------------------------------------------------------
 }
 
 #endif // DLIB_ALGs_
