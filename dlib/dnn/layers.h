@@ -268,7 +268,15 @@ namespace dlib
 
         friend void serialize(const con_& item, std::ostream& out)
         {
-            serialize("con_5", out);
+            // for backward compatibility
+            // TODO: remove and always serialize the con_5 version
+            constexpr bool serialize_con_4_version = true;
+
+            if (serialize_con_4_version)
+                serialize("con_4", out);
+            else
+                serialize("con_5", out);
+
             serialize(item.params, out);
             serialize(item.num_filters_, out);
             serialize(_nr, out);
@@ -283,7 +291,9 @@ namespace dlib
             serialize(item.weight_decay_multiplier, out);
             serialize(item.bias_learning_rate_multiplier, out);
             serialize(item.bias_weight_decay_multiplier, out);
-            serialize(item.use_bias, out);
+
+            if (!serialize_con_4_version)
+                serialize(item.use_bias, out);
         }
 
         friend void deserialize(con_& item, std::istream& in)
