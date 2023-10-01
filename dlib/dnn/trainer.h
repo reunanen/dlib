@@ -75,6 +75,7 @@ namespace dlib
         typedef typename net_type::input_type input_type;
         const static size_t num_computational_layers = net_type::num_computational_layers;
         const static size_t num_layers = net_type::num_layers;
+        using threads = std::vector<std::shared_ptr<thread_pool>>;
     private:
         typedef impl::dnn_job_t<training_label_type> job_t;
     public:
@@ -104,8 +105,9 @@ namespace dlib
         dnn_trainer(
             net_type& net_, 
             const solver_type& solver_,
-            const std::vector<int>& cuda_extra_devices
-        ) : job_pipe(0), net(net_) 
+            const std::vector<int>& cuda_extra_devices,
+            std::shared_ptr<threads> thread_pools_ = std::shared_ptr<threads>()
+        ) : job_pipe(0), thread_pools(thread_pools_), net(net_)
         {
             devices.push_back(std::make_shared<device_data>(dlib::cuda::get_device(), net, solver_));
 
@@ -460,6 +462,7 @@ namespace dlib
                 test_steps_without_progress = 0;
                 previous_loss_values.clear();
                 test_previous_loss_values.clear();
+                previous_loss_values_to_keep_until_disk_sync.clear();
             }
             learning_rate = lr;
             lr_schedule.set_size(0);
@@ -616,6 +619,11 @@ namespace dlib
             // discard really old loss values.
             while (previous_loss_values.size() > iter_without_progress_thresh)
                 previous_loss_values.pop_front();
+
+            // separately keep another loss history until disk sync
+            // (but only if disk sync is enabled)
+            if (!sync_filename.empty())
+                previous_loss_values_to_keep_until_disk_sync.push_back(loss);
         }
 
         template <typename T>
@@ -673,7 +681,15 @@ namespace dlib
             // periodically copy these tensors to all the other devices to make sure the
             // different GPUs don't go out of sync.
             std::vector<tensor*> reference_params;
-            visit_layer_parameters(devices[0]->net, [&](size_t, tensor& t) { reference_params.push_back(&t); });
+            visit_layer_parameters(devices[0]->net, [&](tensor& t) { reference_params.push_back(&t); });
+
+            // If no external thread pools vector was passed, then create one that will
+            // be automatically destructed as soon as the dnn_trainer object goes out of
+            // scope.
+            if (!thread_pools)
+                thread_pools = std::make_shared<threads>();
+
+            auto& tp = *thread_pools;
 
             // We make separate thread pools with just one thread in them because we want
             // to make sure each device is always executed on the same thread.  We care
@@ -682,8 +698,7 @@ namespace dlib
             // So if we make sure the same device always uses the same thread this will
             // reduce the number of contexts we allocate from num_devices*num_devices to
             // just num_devices. 
-            std::vector<std::shared_ptr<thread_pool>> tp;
-            for (size_t i = 0; i < devices.size(); ++i)
+            while (tp.size() < devices.size())
                 tp.push_back(std::make_shared<thread_pool>(1));
 
 
@@ -714,10 +729,10 @@ namespace dlib
                                 // optimization has flattened out, so drop the learning rate. 
                                 learning_rate = learning_rate_shrink*learning_rate;
                                 test_steps_without_progress = 0;
+
                                 // Empty out some of the previous loss values so that test_steps_without_progress 
                                 // will decrease below test_iter_without_progress_thresh.  
-                                for (unsigned long cnt = 0; cnt < test_previous_loss_values_dump_amount+test_iter_without_progress_thresh/10 && test_previous_loss_values.size() > 0; ++cnt)
-                                    test_previous_loss_values.pop_front();
+                                drop_some_test_previous_loss_values();
                             }
                         }
                     }
@@ -763,7 +778,12 @@ namespace dlib
                         {
                             std::vector<tensor*> temp(all_tensors.size());
                             for (size_t j = 0; j < all_tensors.size(); ++j)
+                            {
                                 temp[j] = all_tensors[j][i];
+                                DLIB_CASSERT(temp[0]->size() == temp[j]->size(),
+                                "Make sure you don't modify the network structure "
+                                "or number of parameters after constructing the trainer.");
+                            }
                             // ignore layers that don't have parameters
                             if (temp[0]->size() != 0)
                                 averagers[i].set(temp);
@@ -834,10 +854,10 @@ namespace dlib
                             // optimization has flattened out, so drop the learning rate. 
                             learning_rate = learning_rate_shrink*learning_rate;
                             steps_without_progress = 0;
+
                             // Empty out some of the previous loss values so that steps_without_progress 
                             // will decrease below iter_without_progress_thresh.  
-                            for (unsigned long cnt = 0; cnt < previous_loss_values_dump_amount+iter_without_progress_thresh/10 && previous_loss_values.size() > 0; ++cnt)
-                                previous_loss_values.pop_front();
+                            drop_some_previous_loss_values();
                         }
                     }
                 }
@@ -909,7 +929,7 @@ namespace dlib
         friend void serialize(const dnn_trainer& item, std::ostream& out)
         {
             item.wait_for_thread_to_pause();
-            int version = 12;
+            int version = 13;
             serialize(version, out);
 
             size_t nl = dnn_trainer::num_layers;
@@ -938,14 +958,14 @@ namespace dlib
             serialize(item.test_previous_loss_values, out);
             serialize(item.previous_loss_values_dump_amount, out);
             serialize(item.test_previous_loss_values_dump_amount, out);
-
+            serialize(item.previous_loss_values_to_keep_until_disk_sync, out);
         }
         friend void deserialize(dnn_trainer& item, std::istream& in)
         {
             item.wait_for_thread_to_pause();
             int version = 0;
             deserialize(version, in);
-            if (version != 12)
+            if (version != 13)
                 throw serialization_error("Unexpected version found while deserializing dlib::dnn_trainer.");
 
             size_t num_layers = 0;
@@ -984,6 +1004,7 @@ namespace dlib
             deserialize(item.test_previous_loss_values, in);
             deserialize(item.previous_loss_values_dump_amount, in);
             deserialize(item.test_previous_loss_values_dump_amount, in);
+            deserialize(item.previous_loss_values_to_keep_until_disk_sync, in);
 
             if (item.devices.size() > 1)
             {
@@ -999,6 +1020,20 @@ namespace dlib
                 }
                 dlib::cuda::set_device(prev_dev);
             }
+        }
+
+        // Empty out some of the previous loss values so that steps_without_progress will decrease below iter_without_progress_thresh.  
+        void drop_some_previous_loss_values()
+        {
+            for (unsigned long cnt = 0; cnt < previous_loss_values_dump_amount + iter_without_progress_thresh / 10 && previous_loss_values.size() > 0; ++cnt)
+                previous_loss_values.pop_front();
+        }
+
+        // Empty out some of the previous test loss values so that test_steps_without_progress will decrease below test_iter_without_progress_thresh.  
+        void drop_some_test_previous_loss_values()
+        {
+            for (unsigned long cnt = 0; cnt < test_previous_loss_values_dump_amount + test_iter_without_progress_thresh / 10 && test_previous_loss_values.size() > 0; ++cnt)
+                test_previous_loss_values.pop_front();
         }
 
         void sync_to_disk (
@@ -1034,6 +1069,22 @@ namespace dlib
                     sync_file_reloaded = true;
                     if (verbose)
                         std::cout << "Loss has been increasing, reloading saved state from " << newest_syncfile() << std::endl;
+
+                    // Are we repeatedly hitting our head against the wall? If so, then we
+                    // might be better off giving up at this learning rate, and trying a
+                    // lower one instead.
+                    if (prob_loss_increasing_thresh >= prob_loss_increasing_thresh_max_value)
+                    {
+                        if (verbose && learning_rate_shrink != 1)
+                            std::cout << "(and while at it, also shrinking the learning rate)" << std::endl;
+
+                        learning_rate = learning_rate_shrink * learning_rate;
+                        steps_without_progress = 0;
+                        test_steps_without_progress = 0;
+
+                        drop_some_previous_loss_values();
+                        drop_some_test_previous_loss_values();
+                    }
                 }
                 else
                 {
@@ -1071,34 +1122,35 @@ namespace dlib
             if (!std::ifstream(newest_syncfile(), std::ios::binary))
                 return false;
 
-            for (auto x : previous_loss_values)
+            // Now look at the data since a little before the last disk sync.  We will
+            // check if the loss is getting better or worse.
+            while (previous_loss_values_to_keep_until_disk_sync.size() > 2 * gradient_updates_since_last_sync)
+                previous_loss_values_to_keep_until_disk_sync.pop_front();
+
+            // Always retry if there are any nan or inf values
+            for (auto x : previous_loss_values_to_keep_until_disk_sync)
             {
-                // If we get a NaN value of loss assume things have gone horribly wrong and
-                // we should reload the state of the trainer.
-                if (std::isnan(x))
+                if (std::isnan(x) || std::isinf(x))
                     return true;
             }
 
-            // if we haven't seen much data yet then just say false.  Or, alternatively, if
-            // it's been too long since the last sync then don't reload either.
-            if (gradient_updates_since_last_sync < 30 || previous_loss_values.size() < 2*gradient_updates_since_last_sync)
+            // if we haven't seen much data yet then just say false.
+            if (previous_loss_values_to_keep_until_disk_sync.size() < 30)
                 return false;
 
-            // Now look at the data since a little before the last disk sync.  We will
-            // check if the loss is getting bettor or worse.
-            running_gradient g;
-            for (size_t i = previous_loss_values.size() - 2*gradient_updates_since_last_sync; i < previous_loss_values.size(); ++i)
-                g.add(previous_loss_values[i]);
-
             // if the loss is very likely to be increasing then return true
-            const double prob = g.probability_gradient_greater_than(0);
-            if (prob > prob_loss_increasing_thresh && prob_loss_increasing_thresh <= prob_loss_increasing_thresh_max_value)
+            const double prob1 = probability_values_are_increasing(previous_loss_values_to_keep_until_disk_sync);
+            const double prob2 = probability_values_are_increasing_robust(previous_loss_values_to_keep_until_disk_sync);
+            if (std::max(prob1, prob2) > prob_loss_increasing_thresh)
             {
                 // Exponentially decay the threshold towards 1 so that if we keep finding
                 // the loss to be increasing over and over we will make the test
                 // progressively harder and harder until it fails, therefore ensuring we
                 // can't get stuck reloading from a previous state over and over. 
-                prob_loss_increasing_thresh = 0.1*prob_loss_increasing_thresh + 0.9*1;
+                prob_loss_increasing_thresh = std::min(
+                    0.1*prob_loss_increasing_thresh + 0.9*1,
+                    prob_loss_increasing_thresh_max_value
+                );
                 return true;
             }
             else
@@ -1157,27 +1209,37 @@ namespace dlib
             job.test_only = test_only;
 
             // chop the data into devs blocks, each of about block_size elements.
-            size_t block_size = (num+devs-1)/devs;
+            const double block_size = num / static_cast<double>(devs);
 
             const auto prev_dev = dlib::cuda::get_device();
+
+            const bool has_unsupervised_loss = std::is_same<no_label_type, training_label_type>::value;
+
+            double j = 0;
+
             for (size_t i = 0; i < devs; ++i)
             {
                 dlib::cuda::set_device(devices[i]->device_id);
 
-                size_t start = i*block_size;
-                size_t stop  = std::min(num, start+block_size);
+                const size_t start = static_cast<size_t>(std::round(j));
+                const size_t stop  = static_cast<size_t>(std::round(j + block_size));
 
                 if (start < stop)
                 {
                     devices[i]->net.to_tensor(dbegin+start, dbegin+stop, job.t[i]);
-                    job.labels[i].assign(lbegin+start, lbegin+stop);
+                    if (!has_unsupervised_loss)
+                        job.labels[i].assign(lbegin+start, lbegin+stop);
                     job.have_data[i] = true;
                 }
                 else
                 {
                     job.have_data[i] = false;
                 }
+
+                j += block_size;
             }
+
+            DLIB_ASSERT(std::fabs(j - num) < 1e-10);
 
             dlib::cuda::set_device(prev_dev);
             job_pipe.enqueue(job);
@@ -1242,6 +1304,7 @@ namespace dlib
 
         std::vector<std::shared_ptr<device_data>> devices;
         dlib::pipe<job_t> job_pipe;
+        std::shared_ptr<threads> thread_pools;
         job_t job;
 
 
@@ -1260,6 +1323,8 @@ namespace dlib
         std::atomic<unsigned long> test_iter_without_progress_thresh;
         std::atomic<unsigned long> test_steps_without_progress;
         std::deque<double> test_previous_loss_values;
+
+        std::deque<double> previous_loss_values_to_keep_until_disk_sync;
 
         std::atomic<double> learning_rate_shrink;
         std::chrono::time_point<std::chrono::system_clock> last_sync_time;
@@ -1315,14 +1380,20 @@ namespace dlib
         net_type temp = trainer.get_net(); // make a copy so that we can clean it without mutating the trainer's net.
         temp.clean();
         serialize(temp, sout);
-        out << "  net size: " << sout.str().size()/1024.0/1024.0 << "MB" << endl;
+        out << "  net size: " << sout.str().size()/1024.0/1024.0 << " MiB";
+        const auto num_params = count_parameters(temp);
+        if (num_params > 0)
+            out << " (" << num_params << " parameters)";
+        out << endl;
         // Don't include the loss params in the hash since we print them on the next line.
         // They also aren't really part of the "architecture" of the network.
         out << "  net architecture hash: " << md5(cast_to_string(trainer.get_net().subnet())) << endl;
         out << "  loss: " << trainer.get_net().loss_details() << endl;
 
+        out << "  get_train_one_step_calls():                 " << trainer.get_train_one_step_calls() << endl;
         out << "  synchronization file:                       " << trainer.get_synchronization_file() << endl;
         out << "  trainer.get_solvers()[0]:                   " << trainer.get_solvers()[0] << endl;
+        out << "  mini batch size:                            " << trainer.get_mini_batch_size() << endl;
         auto sched = trainer.get_learning_rate_schedule();
         if (sched.size() != 0)
         {

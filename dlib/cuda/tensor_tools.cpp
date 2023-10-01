@@ -102,7 +102,6 @@ namespace dlib { namespace tt
 #ifdef DLIB_USE_CUDA
         cuda::scale_columns(out, m, v);
 #else
-        DLIB_CASSERT(false, "shouldn't be called right now");
         out = scale_columns(mat(m), mat(v));
 #endif
     }
@@ -659,6 +658,44 @@ namespace dlib { namespace tt
 
 // ----------------------------------------------------------------------------------------
 
+    void layer_normalize (
+        const double eps,
+        resizable_tensor& dest,
+        resizable_tensor& means,
+        resizable_tensor& vars,
+        const tensor& src,
+        const tensor& gamma,
+        const tensor& beta
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::layer_normalize(eps, dest, means, vars, src, gamma, beta);
+#else
+        cpu::layer_normalize(eps, dest, means, vars, src, gamma, beta);
+#endif
+    }
+
+    void layer_normalize_gradient (
+        const double eps,
+            const tensor& gradient_input,
+            const tensor& means,
+            const tensor& invstds,
+            const tensor& src,
+            const tensor& gamma,
+            tensor& src_grad,
+            tensor& gamma_grad,
+            tensor& beta_grad
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::layer_normalize_gradient(eps, gradient_input, means, invstds, src, gamma, src_grad, gamma_grad, beta_grad);
+#else
+        cpu::layer_normalize_gradient(eps, gradient_input, means, invstds, src, gamma, src_grad, gamma_grad, beta_grad);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
     void threshold (
         tensor& data,
         float thresh
@@ -828,6 +865,33 @@ namespace dlib { namespace tt
 
 // ----------------------------------------------------------------------------------------
 
+    void mish (
+        tensor& dest,
+        const tensor& src
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::mish(dest,src);
+#else
+        cpu::mish(dest,src);
+#endif
+    }
+
+    void mish_gradient (
+        tensor& grad,
+        const tensor& src,
+        const tensor& gradient_input
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::mish_gradient(grad, src, gradient_input);
+#else
+        cpu::mish_gradient(grad, src, gradient_input);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
     void relu (
         tensor& dest,
         const tensor& src
@@ -885,6 +949,35 @@ namespace dlib { namespace tt
 
 // ----------------------------------------------------------------------------------------
 
+    void leaky_relu (
+        tensor& dest,
+        const tensor& src,
+        const float alpha
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::leaky_relu(dest, src, alpha);
+#else
+        cpu::leaky_relu(dest, src, alpha);
+#endif
+    }
+
+    void leaky_relu_gradient (
+        tensor& grad,
+        const tensor& dest,
+        const tensor& gradient_input,
+        const float alpha
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::leaky_relu_gradient(grad, dest, gradient_input, alpha);
+#else
+        cpu::leaky_relu_gradient(grad, dest, gradient_input, alpha);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
     void tanh (
         tensor& dest,
         const tensor& src
@@ -907,6 +1000,149 @@ namespace dlib { namespace tt
         cuda::tanh_gradient(grad, dest, gradient_input);
 #else
         cpu::tanh_gradient(grad, dest, gradient_input);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    void clipped_relu (
+        tensor& dest,
+        const tensor& src,
+        const float ceiling
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::clipped_relu(dest, src, ceiling);
+#else
+        cpu::clipped_relu(dest, src, ceiling);
+#endif
+    }
+
+    void clipped_relu_gradient (
+        tensor& grad,
+        const tensor& dest,
+        const tensor& gradient_input,
+        const float ceiling
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::clipped_relu_gradient(grad, dest, gradient_input, ceiling);
+#else
+        cpu::clipped_relu_gradient(grad, dest, gradient_input, ceiling);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    void elu (
+        tensor& dest,
+        const tensor& src,
+        const float alpha
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::elu(dest, src, alpha);
+#else
+        cpu::elu(dest, src, alpha);
+#endif
+    }
+
+    void elu_gradient (
+        tensor& grad,
+        const tensor& dest,
+        const tensor& gradient_input,
+        const float alpha
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::elu_gradient(grad, dest, gradient_input, alpha);
+#else
+        cpu::elu_gradient(grad, dest, gradient_input, alpha);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    void gelu (
+        tensor& dest,
+        const tensor& src
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::gelu(dest,src);
+#else
+        cpu::gelu(dest,src);
+#endif
+    }
+
+    void gelu_gradient (
+        tensor& grad,
+        const tensor& src,
+        const tensor& gradient_input
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::gelu_gradient(grad, src, gradient_input);
+#else
+        cpu::gelu_gradient(grad, src, gradient_input);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    void smelu (
+        tensor& dest,
+        const tensor& src,
+        const float beta
+    )
+    {
+        DLIB_CASSERT(beta > 0);
+#ifdef DLIB_USE_CUDA
+        cuda::smelu(dest, src, beta);
+#else
+        cpu::smelu(dest, src, beta);
+#endif
+    }
+
+    void smelu_gradient (
+        tensor& grad,
+        const tensor& dest,
+        const tensor& gradient_input,
+        const float beta
+    )
+    {
+        DLIB_CASSERT(beta > 0);
+#ifdef DLIB_USE_CUDA
+        cuda::smelu_gradient(grad, dest, gradient_input, beta);
+#else
+        cpu::smelu_gradient(grad, dest, gradient_input, beta);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    void silu (
+        tensor& dest,
+        const tensor& src
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::silu(dest,src);
+#else
+        cpu::silu(dest,src);
+#endif
+    }
+
+    void silu_gradient (
+        tensor& grad,
+        const tensor& src,
+        const tensor& gradient_input
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::silu_gradient(grad, src, gradient_input);
+#else
+        cpu::silu_gradient(grad, src, gradient_input);
 #endif
     }
 
@@ -941,6 +1177,36 @@ namespace dlib { namespace tt
         cuda::resize_bilinear_gradient(grad,grad_row_stride,grad_channel_stride,  gradient_input,gradient_input_row_stride,gradient_input_channel_stride);
 #else
         cpu::resize_bilinear_gradient(grad,grad_row_stride,grad_channel_stride,  gradient_input,gradient_input_row_stride,gradient_input_channel_stride);
+#endif
+    }
+
+// ------------------------------------------------------------------------------------
+
+    void reorg (
+        tensor& dest,
+        const int row_stride,
+        const int col_stride,
+        const tensor& src
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::reorg(dest, row_stride, col_stride, src);
+#else
+        cpu::reorg(dest, row_stride, col_stride, src);
+#endif
+    }
+
+    void reorg_gradient (
+        tensor& grad,
+        const int row_stride,
+        const int col_stride,
+        const tensor& gradient_input
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::reorg_gradient(grad, row_stride, col_stride, gradient_input);
+#else
+        cpu::reorg_gradient(grad, row_stride, col_stride, gradient_input);
 #endif
     }
 
@@ -982,4 +1248,3 @@ namespace dlib { namespace tt
 }}
 
 #endif // DLIB_TeNSOR_TOOLS_CPP_
-

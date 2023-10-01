@@ -4,7 +4,7 @@
 #define DLIB_GUI_CORE_KERNEL_2_CPp_
 #include "../platform.h"
 
-#ifdef POSIX
+#ifdef DLIB_POSIX
 
 #include "gui_core_kernel_2.h"
 
@@ -1398,7 +1398,7 @@ namespace dlib
     {
         std::wstring wstr;
         get_from_clipboard(wstr);
-        str = convert_wstring_to_utf32(wstr);
+        str = convert_to_utf32(wstr);
     }
 
     void get_from_clipboard (
@@ -1757,10 +1757,12 @@ namespace dlib
         // it isn't const anymore.
         wchar_t *title = const_cast<wchar_t *>(title_.c_str());
         XTextProperty property;
-        XwcTextListToTextProperty(x11_stuff.globals->disp,&title,1,XStdICCTextStyle, &property);
-        XSetWMName(x11_stuff.globals->disp,x11_stuff.hwnd,&property);
-        XFree(property.value);
-        XFlush(x11_stuff.globals->disp);
+        int rc = XwcTextListToTextProperty(x11_stuff.globals->disp,&title,1,XStdICCTextStyle, &property);
+        if (rc >= 0) {
+            XSetWMName(x11_stuff.globals->disp,x11_stuff.hwnd,&property);
+            XFree(property.value);
+            XFlush(x11_stuff.globals->disp);
+        }
     }
 
 // ----------------------------------------------------------------------------------------
@@ -1990,7 +1992,7 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
-#endif // POSIX
+#endif // DLIB_POSIX
 
 #endif // DLIB_GUI_CORE_KERNEL_2_CPp_
 

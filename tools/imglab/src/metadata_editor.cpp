@@ -23,7 +23,8 @@ extern const char* VERSION;
 
 metadata_editor::
 metadata_editor(
-    const std::string& filename_
+    const std::string& filename_,
+    const std::string& font_path
 ) : 
     mbar(*this),
     lb_images(*this),
@@ -36,6 +37,26 @@ metadata_editor(
 {
     file metadata_file(filename_);
     filename = metadata_file.full_name();
+
+    // Set the custom label fonts
+    if (!font_path.empty())
+    {
+        const auto custom_font = std::make_shared<dlib::bdf_font>();
+        std::ifstream fin(font_path);
+        if (fin.good())
+        {
+            custom_font->read_bdf_file(fin, 0xFFFF);
+            custom_font->adjust_metrics();
+            font = std::move(custom_font);
+        }
+        else
+        {
+            std::cerr << "WARNING: could not open file '" + font_path + "', using default font\n.";
+        }
+    }
+    display.set_main_font(font);
+    overlay_label.set_main_font(font);
+
     // Make our current directory be the one that contains the metadata file.  We 
     // do this because that file might contain relative paths to the image files
     // we are supposed to be loading.
@@ -224,7 +245,12 @@ void propagate_boxes(
 
     array2d<rgb_pixel> img1, img2;
     dlib::load_image(img1, data.images[prev].filename);
+    data.images[prev].width = img1.nc();
+    data.images[prev].height = img1.nr();
+
     dlib::load_image(img2, data.images[next].filename);
+    data.images[next].width = img2.nc();
+    data.images[next].height = img2.nr();
     for (unsigned long i = 0; i < data.images[prev].boxes.size(); ++i)
     {
         correlation_tracker tracker;
@@ -341,6 +367,16 @@ on_keydown (
         else
         {
             last_keyboard_jump_pos_update = 0;
+        }
+
+        if (key == '=')
+        {
+            display.zoom_in();
+        }
+
+        if (key == '-')
+        {
+            display.zoom_out();
         }
 
         if (key == 'd' && (state&base_window::KBD_MOD_ALT))
@@ -503,6 +539,8 @@ load_image(
     try
     {
         dlib::load_image(img, metadata.images[idx].filename);
+        metadata.images[idx].width = img.nc();
+        metadata.images[idx].height = img.nr();
         set_title(metadata.name + " #"+cast_to_string(idx)+": " +metadata.images[idx].filename);
     }
     catch (exception& e)
@@ -533,6 +571,8 @@ load_image_and_set_size(
     try
     {
         dlib::load_image(img, metadata.images[idx].filename);
+        metadata.images[idx].width = img.nc();
+        metadata.images[idx].height = img.nr();
         set_title(metadata.name + " #"+cast_to_string(idx)+": " +metadata.images[idx].filename);
     }
     catch (exception& e)

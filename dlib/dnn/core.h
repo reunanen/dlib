@@ -3,22 +3,24 @@
 #ifndef DLIB_DNn_CORE_H_
 #define DLIB_DNn_CORE_H_
 
-#include "core_abstract.h"
-#include "../cuda/tensor.h"
 #include <iterator>
 #include <memory>
 #include <sstream>
-#include <type_traits>
-#include "../statistics.h"
-#include "../rand.h"
-#include "../algs.h"
 #include <utility>
 #include <tuple>
 #include <cmath>
 #include <vector>
-#include "../cuda/tensor_tools.h"
 #include <type_traits>
+
+#include "core_abstract.h"
+#include "../cuda/tensor.h"
+#include "../cuda/tensor_tools.h"
+#include "../statistics.h"
+#include "../rand.h"
+#include "../algs.h"
 #include "../metaprogramming.h"
+#include "../utility.h"
+#include "../constexpr_if.h"
 
 #ifdef _MSC_VER
 // Tell Visual Studio not to recursively inline functions very much because otherwise it
@@ -35,54 +37,160 @@ namespace dlib
 
     namespace impl
     {
-        template <typename T, typename int_<decltype(&T::get_learning_rate_multiplier)>::type = 0>
-        double get_learning_rate_multiplier (
-            const T& obj,
-            special_
-        ) { return obj.get_learning_rate_multiplier(); }
+        template<typename T>
+        using has_get_learning_rate_multiplier = decltype(std::declval<T>().get_learning_rate_multiplier());
+    
+        template<typename T>
+        using has_set_learning_rate_multiplier = decltype(std::declval<T>().set_learning_rate_multiplier(double{}));
 
-        template <typename T>
-        double get_learning_rate_multiplier ( const T& , general_) { return 1; }
+        template<typename T>
+        using has_get_bias_learning_rate_multiplier = decltype(std::declval<T>().get_bias_learning_rate_multiplier());
+
+        template<typename T>
+        using has_set_bias_learning_rate_multiplier = decltype(std::declval<T>().set_bias_learning_rate_multiplier(double{}));
+    
+        template<typename T>
+        using has_get_weight_decay_multiplier = decltype(std::declval<T>().get_weight_decay_multiplier());
+
+        template<typename T>
+        using has_set_weight_decay_multiplier = decltype(std::declval<T>().set_weight_decay_multiplier(double{}));
+
+        template<typename T>
+        using has_get_bias_weight_decay_multiplier = decltype(std::declval<T>().get_bias_weight_decay_multiplier());
+
+        template<typename T>
+        using has_set_bias_weight_decay_multiplier = decltype(std::declval<T>().set_bias_weight_decay_multiplier(double{}));
+
+        template<typename T>
+        using has_disable_bias = decltype(std::declval<T>().disable_bias());
+
+        template<typename T>
+        using has_clean = decltype(std::declval<T>().clean());
     }
-    template <typename T>
-    double get_learning_rate_multiplier(const T& obj) { return impl::get_learning_rate_multiplier(obj, special_()); }
 
 // ----------------------------------------------------------------------------------------
 
-    namespace impl
-    {
-        template <typename T, typename int_<decltype(&T::get_weight_decay_multiplier)>::type = 0>
-        double get_weight_decay_multiplier (
-            const T& obj,
-            special_
-        ) { return obj.get_weight_decay_multiplier(); }
-
-        template <typename T>
-        double get_weight_decay_multiplier ( const T& , general_) { return 1; }
-    }
     template <typename T>
-    double get_weight_decay_multiplier(const T& obj) { return impl::get_weight_decay_multiplier(obj, special_()); }
+    double get_learning_rate_multiplier(const T& obj) 
+    { 
+        return switch_(bools(is_detected<impl::has_get_learning_rate_multiplier, T>{}),
+            [&](true_t, auto _) { return _(obj).get_learning_rate_multiplier(); },
+            [](auto...)         { return 1.0; }
+        );
+    }
+
+    template <typename T>
+    void set_learning_rate_multiplier(
+        T& obj,
+        double learning_rate_multiplier
+    )
+    {
+        DLIB_CASSERT(learning_rate_multiplier >= 0);
+        switch_(bools(is_detected<impl::has_set_learning_rate_multiplier, T>{}),
+            [&](true_t, auto _) { _(obj).set_learning_rate_multiplier(learning_rate_multiplier); },
+            [](auto...)         {/*no-op*/}
+        );
+    }
 
 // ----------------------------------------------------------------------------------------
 
-    namespace impl
-    {
-        // The reason we return an int for this version rather than doing the more straight forward thing (like we do above) is to avoid a bug in visual studio 2015.
-        template <typename T>
-        auto call_clean_method_if_exists (
-            T& obj,
-            special_
-        ) -> typename int_<decltype(&T::clean)>::type { obj.clean();  return 0;  }
-
-        template <typename T>
-        void call_clean_method_if_exists (T& , general_) {}
-    }
     template <typename T>
-    void call_clean_method_if_exists(T& obj) { impl::call_clean_method_if_exists(obj, special_()); }
+    double get_bias_learning_rate_multiplier(const T& obj) 
+    {
+        return switch_(bools(is_detected<impl::has_get_bias_learning_rate_multiplier, T>{}),
+            [&](true_t, auto _) { return _(obj).get_bias_learning_rate_multiplier(); },
+            [](auto...)         { return 1.0; }
+        );
+    }
+
+    template <typename T>
+    void set_bias_learning_rate_multiplier(
+        T& obj,
+        double bias_learning_rate_multiplier
+    )
+    {
+        DLIB_CASSERT(bias_learning_rate_multiplier >= 0);
+        switch_(bools(is_detected<impl::has_set_bias_learning_rate_multiplier, T>{}),
+            [&](true_t, auto _) { _(obj).set_bias_learning_rate_multiplier(bias_learning_rate_multiplier); },
+            [](auto...)         {/*no-op*/}
+        );
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    template <typename T>
+    double get_weight_decay_multiplier(const T& obj) 
+    { 
+        return switch_(bools(is_detected<impl::has_get_weight_decay_multiplier, T>{}),
+            [&](true_t, auto _) { return _(obj).get_weight_decay_multiplier(); },
+            [](auto...)         { return 1.0; }
+        );
+    }
+
+    template <typename T>
+    void set_weight_decay_multiplier(
+        T& obj,
+        double weight_decay_multiplier
+    )
+    {
+        DLIB_CASSERT(weight_decay_multiplier >= 0);
+        switch_(bools(is_detected<impl::has_set_weight_decay_multiplier, T>{}),
+            [&](true_t, auto _) { _(obj).set_weight_decay_multiplier(weight_decay_multiplier); },
+            [](auto...)         {/*no-op*/}
+        );
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    template <typename T>
+    double get_bias_weight_decay_multiplier(const T& obj)
+    { 
+        return switch_(bools(is_detected<impl::has_get_bias_weight_decay_multiplier, T>{}),
+            [&](true_t, auto _) { return _(obj).get_bias_weight_decay_multiplier(); },
+            [](auto...)         { return 1.0; }
+        );
+    }
+
+    template <typename T>
+    void set_bias_weight_decay_multiplier(
+        T& obj,
+        double bias_weight_decay_multiplier
+    )
+    {
+        DLIB_CASSERT(bias_weight_decay_multiplier >= 0);
+        switch_(bools(is_detected<impl::has_set_bias_weight_decay_multiplier, T>{}),
+            [&](true_t, auto _) { _(obj).set_bias_weight_decay_multiplier(bias_weight_decay_multiplier); },
+            [](auto...)         {/*no-op*/}
+        );
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    template <typename T>
+    void disable_bias(
+        T& obj
+    )
+    {
+        switch_(bools(is_detected<impl::has_disable_bias, T>{}),
+            [&](true_t, auto _) { _(obj).disable_bias(); },
+            [](auto...)         { /*no-op*/ }
+        );
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    template <typename T>
+    void call_clean_method_if_exists(T& obj) 
     /*!
         ensures
             - calls obj.clean() if obj has a .clean() method.
     !*/
+    { 
+        switch_(bools(is_detected<impl::has_clean, T>{}),
+            [&](true_t, auto _) { _(obj).clean(); },
+            [](auto...)         { /*no-op*/ }
+        );
+    }
 
 // ----------------------------------------------------------------------------------------
 
@@ -150,44 +258,42 @@ namespace dlib
 
     namespace impl
     {
-        template <size_t... indices, typename Tuple>
+        template <typename Tuple, size_t... indices>
         auto tuple_subset(
             const Tuple& item, 
-            compile_time_integer_list<indices...>
-        ) -> decltype(std::make_tuple(std::get<indices>(item)...))
+            std::index_sequence<indices...>
+        )
         {
             return std::make_tuple(std::get<indices>(item)...);
         }
 
-        template <typename Head, typename... Tail>
-        std::tuple<Tail...> basic_tuple_tail(
-            const std::tuple<Head, Tail...>& item
+        template <typename ...Types>
+        auto basic_tuple_tail(
+            const std::tuple<Types...>& item
         )
         {
-            return tuple_subset(item, typename make_compile_time_integer_range<sizeof...(Tail)>::type());
+            return tuple_subset(item, pop_front_t<index_sequence_for<Types...>>{});
         }
 
         template <typename T>
-        std::tuple<T> tuple_flatten(const T& t) 
+        auto tuple_flatten(const T& t) 
         {
             return std::make_tuple(t);
         }
 
-        template <typename... T>
-        auto tuple_flatten(
-            const std::tuple<T...>& item
-        ) -> decltype(tuple_flatten(item, typename make_compile_time_integer_range<sizeof...(T)>::type()))
-        {
-            return tuple_flatten(item, typename make_compile_time_integer_range<sizeof...(T)>::type());
-        }
-
-        template <size_t... indices, typename... T>
+        template <size_t... I, typename... T>
         auto tuple_flatten(
             const std::tuple<T...>& item, 
-            compile_time_integer_list<indices...>
-        ) -> decltype(std::tuple_cat(tuple_flatten(std::get<indices-1>(item))...))
+            std::index_sequence<I...>
+        )
         {
-            return std::tuple_cat(tuple_flatten(std::get<indices-1>(item))...);
+            return std::tuple_cat(tuple_flatten(std::get<I>(item))...);
+        }
+
+        template <typename... T>
+        auto tuple_flatten(const std::tuple<T...>& item)
+        {
+            return tuple_flatten(item, std::index_sequence_for<T...>{});
         }
 
         template <typename T>
@@ -409,7 +515,7 @@ namespace dlib
     } // end namespace impl
 
     template <typename... T>
-    typename impl::tuple_head_helper<std::tuple<T...>>::type tuple_head (
+    auto tuple_head (
         const std::tuple<T...>& item
     ) 
     {
@@ -419,7 +525,7 @@ namespace dlib
     template <typename... T>
     auto tuple_tail(
         const std::tuple<T...>& item
-    ) -> decltype(impl::basic_tuple_tail(impl::tuple_flatten(item)))
+    )
     {
         return impl::basic_tuple_tail(impl::tuple_flatten(item));
     }
@@ -510,7 +616,10 @@ namespace dlib
             // Not much here because in this case T is one of the input layer types 
             // that doesn't have anything in it.
             typedef T layer_details_type;
+            typedef T input_layer_type;
             const layer_details_type& layer_details() const { return l; }
+            const input_layer_type& input_layer() const { return l; }
+            input_layer_type& input_layer() { return l; }
             unsigned int sample_expansion_factor() const { return _sample_expansion_factor; }
         private:
             T& l;
@@ -529,6 +638,7 @@ namespace dlib
             const static size_t num_computational_layers = T::num_computational_layers;
             const static size_t num_layers = T::num_layers;
             typedef typename T::layer_details_type layer_details_type;
+            typedef typename T::input_layer_type input_layer_type;
 
             subnet_wrapper(T& l_, unsigned int = 0) : l(l_),subnetwork(l.subnet(), l.sample_expansion_factor()) {}
 
@@ -540,6 +650,9 @@ namespace dlib
             const subnet_wrapper<typename T::subnet_type,false>& subnet() const { return subnetwork; }
             subnet_wrapper<typename T::subnet_type,false>& subnet() { return subnetwork; }
             unsigned int sample_expansion_factor() const { return l.sample_expansion_factor(); }
+
+            const input_layer_type& input_layer() const { return l.input_layer(); }
+            input_layer_type& input_layer() { return l.input_layer(); }
 
         private:
             T& l;
@@ -558,6 +671,7 @@ namespace dlib
             const static size_t num_computational_layers = T::num_computational_layers;
             const static size_t num_layers = T::num_layers;
             typedef typename T::layer_details_type layer_details_type;
+            typedef typename T::input_layer_type input_layer_type;
 
             subnet_wrapper(T& l_, unsigned int = 0) : l(l_),subnetwork(l.subnet(), l.sample_expansion_factor()) {}
 
@@ -570,11 +684,22 @@ namespace dlib
             subnet_wrapper<typename T::subnet_type,false>& subnet() { return subnetwork; }
             unsigned int sample_expansion_factor() const { return l.sample_expansion_factor(); }
 
+            const input_layer_type& input_layer() const { return l.input_layer(); }
+            input_layer_type& input_layer() { return l.input_layer(); }
+
         private:
             T& l;
             subnet_wrapper<typename T::subnet_type,false> subnetwork;
         };
     }
+
+// ----------------------------------------------------------------------------------------
+
+    enum class zero_gradients : uint8_t
+    {
+        no = 0,
+        yes = 1
+    };
 
 // ----------------------------------------------------------------------------------------
 
@@ -596,6 +721,7 @@ namespace dlib
     public:
         typedef LAYER_DETAILS layer_details_type;
         typedef SUBNET subnet_type;
+        typedef typename subnet_type::input_layer_type input_layer_type;
         typedef typename subnet_type::input_type input_type;
         const static size_t num_layers = subnet_type::num_layers + 1;
         const static size_t num_computational_layers = subnet_type::num_computational_layers + 1;
@@ -849,21 +975,28 @@ namespace dlib
         const tensor& get_final_data_gradient(
         ) const { return subnetwork->get_final_data_gradient(); }
 
-        void back_propagate_error(const tensor& x)
+        void back_propagate_error(
+            const tensor& x,
+            zero_gradients zero_grads = zero_gradients::yes
+        )
         {
-            back_propagate_error(x, private_get_gradient_input());
+            back_propagate_error(x, private_get_gradient_input(), zero_grads);
         }
-        void back_propagate_error(const tensor& x, const tensor& gradient_input)
+        void back_propagate_error(
+            const tensor& x,
+            const tensor& gradient_input,
+            zero_gradients zero_grads = zero_gradients::yes
+        )
         {
             dimpl::subnet_wrapper<subnet_type> wsub(*subnetwork);
             params_grad.copy_size(details.get_layer_params());
             impl::call_layer_backward(details, private_get_output(),
                 gradient_input, wsub, static_cast<tensor&>(params_grad));
 
-            subnetwork->back_propagate_error(x); 
+            subnetwork->back_propagate_error(x, zero_grads); 
 
             // zero out get_gradient_input()
-            gradient_input_is_stale = true;
+            gradient_input_is_stale = zero_grads == zero_gradients::yes;
         }
 
         template <typename solver_type>
@@ -880,6 +1013,12 @@ namespace dlib
             subnetwork->update_parameters(solvers.pop(), learning_rate);
         }
 
+        template <typename solver_type>
+        void update_parameters(std::vector<solver_type>& solvers, double learning_rate)
+        {
+            update_parameters(make_sstack(solvers), learning_rate);
+        }
+
         const tensor& get_parameter_gradient(
         ) const { return params_grad; }
 
@@ -889,10 +1028,19 @@ namespace dlib
         const subnet_type& subnet() const { return *subnetwork; }
         subnet_type& subnet() { return *subnetwork; }
 
+        const input_layer_type& input_layer() const { return subnet().input_layer(); } 
+        input_layer_type& input_layer() { return subnet().input_layer(); } 
+
         const layer_details_type& layer_details() const { return details; } 
         layer_details_type& layer_details() { return details; } 
 
         unsigned int sample_expansion_factor() const { return subnet().sample_expansion_factor(); }
+
+        void set_gradient_inputs_to_zero()
+        {
+            gradient_input_is_stale = true;
+            subnetwork->set_gradient_inputs_to_zero();
+        }
 
         void clean()
         {
@@ -1016,6 +1164,7 @@ namespace dlib
     public:
         typedef LAYER_DETAILS layer_details_type;
         typedef INPUT_LAYER subnet_type;
+        typedef INPUT_LAYER input_layer_type;
         typedef typename INPUT_LAYER::input_type input_type;
         const static size_t num_layers = 2;
         const static size_t num_computational_layers = 1;
@@ -1050,7 +1199,7 @@ namespace dlib
         add_layer(
             const add_layer<T,U,E>& item
         ):
-            input_layer(item.subnet()),
+            input_layer_(item.subnet()),
             details(item.layer_details()),
             this_layer_setup_called(item.this_layer_setup_called),
             gradient_input_is_stale(item.gradient_input_is_stale),
@@ -1075,7 +1224,7 @@ namespace dlib
         add_layer(
             const INPUT_LAYER& il 
         ) : 
-            input_layer(il), 
+            input_layer_(il), 
             this_layer_setup_called(false),
             gradient_input_is_stale(true),
             get_output_and_gradient_input_disabled(false),
@@ -1097,7 +1246,7 @@ namespace dlib
             INPUT_LAYER il
         ) : 
             details(std::move(layer_det)),
-            input_layer(std::move(il)),
+            input_layer_(std::move(il)),
             this_layer_setup_called(false),
             gradient_input_is_stale(true),
             get_output_and_gradient_input_disabled(false),
@@ -1136,7 +1285,7 @@ namespace dlib
             resizable_tensor& data
         ) const
         {
-            input_layer.to_tensor(ibegin, iend, data);
+            input_layer_.to_tensor(ibegin, iend, data);
             // make sure the input layer's to_tensor() function is implemented properly.
             DLIB_CASSERT(data.num_samples() >= std::distance(ibegin,iend), 
             "The input layer can't produce fewer output tensors than there are inputs.");
@@ -1210,11 +1359,18 @@ namespace dlib
         const tensor& get_final_data_gradient(
         ) const { return grad_final; }
 
-        void back_propagate_error(const tensor& x)
+        void back_propagate_error(
+            const tensor& x,
+            zero_gradients zero_grads = zero_gradients::yes
+        )
         {
-            back_propagate_error(x, private_get_gradient_input());
+            back_propagate_error(x, private_get_gradient_input(), zero_grads);
         }
-        void back_propagate_error(const tensor& x, const tensor& gradient_input)
+        void back_propagate_error(
+            const tensor& x,
+            const tensor& gradient_input,
+            zero_gradients zero_grads = zero_gradients::yes
+        )
         {
             // make sure grad_final is initialized to 0
             if (!have_same_dimensions(x, grad_final))
@@ -1227,7 +1383,7 @@ namespace dlib
                 gradient_input, wsub, static_cast<tensor&>(params_grad));
 
             // zero out get_gradient_input()
-            gradient_input_is_stale = true;
+            gradient_input_is_stale = zero_grads == zero_gradients::yes;
         }
 
         template <typename solver_type>
@@ -1243,19 +1399,33 @@ namespace dlib
             }
         }
 
+        template <typename solver_type>
+        void update_parameters(std::vector<solver_type>& solvers, double learning_rate)
+        {
+            update_parameters(make_sstack(solvers), learning_rate);
+        }
+
         const tensor& get_parameter_gradient(
         ) const { return params_grad; }
 
         tensor& get_parameter_gradient (
         )  { return params_grad; }
 
-        const subnet_type& subnet() const { return input_layer; } 
-        subnet_type& subnet() { return input_layer; } 
+        const subnet_type& subnet() const { return input_layer_; } 
+        subnet_type& subnet() { return input_layer_; } 
+
+        const subnet_type& input_layer() const { return input_layer_; } 
+        subnet_type& input_layer() { return input_layer_; } 
 
         const layer_details_type& layer_details() const { return details; } 
         layer_details_type& layer_details() { return details; } 
 
         unsigned int sample_expansion_factor() const { return _sample_expansion_factor; }
+
+        void set_gradient_inputs_to_zero()
+        {
+            gradient_input_is_stale = true;
+        }
 
         void clean()
         {
@@ -1272,7 +1442,7 @@ namespace dlib
         {
             int version = 3;
             serialize(version, out);
-            serialize(item.input_layer, out);
+            serialize(item.input_layer_, out);
             serialize(item.details, out);
             serialize(item.this_layer_setup_called, out);
             serialize(item.gradient_input_is_stale, out);
@@ -1289,7 +1459,7 @@ namespace dlib
             deserialize(version, in);
             if (!(2 <= version && version <= 3))
                 throw serialization_error("Unexpected version found while deserializing dlib::add_layer.");
-            deserialize(item.input_layer, in);
+            deserialize(item.input_layer_, in);
             deserialize(item.details, in);
             deserialize(item.this_layer_setup_called, in);
             deserialize(item.gradient_input_is_stale, in);
@@ -1358,7 +1528,7 @@ namespace dlib
 
         void swap(add_layer& item)
         {
-            std::swap(input_layer, item.input_layer);
+            std::swap(input_layer_, item.input_layer_);
             std::swap(details, item.details);
             std::swap(this_layer_setup_called, item.this_layer_setup_called);
             std::swap(gradient_input_is_stale, item.gradient_input_is_stale);
@@ -1369,7 +1539,7 @@ namespace dlib
             std::swap(_sample_expansion_factor, item._sample_expansion_factor); 
         }
 
-        subnet_type input_layer;
+        subnet_type input_layer_;
         LAYER_DETAILS details;
         bool this_layer_setup_called;
         bool gradient_input_is_stale;
@@ -1404,6 +1574,7 @@ namespace dlib
     public:
         typedef SUBNET subnet_type;
         typedef typename subnet_type::input_type input_type;
+        typedef typename subnet_type::input_layer_type input_layer_type;
         typedef int layer_details_type; // not really used anywhere, but required by subnet_wrapper.
         const static size_t num_layers = subnet_type::num_layers + 1;
         const static size_t num_computational_layers = subnet_type::num_computational_layers;
@@ -1468,19 +1639,32 @@ namespace dlib
         const tensor& get_final_data_gradient(
         ) const { return subnetwork.get_final_data_gradient(); }
 
-        void back_propagate_error(const tensor& x)
+        void back_propagate_error(
+            const tensor& x,
+            zero_gradients zero_grads = zero_gradients::yes
+        )
         {
-            subnetwork.back_propagate_error(x);
+            subnetwork.back_propagate_error(x, zero_grads);
         }
-        void back_propagate_error(const tensor& x, const tensor& gradient_input)
+        void back_propagate_error(
+            const tensor& x,
+            const tensor& gradient_input,
+            zero_gradients zero_grads = zero_gradients::yes
+        )
         {
-            subnetwork.back_propagate_error(x,gradient_input);
+            subnetwork.back_propagate_error(x,gradient_input, zero_grads);
         }
 
         template <typename solver_type>
         void update_parameters(sstack<solver_type> solvers, double learning_rate)
         {
             subnetwork.update_parameters(solvers, learning_rate);
+        }
+
+        template <typename solver_type>
+        void update_parameters(std::vector<solver_type>& solvers, double learning_rate)
+        {
+            update_parameters(make_sstack(solvers), learning_rate);
         }
 
         const tensor& get_parameter_gradient(
@@ -1492,7 +1676,15 @@ namespace dlib
         const subnet_type& subnet() const { return subnetwork; }
         subnet_type& subnet() { return subnetwork; }
 
+        const input_layer_type& input_layer() const { return subnet().input_layer(); } 
+        input_layer_type& input_layer() { return subnet().input_layer(); } 
+
         unsigned int sample_expansion_factor() const { return subnet().sample_expansion_factor(); }
+
+        void set_gradient_inputs_to_zero()
+        {
+            subnetwork.set_gradient_inputs_to_zero();
+        }
 
         void clean()
         {
@@ -1600,6 +1792,7 @@ namespace dlib
     public:
         typedef SUBNET subnet_type;
         typedef typename SUBNET::input_type input_type;
+        typedef typename subnet_type::input_layer_type input_layer_type;
         typedef int layer_details_type; // not really used anywhere, but required by subnet_wrapper.
         const static size_t comp_layers_in_each_group = (REPEATED_LAYER<SUBNET>::num_computational_layers-SUBNET::num_computational_layers);
         const static size_t comp_layers_in_repeated_group = comp_layers_in_each_group*num;
@@ -1741,34 +1934,44 @@ namespace dlib
             return details[0].get_gradient_input();
         }
 
+        const tensor& get_final_data_gradient(
+        ) const { return subnetwork.get_final_data_gradient(); }
+
         const tensor& get_parameter_gradient(
         ) const { return details[0].get_parameter_gradient(); }
 
         tensor& get_parameter_gradient (
         ) { return details[0].get_parameter_gradient(); }
 
-        void back_propagate_error(const tensor& x)
+        void back_propagate_error(
+            const tensor& x,
+            zero_gradients zero_grads = zero_gradients::yes
+        )
         {
-            back_propagate_error(x, private_get_gradient_input());
+            back_propagate_error(x, private_get_gradient_input(), zero_grads);
         }
-        void back_propagate_error(const tensor& x, const tensor& gradient_input)
+        void back_propagate_error(
+            const tensor& x,
+            const tensor& gradient_input,
+            zero_gradients zero_grads = zero_gradients::yes
+        )
         {
             if (details.size() > 1)
             {
-                details[0].back_propagate_error(details[1].get_output(), gradient_input);
+                details[0].back_propagate_error(details[1].get_output(), gradient_input, zero_grads);
                 for (size_t i = 1; i < details.size(); ++i)
                 {
                     if (i+1 < details.size())
-                        details[i].back_propagate_error(details[i+1].get_output(), details[i-1].get_final_data_gradient());
+                        details[i].back_propagate_error(details[i+1].get_output(), details[i-1].get_final_data_gradient(), zero_grads);
                     else
-                        details[i].back_propagate_error(subnetwork.get_output(), details[i-1].get_final_data_gradient());
+                        details[i].back_propagate_error(subnetwork.get_output(), details[i-1].get_final_data_gradient(), zero_grads);
                 }
             }
             else
             {
-                details[0].back_propagate_error(subnetwork.get_output(), gradient_input);
+                details[0].back_propagate_error(subnetwork.get_output(), gradient_input, zero_grads);
             }
-            subnetwork.back_propagate_error(x, details.back().get_final_data_gradient());
+            subnetwork.back_propagate_error(x, details.back().get_final_data_gradient(), zero_grads);
         }
 
         template <typename solver_type>
@@ -1779,10 +1982,24 @@ namespace dlib
             subnetwork.update_parameters(solvers.pop(comp_layers_in_each_group*details.size()),learning_rate);
         }
 
+        template <typename solver_type>
+        void update_parameters(std::vector<solver_type>& solvers, double learning_rate)
+        {
+            update_parameters(make_sstack(solvers), learning_rate);
+        }
+
         const subnet_type& subnet() const { return subnetwork; }
         subnet_type& subnet() { return subnetwork; }
 
+        const input_layer_type& input_layer() const { return subnet().input_layer(); } 
+        input_layer_type& input_layer() { return subnet().input_layer(); } 
+
         unsigned int sample_expansion_factor() const { return subnet().sample_expansion_factor(); }
+
+        void set_gradient_inputs_to_zero()
+        {
+            subnetwork.set_gradient_inputs_to_zero();
+        }
 
         void clean()
         {
@@ -1878,6 +2095,7 @@ namespace dlib
     public:
         typedef INPUT_LAYER subnet_type;
         typedef typename subnet_type::input_type input_type;
+        typedef INPUT_LAYER input_layer_type;
         typedef int layer_details_type; // not really used anywhere, but required by subnet_wrapper.
         const static size_t num_computational_layers = 0;
         const static size_t num_layers = 2;
@@ -1893,7 +2111,7 @@ namespace dlib
         template <typename T, typename E>
         add_tag_layer(
             const add_tag_layer<ID,T,E>& item
-        ) : input_layer(item.subnet()), 
+        ) : input_layer_(item.subnet()), 
             cached_output(item.cached_output),
             cached_output_ptr(nullptr),
             grad_final(item.grad_final),
@@ -1905,7 +2123,7 @@ namespace dlib
         add_tag_layer(
             T ...args
         ) : 
-            input_layer(std::move(args)...),
+            input_layer_(std::move(args)...),
             cached_output_ptr(nullptr),
             gradient_input_is_stale(true),
             _sample_expansion_factor(0)
@@ -1927,7 +2145,7 @@ namespace dlib
             resizable_tensor& data
         ) const
         {
-            input_layer.to_tensor(ibegin,iend,data);
+            input_layer_.to_tensor(ibegin,iend,data);
 
             // make sure the input layer's to_tensor() function is implemented properly.
             DLIB_CASSERT(data.num_samples() >= std::distance(ibegin,iend), 
@@ -1947,7 +2165,7 @@ namespace dlib
             forward_iterator iend
         )
         {
-            input_layer.to_tensor(ibegin,iend,cached_output);
+            input_layer_.to_tensor(ibegin,iend,cached_output);
             cached_output_ptr = nullptr;
             return get_output();
         }
@@ -1994,11 +2212,19 @@ namespace dlib
             return grad_final; 
         }
 
-        void back_propagate_error(const tensor& /*x*/)
+
+        void back_propagate_error(
+            const tensor& /*x*/,
+            zero_gradients /*zero_grads*/ = zero_gradients::yes
+        )
         {
             // nothing to do
         }
-        void back_propagate_error(const tensor& /*x*/, const tensor& /*gradient_input*/)
+        void back_propagate_error(
+            const tensor& /*x*/,
+            const tensor& /*gradient_input*/,
+            zero_gradients /*zero_grads*/ = zero_gradients::yes
+        )
         {
             // nothing to do
         }
@@ -2009,8 +2235,22 @@ namespace dlib
             // nothing to do
         }
 
-        const subnet_type& subnet() const { return input_layer; }
-        subnet_type& subnet() { return input_layer; }
+        template <typename solver_type>
+        void update_parameters(std::vector<solver_type>& solvers, double learning_rate)
+        {
+            update_parameters(make_sstack(solvers), learning_rate);
+        }
+
+        const subnet_type& subnet() const { return input_layer_; }
+        subnet_type& subnet() { return input_layer_; }
+
+        const input_layer_type& input_layer() const { return input_layer_; } 
+        input_layer_type& input_layer() { return input_layer_; } 
+
+        void set_gradient_inputs_to_zero()
+        {
+            // nothing to do
+        }
 
         void clean()
         {
@@ -2023,7 +2263,7 @@ namespace dlib
         {
             int version = 2;
             serialize(version, out);
-            serialize(item.input_layer, out);
+            serialize(item.input_layer_, out);
             serialize(item.cached_output, out);
             serialize(item.grad_final, out);
             serialize(item.gradient_input_is_stale, out);
@@ -2036,7 +2276,7 @@ namespace dlib
             deserialize(version, in);
             if (!(1 <= version && version <= 2))
                 throw serialization_error("Unexpected version found while deserializing dlib::add_tag_layer.");
-            deserialize(item.input_layer, in);
+            deserialize(item.input_layer_, in);
             deserialize(item.cached_output, in);
             deserialize(item.grad_final, in);
             deserialize(item.gradient_input_is_stale, in);
@@ -2100,7 +2340,7 @@ namespace dlib
 
         void swap(add_tag_layer& item)
         {
-            std::swap(input_layer, item.input_layer);
+            std::swap(input_layer_, item.input_layer_);
             std::swap(cached_output, item.cached_output);
             std::swap(cached_output_ptr, item.cached_output_ptr);
             std::swap(grad_final, item.grad_final);
@@ -2108,7 +2348,7 @@ namespace dlib
             std::swap(_sample_expansion_factor, item._sample_expansion_factor);
         }
 
-        subnet_type input_layer;
+        subnet_type input_layer_;
         resizable_tensor cached_output;
         tensor* cached_output_ptr;
         resizable_tensor grad_final;
@@ -2173,6 +2413,7 @@ namespace dlib
         typedef LOSS_DETAILS loss_details_type;
         typedef SUBNET subnet_type;
         typedef typename subnet_type::input_type input_type;
+        typedef typename subnet_type::input_layer_type input_layer_type;
         const static size_t num_layers = subnet_type::num_layers + 1;
         // Note that the loss layer doesn't count as an additional computational layer.
         const static size_t num_computational_layers = subnet_type::num_computational_layers;
@@ -2311,6 +2552,34 @@ namespace dlib
             return results;
         }
 
+        void back_propagate_error(
+            const tensor& x,
+            zero_gradients zero_grads = zero_gradients::yes
+        )
+        {
+            subnet().back_propagate_error(x, zero_grads);
+        }
+
+        void back_propagate_error(
+            const tensor& x,
+            const tensor& gradient_input,
+            zero_gradients zero_grads = zero_gradients::yes
+        )
+        {
+            subnet().back_propagate_error(x, gradient_input, zero_grads);
+        }
+
+        const tensor& get_final_data_gradient(
+        ) const 
+        { 
+            return subnet().get_final_data_gradient(); 
+        }
+
+        const tensor& forward(const tensor& x)
+        {
+            return subnet().forward(x);
+        }
+
         template <typename iterable_type>
         std::vector<output_label_type> operator() (
             const iterable_type& data,
@@ -2376,43 +2645,47 @@ namespace dlib
         template <typename label_iterator>
         double compute_parameter_gradients (
             const tensor& x,
-            label_iterator lbegin
+            label_iterator lbegin,
+            zero_gradients zero_grads = zero_gradients::yes
         )
         {
             subnetwork.forward(x);
             dimpl::subnet_wrapper<subnet_type> wsub(subnetwork);
             double l = loss.compute_loss_value_and_gradient(x, lbegin, wsub);
-            subnetwork.back_propagate_error(x);
+            subnetwork.back_propagate_error(x, zero_grads);
             return l;
         }
         template <typename forward_iterator, typename label_iterator>
         double compute_parameter_gradients (
             forward_iterator ibegin,
             forward_iterator iend,
-            label_iterator lbegin
+            label_iterator lbegin,
+            zero_gradients zero_grads = zero_gradients::yes
         )
         {
             to_tensor(ibegin,iend,temp_tensor);
-            return compute_parameter_gradients(temp_tensor, lbegin);
+            return compute_parameter_gradients(temp_tensor, lbegin, zero_grads);
         }
         double compute_parameter_gradients (
-            const tensor& x
+            const tensor& x,
+            zero_gradients zero_grads = zero_gradients::yes
         )
         {
             subnetwork.forward(x);
             dimpl::subnet_wrapper<subnet_type> wsub(subnetwork);
             double l = loss.compute_loss_value_and_gradient(x, wsub);
-            subnetwork.back_propagate_error(x);
+            subnetwork.back_propagate_error(x, zero_grads);
             return l;
         }
         template <typename forward_iterator>
         double compute_parameter_gradients (
             forward_iterator ibegin,
-            forward_iterator iend
+            forward_iterator iend,
+            zero_gradients zero_grads = zero_gradients::yes
         )
         {
             to_tensor(ibegin,iend,temp_tensor);
-            return compute_parameter_gradients(temp_tensor);
+            return compute_parameter_gradients(temp_tensor, zero_grads);
         }
 
         template <typename solver_type>
@@ -2424,10 +2697,26 @@ namespace dlib
             subnetwork.update_parameters(solvers, learning_rate);
         }
 
+        template <typename solver_type>
+        void update_parameters(std::vector<solver_type>& solvers, double learning_rate)
+        {
+            update_parameters(make_sstack(solvers), learning_rate);
+        }
+
         const subnet_type& subnet() const { return subnetwork; }
         subnet_type& subnet() { return subnetwork; }
+
+        const input_layer_type& input_layer() const { return subnet().input_layer(); } 
+        input_layer_type& input_layer() { return subnet().input_layer(); } 
+
         const loss_details_type& loss_details() const { return loss; }
         loss_details_type& loss_details() { return loss; }
+
+        void set_gradient_inputs_to_zero (
+        )
+        {
+            subnetwork.set_gradient_inputs_to_zero();
+        }
 
         void clean (
         )
@@ -2507,6 +2796,9 @@ namespace dlib
         {
             static_assert(i < T::num_layers, "Call to layer() attempted to access non-existing layer in neural network.");
             static T& makeT();
+            // If you get error here mentioning lack of member "subnet" in "dlib::input<...>",
+            // then likely your "dlib::layer<...>" invocation wasn't able to find requested layer.
+            // This could happen for instance when trying to use skip layer for non-existing tag.
             using next_type = typename std::remove_reference<decltype(makeT().subnet())>::type;
             using type = typename layer_helper<i-1,next_type>::type;
             static type& layer(T& n)
@@ -2683,43 +2975,20 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
-
-    namespace dimpl
+    template <typename net_type>
+    typename net_type::input_layer_type& input_layer (
+        net_type& net
+    )
     {
-        template <typename T>
-        T& get_input_details (
-            T& net
-        ) 
-        { 
-            return net; 
-        } 
-
-        template <typename T, bool is_first, typename enabled>
-        auto get_input_details (
-            dimpl::subnet_wrapper<T,is_first,enabled>& net
-        ) -> decltype(net.layer_details())&
-        {
-            return net.layer_details();
-        }
-
-        template <typename T, bool is_first, typename enabled>
-        auto get_input_details (
-            const dimpl::subnet_wrapper<T,is_first,enabled>& net
-        ) -> decltype(net.layer_details())&
-        {
-            return net.layer_details();
-        }
+        return net.input_layer();
     }
 
     template <typename net_type>
-    auto input_layer (
-        net_type& net
-    ) -> decltype(dimpl::get_input_details(layer<net_type::num_layers-1>(net)))&
+    const typename net_type::input_layer_type& input_layer (
+        const net_type& net
+    )
     {
-        // Calling input_layer() on a subnet_wrapper is a little funny since the behavior of
-        // .subnet() returns another subnet_wrapper rather than an input details object as it
-        // does in add_layer.
-        return dimpl::get_input_details(layer<net_type::num_layers-1>(net));
+        return net.input_layer();
     }
 
 // ----------------------------------------------------------------------------------------
@@ -2730,6 +2999,7 @@ namespace dlib
     public:
         typedef SUBNET subnet_type;
         typedef typename subnet_type::input_type input_type;
+        typedef typename subnet_type::input_layer_type input_layer_type;
         typedef int layer_details_type; // not really used anywhere, but required by subnet_wrapper.
         const static size_t num_layers = subnet_type::num_layers + 1;
         const static size_t num_computational_layers = subnet_type::num_computational_layers;
@@ -2803,15 +3073,24 @@ namespace dlib
             return subnetwork.get_final_data_gradient(); 
         }
 
-        void back_propagate_error(const tensor& x)
+        void back_propagate_error(
+            const tensor& x,
+            zero_gradients zero_grads = zero_gradients::yes
+        )
         {
-            subnetwork.back_propagate_error(x);
+            subnetwork.back_propagate_error(x, zero_grads);
         }
 
         template <typename solver_type>
         void update_parameters(sstack<solver_type> solvers, double learning_rate)
         {
             subnetwork.update_parameters(solvers, learning_rate);
+        }
+
+        template <typename solver_type>
+        void update_parameters(std::vector<solver_type>& solvers, double learning_rate)
+        {
+            update_parameters(make_sstack(solvers), learning_rate);
         }
 
         const tensor& get_parameter_gradient(
@@ -2831,7 +3110,15 @@ namespace dlib
             return subnetwork; 
         }
 
+        const input_layer_type& input_layer() const { return subnet().input_layer(); } 
+        input_layer_type& input_layer() { return subnet().input_layer(); } 
+
         unsigned int sample_expansion_factor() const { return subnet().sample_expansion_factor(); }
+
+        void set_gradient_inputs_to_zero()
+        {
+            subnetwork.set_gradient_inputs_to_zero();
+        }
 
         void clean()
         {
@@ -2950,8 +3237,8 @@ namespace dlib
                 // layer.
                 const long num_samples = rnd.get_random_32bit_number()%4+3;
                 const long k  = rnd.get_random_32bit_number()%4+2;
-                const long nr = rnd.get_random_32bit_number()%4+2;
-                const long nc = rnd.get_random_32bit_number()%4+2;
+                const long nr = ((rnd.get_random_32bit_number()%4)/2)*2+2;
+                const long nc = ((rnd.get_random_32bit_number()%4)/2)*2+2;
 
                 output.set_size(num_samples, k, nr, nc);
                 gradient_input.set_size(num_samples, k, nr, nc);
@@ -3268,140 +3555,6 @@ namespace dlib
     namespace impl
     {
         template <size_t i, size_t num>
-        struct vlp_loop
-        {
-            template <typename T, typename U>
-            static typename std::enable_if<!is_add_layer<U>::value>::type invoke_functor(T&& , size_t& , U&& )
-            {
-                // intentionally left empty
-            }
-
-            template <typename T, typename U>
-            static typename std::enable_if<is_add_layer<U>::value>::type invoke_functor(T&& v , size_t& comp_i, U&& l )
-            {
-                v(comp_i, l.layer_details().get_layer_params());
-                ++comp_i;
-            }
-
-            template <
-                typename net_type,
-                typename visitor
-                >
-            static void visit(
-                size_t comp_i,
-                net_type& net,
-                visitor&& v
-            )
-            {
-                invoke_functor(v, comp_i, layer<i>(net));
-                vlp_loop<i+1, num>::visit(comp_i, net,v);
-            }
-        };
-
-        template <size_t num>
-        struct vlp_loop<num,num>
-        {
-            template <
-                typename net_type,
-                typename visitor
-                >
-            static void visit(
-                size_t,
-                net_type&,
-                visitor&& 
-            )
-            {
-                // Base case of recursion.  Don't do anything.
-            }
-        };
-
-    }
-
-    template <
-        typename net_type,
-        typename visitor
-        >
-    void visit_layer_parameters(
-        net_type& net,
-        visitor v
-    )
-    {
-        size_t comp_i = 0;
-        impl::vlp_loop<0, net_type::num_layers>::visit(comp_i, net, v);
-    }
-
-// ----------------------------------------------------------------------------------------
-
-    namespace impl
-    {
-        template <size_t i, size_t num>
-        struct vlpg_loop
-        {
-            template <typename T, typename U>
-            static typename std::enable_if<!is_add_layer<U>::value>::type invoke_functor(T&& , size_t& , U&& )
-            {
-                // intentionally left empty
-            }
-
-            template <typename T, typename U>
-            static typename std::enable_if<is_add_layer<U>::value>::type invoke_functor(T&& v , size_t& comp_i, U&& l )
-            {
-                v(comp_i, l.get_parameter_gradient());
-                ++comp_i;
-            }
-
-            template <
-                typename net_type,
-                typename visitor
-                >
-            static void visit(
-                size_t comp_i,
-                net_type& net,
-                visitor&& v
-            )
-            {
-                invoke_functor(v, comp_i, layer<i>(net));
-                vlpg_loop<i+1, num>::visit(comp_i, net,v);
-            }
-        };
-
-        template <size_t num>
-        struct vlpg_loop<num,num>
-        {
-            template <
-                typename net_type,
-                typename visitor
-                >
-            static void visit(
-                size_t,
-                net_type&,
-                visitor&& 
-            )
-            {
-                // Base case of recursion.  Don't do anything.
-            }
-        };
-
-    }
-
-    template <
-        typename net_type,
-        typename visitor
-        >
-    void visit_layer_parameter_gradients(
-        net_type& net,
-        visitor v
-    )
-    {
-        size_t comp_i = 0;
-        impl::vlpg_loop<0, net_type::num_layers>::visit(comp_i, net, v);
-    }
-
-// ----------------------------------------------------------------------------------------
-
-    namespace impl
-    {
-        template <size_t i, size_t num>
         struct vl_loop
         {
             template <
@@ -3413,7 +3566,9 @@ namespace dlib
                 visitor&& v
             )
             {
-                v(i, layer<i>(net));
+                // Call whatever version of the visitor the user provided.
+                call_if_valid(v, i, layer<i>(net));
+                call_if_valid(v, layer<i>(net));
                 vl_loop<i+1, num>::visit(net,v);
             }
         };
@@ -3447,7 +3602,9 @@ namespace dlib
             )
             {
                 vl_loop_backwards<i+1, num>::visit(net,v);
-                v(i, layer<i>(net));
+                // Call whatever version of the visitor the user provided.
+                call_if_valid(v, i, layer<i>(net));
+                call_if_valid(v, layer<i>(net));
             }
         };
 
@@ -3543,7 +3700,7 @@ namespace dlib
                 visitor&& v
             )
             {
-                v(next_net);
+                call_if_valid(v, next_net);
                 vl_until_tag<i+1,tag_id>::visit(net,layer<i+1>(net),v);
             }
 
@@ -3553,12 +3710,12 @@ namespace dlib
                 typename visitor
                 >
             static void visit(
-                net_type& net,
+                net_type&,
                 const add_tag_layer<tag_id,SUBNET>& next_net,
                 visitor&& v
             )
             {
-                v(next_net);
+                call_if_valid(v, next_net);
             }
 
             template <
@@ -3567,12 +3724,12 @@ namespace dlib
                 typename visitor
                 >
             static void visit(
-                net_type& net,
+                net_type&,
                 add_tag_layer<tag_id,SUBNET>& next_net,
                 visitor&& v
             )
             {
-                v(next_net);
+                call_if_valid(v, next_net);
             }
         };
     }
@@ -3588,6 +3745,153 @@ namespace dlib
     )
     {
         impl::vl_until_tag<0,tag_id>::visit(net, net, v);
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    namespace impl 
+    {
+        template <
+            typename visitor
+            >
+        class visitor_computational_layer
+        {
+        public:
+            explicit visitor_computational_layer(visitor& v) : v_(v) {}
+
+            template <typename layer>
+            void do_visit(size_t idx, layer& l) const
+            {
+                // Call whatever version of the visitor the user provided.
+                call_if_valid(v_, idx, l.layer_details());
+                call_if_valid(v_, l.layer_details());
+            }
+
+            // const case
+            template <typename T, typename U, typename E>
+            void operator()(size_t idx, const add_layer<T,U,E>& l) const { do_visit(idx, l); }
+            // non-const cast
+            template <typename T, typename U, typename E>
+            void operator()(size_t idx, add_layer<T,U,E>& l) const { do_visit(idx, l); }
+
+        private:
+
+            visitor& v_;
+        };
+    }
+
+    template <
+        typename net_type,
+        typename visitor
+        >
+    void visit_computational_layers(
+        net_type& net,
+        visitor v
+    )
+    {
+        visit_layers(net, impl::visitor_computational_layer<visitor>(v));
+    }
+
+    template <
+        size_t begin,
+        size_t end,
+        typename net_type,
+        typename visitor
+        >
+    void visit_computational_layers_range(
+        net_type& net,
+        visitor v
+    )
+    {
+        visit_layers_range<begin,end>(net, impl::visitor_computational_layer<visitor>(v));
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    namespace impl
+    {
+        template <
+            typename visitor
+            >
+        class visit_layer_parameters
+        {
+        public:
+            explicit visit_layer_parameters(visitor& v) : v_(v) {}
+
+            template <typename layer>
+            void operator()(layer& l)
+            {
+                // Call whatever version of the visitor the user provided.
+                const bool visitor_called = call_if_valid(v_, computational_layer_idx, l.get_layer_params()) ||
+                    call_if_valid(v_, l.get_layer_params());
+                DLIB_CASSERT(visitor_called, "A visitor function with an incorrect signature was given to visit_layer_parameters()");
+                ++computational_layer_idx;
+            }
+        private:
+
+            size_t computational_layer_idx = 0;
+            visitor& v_;
+        };
+    }
+
+    template <
+        typename net_type,
+        typename visitor
+        >
+    void visit_layer_parameters(
+        net_type& net,
+        visitor v
+    )
+    {
+        visit_computational_layers(net, impl::visit_layer_parameters<visitor>(v));
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    namespace impl 
+    {
+        template <
+            typename visitor
+            >
+        class visit_layer_parameter_gradients
+        {
+        public:
+            explicit visit_layer_parameter_gradients(visitor& v) : v_(v) {}
+
+            template <typename layer>
+            void do_visit(layer& l) 
+            {
+                // Call whatever version of the visitor the user provided.
+                const bool visitor_called = call_if_valid(v_, computational_layer_idx, l.get_parameter_gradient()) ||
+                    call_if_valid(v_, l.get_parameter_gradient());
+                DLIB_CASSERT(visitor_called, "A visitor function with an incorrect signature was given to visit_layer_parameter_gradients()");
+                ++computational_layer_idx;
+            }
+
+            // const version
+            template <typename T, typename U, typename E>
+            void operator()(const add_layer<T,U,E>& l) { do_visit(l); }
+            // non-const version
+            template <typename T, typename U, typename E>
+            void operator()(add_layer<T,U,E>& l) { do_visit(l); }
+
+        private:
+
+            size_t computational_layer_idx = 0;
+            visitor& v_;
+        };
+    }
+
+    template <
+        typename net_type,
+        typename visitor
+        >
+    void visit_layer_parameter_gradients(
+        net_type& net,
+        visitor v
+    )
+    {
+        visit_layers(net, impl::visit_layer_parameter_gradients<visitor>(v));
     }
 
 // ----------------------------------------------------------------------------------------

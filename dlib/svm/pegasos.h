@@ -41,6 +41,7 @@ namespace dlib
             max_sv(40),
             lambda_c1(0.0001),
             lambda_c2(0.0001),
+            max_wnorm(100),
             tau(0.01),
             tolerance(0.01),
             train_count(0),
@@ -654,7 +655,7 @@ namespace dlib
 
         trainer_type trainer;
         scalar_type min_learning_rate;
-        bool verbose;
+        bool verbose = true;
         bool use_cache;
         long cache_size;
 

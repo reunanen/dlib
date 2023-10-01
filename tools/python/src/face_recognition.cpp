@@ -43,6 +43,15 @@ public:
         return compute_face_descriptors(img, faces, num_jitters, padding)[0];
     }
 
+    matrix<double,0,1> compute_face_descriptor_from_aligned_image (
+        numpy_image<rgb_pixel> img,        
+        const int num_jitters
+    )
+    {
+        std::vector<numpy_image<rgb_pixel>> images{img};        
+        return batch_compute_face_descriptors_from_aligned_images(images, num_jitters)[0];                
+    }
+
     std::vector<matrix<double,0,1>> compute_face_descriptors (
         numpy_image<rgb_pixel> img,
         const std::vector<full_object_detection>& faces,
@@ -53,7 +62,7 @@ public:
         std::vector<numpy_image<rgb_pixel>> batch_img(1, img);
         std::vector<std::vector<full_object_detection>> batch_faces(1, faces);
         return batch_compute_face_descriptors(batch_img, batch_faces, num_jitters, padding)[0];
-    }
+    }       
 
     std::vector<std::vector<matrix<double,0,1>>> batch_compute_face_descriptors (
         const std::vector<numpy_image<rgb_pixel>>& batch_imgs,
@@ -127,6 +136,52 @@ public:
         return face_descriptors;
     }
 
+    std::vector<matrix<double,0,1>> batch_compute_face_descriptors_from_aligned_images (
+        const std::vector<numpy_image<rgb_pixel>>& batch_imgs,        
+        const int num_jitters
+    )
+    {
+        dlib::array<matrix<rgb_pixel>> face_chips;           
+        for (auto& img : batch_imgs) {
+
+            matrix<rgb_pixel> image;
+            if (is_image<unsigned char>(img))
+                assign_image(image, numpy_image<unsigned char>(img));
+            else if (is_image<rgb_pixel>(img))
+                assign_image(image, numpy_image<rgb_pixel>(img));
+            else
+                throw dlib::error("Unsupported image type, must be 8bit gray or RGB image.");
+
+            // Check for the size of the image
+            if ((image.nr() != 150) || (image.nc() != 150)) {
+                throw dlib::error("Unsupported image size, it should be of size 150x150. Also cropping must be done as `dlib.get_face_chip` would do it. \
+                That is, centered and scaled essentially the same way.");
+            }
+
+            face_chips.push_back(image);        
+        }       
+
+        std::vector<matrix<double,0,1>> face_descriptors;
+        if (num_jitters <= 1)
+        {
+            // extract descriptors and convert from float vectors to double vectors
+            auto descriptors = net(face_chips, 16);      
+
+            for (auto& des: descriptors) {
+                face_descriptors.push_back(matrix_cast<double>(des));
+            }       
+        }
+        else
+        {
+            // extract descriptors and convert from float vectors to double vectors
+            for (auto& fimg : face_chips) {
+                auto& r = mean(mat(net(jitter_image(fimg, num_jitters), 16)));
+                face_descriptors.push_back(matrix_cast<double>(r)); 
+            }
+        }        
+        return face_descriptors;        
+    }
+
 private:
 
     dlib::rand rnd;
@@ -174,6 +229,37 @@ private:
 };
 
 // ----------------------------------------------------------------------------------------
+
+py::list bottom_up_clustering(py::list descriptors, const int min_num_clusters, const double max_dist)
+{
+    DLIB_CASSERT(min_num_clusters > 0);
+
+    size_t num_descriptors = py::len(descriptors);
+    matrix<float> dist(static_cast<long>(num_descriptors), static_cast<long>(num_descriptors));
+
+    for (size_t i = 0; i < num_descriptors; ++i)
+    {
+        for (size_t j = i+1; j < num_descriptors; ++j)
+        {
+            const long i2 = static_cast<long>(i);
+            const long j2 = static_cast<long>(j);
+            matrix<double,0,1>& first_descriptor = descriptors[i].cast<matrix<double,0,1>&>();
+            matrix<double,0,1>& second_descriptor = descriptors[j].cast<matrix<double,0,1>&>();
+            dist(i2, j2) = dlib::length( first_descriptor- second_descriptor);
+            dist(j2, i2) = dist(i2, j2);
+        }
+    }
+
+    std::vector<unsigned long> labels;
+    const auto num_clusters = dlib::bottom_up_cluster(dist, labels, min_num_clusters, max_dist);
+
+    py::list clusters;
+    for (size_t i = 0; i < labels.size(); ++i)
+    {
+        clusters.append(labels[i]);
+    }
+    return clusters;
+}
 
 py::list chinese_whispers_clustering(py::list descriptors, float threshold)
 {
@@ -300,6 +386,12 @@ void bind_face_recognition(py::module &m)
             "If num_jitters>1 then each face will be randomly jittered slightly num_jitters times, each run through the 128D projection, and the average used as the face descriptor. "
             "Optionally allows to override default padding of 0.25 around the face."
             )
+        .def("compute_face_descriptor", &face_recognition_model_v1::compute_face_descriptor_from_aligned_image,
+            py::arg("img"), py::arg("num_jitters")=0,
+            "Takes an aligned face image of size 150x150 and converts it into a 128D face descriptor."
+            "Note that the alignment should be done in the same way dlib.get_face_chip does it."
+            "If num_jitters>1 then image will be randomly jittered slightly num_jitters times, each run through the 128D projection, and the average used as the face descriptor. "            
+            )
         .def("compute_face_descriptor", &face_recognition_model_v1::compute_face_descriptors,
             py::arg("img"), py::arg("faces"), py::arg("num_jitters")=0, py::arg("padding")=0.25,
             "Takes an image and an array of full_object_detections that reference faces in that image and converts them into 128D face descriptors.  "
@@ -309,9 +401,16 @@ void bind_face_recognition(py::module &m)
         .def("compute_face_descriptor", &face_recognition_model_v1::batch_compute_face_descriptors,
             py::arg("batch_img"), py::arg("batch_faces"), py::arg("num_jitters")=0, py::arg("padding")=0.25,
             "Takes an array of images and an array of arrays of full_object_detections. `batch_faces[i]` must be an array of full_object_detections corresponding to the image `batch_img[i]`, "
-            "referencing faces in that image. Every face will be converting into 128D face descriptors.  "
+            "referencing faces in that image. Every face will be converted into 128D face descriptors.  "
             "If num_jitters>1 then each face will be randomly jittered slightly num_jitters times, each run through the 128D projection, and the average used as the face descriptor. "
             "Optionally allows to override default padding of 0.25 around the face."
+            )
+        .def("compute_face_descriptor", &face_recognition_model_v1::batch_compute_face_descriptors_from_aligned_images,
+            py::arg("batch_img"), py::arg("num_jitters")=0,
+            "Takes an array of aligned images of faces of size 150_x_150."
+            "Note that the alignment should be done in the same way dlib.get_face_chip does it."
+            "Every face will be converted into 128D face descriptors.  "
+            "If num_jitters>1 then each face will be randomly jittered slightly num_jitters times, each run through the 128D projection, and the average used as the face descriptor. "            
             );
     }
 
@@ -323,6 +422,8 @@ void bind_face_recognition(py::module &m)
 	"Takes an image and a full_object_detections object that reference faces in that image and saves the faces with the specified file name prefix.  The faces will be rotated upright and scaled to 150x150 pixels or with the optional specified size and padding.",
           py::arg("img"), py::arg("faces"), py::arg("chip_filename"), py::arg("size")=150, py::arg("padding")=0.25
     );
+    m.def("bottom_up_clustering", &bottom_up_clustering, py::arg("descriptors"), py::arg("min_num_clusters")=1, py::arg("max_dist")=0.6,
+          "Takes a list of descriptors and returns a list that contains a label for each descriptor. Clustering is done using dlib::bottom_up_cluster.");
     m.def("chinese_whispers_clustering", &chinese_whispers_clustering, py::arg("descriptors"), py::arg("threshold"),
         "Takes a list of descriptors and returns a list that contains a label for each descriptor. Clustering is done using dlib::chinese_whispers."
         );

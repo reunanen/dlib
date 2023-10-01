@@ -73,23 +73,6 @@ namespace dlib
             float alpha,
             const tensor& src
         );
-        /*!
-            requires
-                - One of the following is true: 
-                    - have_same_dimensions(src, dest)
-                    - src.num_samples()==1 && src.k()==dest.k() && src.nr()==1 && src.nc()==1
-                    - src.num_samples()==1 && src.k()==dest.k() && src.nr()==dest.nr() && src.nc()==dest.nc()
-                    - src.num_samples()==1 && src.k()==1 && src.nr()==dest.nr() && src.nc()==dest.nc()
-                - is_same_object(src,dest) == false
-            ensures
-                - performs: dest = beta*dest + alpha*src
-                  However, how the addition happens depends on the dimensions of src.  In
-                  particular, this function adds the scaled values of one src tensor to
-                  dest. Each dimension of the src tensor must match the corresponding
-                  dimension of the dest tensor or must be equal to 1. In the latter case,
-                  the same value from the src tensor, for those dimensions, will be used to
-                  add into the dest tensor.
-        !*/
 
     // ------------------------------------------------------------------------------------
 
@@ -97,22 +80,6 @@ namespace dlib
             tensor& grad,
             const tensor& gradient_input
         );
-        /*!
-            requires
-                - grad.num_samples() == 1
-                - grad.k()  >= 1
-                - grad.nr() == 1
-                - grad.nc() == 1
-                - gradient_input.k() == grad.k()
-                - gradient_input.size() > 0
-                - is_same_object(grad,gradient_input) == false
-            ensures
-                - let BIAS be a tensor with all dimensions equal to 1 except for k which is >= 1.
-                - let OUT be the output of add(1,OUT,1,BIAS)
-                - let f(gradient_input,BIAS) == dot(gradient_input,OUT)
-                - Then this function computes the gradient of f() with respect to BIAS and
-                  assigns it to grad.
-        !*/
 
     // ------------------------------------------------------------------------------------
 
@@ -206,6 +173,13 @@ namespace dlib
 
             void operator() (
                 const bool add_to_output,
+                resizable_tensor& output,
+                const tensor& data,
+                const tensor& filters
+            );
+
+            void operator() (
+                const bool add_to_output,
                 tensor& output,
                 const tensor& data,
                 const tensor& filters
@@ -215,7 +189,16 @@ namespace dlib
                 const bool add_to_output,
                 resizable_tensor& output,
                 const tensor& data,
-                const tensor& filters
+                const tensor& filters,
+                const tensor& biases
+            );
+
+            void operator() (
+                const bool add_to_output,
+                tensor& output,
+                const tensor& data,
+                const tensor& filters,
+                const tensor& biases
             );
 
             void get_gradient_for_data (
@@ -235,6 +218,16 @@ namespace dlib
            void setup(
                 const tensor& data,
                 const tensor& filters,
+                int stride_y,
+                int stride_x,
+                int padding_y,
+                int padding_x
+            );
+
+           void setup(
+                const tensor& data,
+                const tensor& filters,
+                const tensor& biases,
                 int stride_y,
                 int stride_x,
                 int padding_y,
@@ -261,14 +254,20 @@ namespace dlib
             int out_nr;
             int out_nc;
 
+            enum class allow_cache_use { no, yes };
+
+            // sets the three _algo fields.
+            void select_best_algorithms(const tensor& data, const tensor_descriptor& dest_desc, allow_cache_use allow_cache_use);
             int forward_algo;
             int backward_data_algo;
             int backward_filters_algo;
 
+            // sets the three _workspace_size_in_bytes fields.
+            void update_convolution_data_workspace_sizes(const tensor& data, const tensor_descriptor& dest_desc);
             size_t forward_workspace_size_in_bytes;
             size_t backward_data_workspace_size_in_bytes;
             size_t backward_filters_workspace_size_in_bytes;
-            std::shared_ptr<resizable_cuda_buffer> workspace;
+
             cuda_data_void_ptr forward_workspace;
             cuda_data_void_ptr backward_data_workspace;
             cuda_data_void_ptr backward_filters_workspace;
@@ -353,39 +352,12 @@ namespace dlib
             tensor& dest,
             const tensor& src
         );
-        /*!
-            requires
-                - have_same_dimensions(dest, src) == true
-            ensures
-                - Note that the softmax function is a vector valued function: 
-                    s(x) == exp(x)/sum(exp(x)) 
-                - Computes the softmax function on src and writes the results to dest.  The
-                  softmax is computed per spatial location across the different channels at
-                  each location.  That is, softmax() outputs a new tensor, #dest, where
-                  each of the spatial locations in dest (i.e. image idx, row idx, and
-                  column idx) contains the output of s() evaluated over the channel values
-                  at each location.
-                - This function supports in-place operation, i.e. having
-                  is_same_object(dest, src)==true
-        !*/
 
         void softmax_gradient (
             tensor& grad,
             const tensor& dest,
             const tensor& gradient_input
         );
-        /*!
-            requires
-                - have_same_dimensions(dest,gradient_input) == true 
-                - have_same_dimensions(dest,grad) == true 
-                - is_same_object(grad, dest)==false
-            ensures
-                - We interpret dest as the output of softmax(dest,SRC) for some SRC tensor.
-                  Then let f(SRC) == dot(gradient_input,dest) Then this function computes
-                  the gradient of f() with respect to SRC and assigns it to grad.
-                - This function supports in-place operation, i.e. having
-                  is_same_object(grad, gradient_input)==true
-        !*/
 
     // ------------------------------------------------------------------------------------
 
@@ -406,34 +378,12 @@ namespace dlib
             tensor& dest,
             const tensor& src
         );
-        /*!
-            requires
-                - have_same_dimensions(dest, src) == true
-            ensures
-                - for all valid i:
-                    - #dest.host()[i] == 1/(1+std::exp(-src.host()[i])) 
-                - This function supports in-place operation, i.e. having
-                  is_same_object(dest, src)==true
-        !*/
 
         void sigmoid_gradient (
             tensor& grad,
             const tensor& dest,
             const tensor& gradient_input
         );
-        /*!
-            requires
-                - have_same_dimensions(dest,gradient_input) == true 
-                - have_same_dimensions(dest,grad) == true 
-                - is_same_object(grad,dest) == false
-            ensures
-                - Recalling that dest is the output of sigmoid(dest,SRC) for some SRC tensor,
-                  let f(SRC) == dot(gradient_input,dest)
-                - Then this function computes the gradient of f() with respect to SRC and
-                  assigns it to grad.
-                - This function supports in-place operation, i.e. having
-                  is_same_object(grad, gradient_input)==true
-        !*/
 
     // ------------------------------------------------------------------------------------
 
@@ -441,34 +391,12 @@ namespace dlib
             tensor& dest,
             const tensor& src
         );
-        /*!
-            requires
-                - have_same_dimensions(dest, src) == true
-            ensures
-                - for all valid i:
-                    - #dest.host()[i] == std::max(0,src.host()[i]) 
-                - This function supports in-place operation, i.e. having
-                  is_same_object(dest, src)==true
-        !*/
 
         void relu_gradient (
             tensor& grad,
             const tensor& dest,
             const tensor& gradient_input
         );
-        /*!
-            requires
-                - have_same_dimensions(dest,gradient_input) == true 
-                - have_same_dimensions(dest,grad) == true 
-                - is_same_object(grad,dest) == false
-            ensures
-                - Recalling that dest is the output of relu(dest,SRC) for some SRC tensor,
-                  let f(SRC) == dot(gradient_input,dest)
-                - Then this function computes the gradient of f() with respect to SRC and
-                  assigns it to grad.
-                - This function supports in-place operation, i.e. having
-                  is_same_object(grad, gradient_input)==true
-        !*/
 
     // ------------------------------------------------------------------------------------
 
@@ -476,40 +404,16 @@ namespace dlib
             tensor& dest,
             const tensor& src
         );
-        /*!
-            requires
-                - have_same_dimensions(dest, src) == true
-            ensures
-                - for all valid i:
-                    - #dest.host()[i] == std::tanh(src.host()[i]) 
-                - This function supports in-place operation, i.e. having
-                  is_same_object(dest, src)==true
-        !*/
 
         void tanh_gradient (
             tensor& grad,
             const tensor& dest,
             const tensor& gradient_input
         );
-        /*!
-            requires
-                - have_same_dimensions(dest,gradient_input) == true 
-                - have_same_dimensions(dest,grad) == true 
-                - is_same_object(grad,dest) == false
-            ensures
-                - Recalling that dest is the output of tanh(dest,SRC) for some SRC tensor,
-                  let f(SRC) == dot(gradient_input,dest)
-                - Then this function computes the gradient of f() with respect to SRC and
-                  assigns it to grad.
-                - This function supports in-place operation, i.e. having
-                  is_same_object(grad, gradient_input)==true
-        !*/
-
-
 
     // ------------------------------------------------------------------------------------
 
-    } 
+    }
 }
 
 #endif // DLIB_USE_CUDA

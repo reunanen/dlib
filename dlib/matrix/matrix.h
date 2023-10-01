@@ -25,6 +25,8 @@
 #endif
 
 #ifdef _MSC_VER
+#pragma warning(push)
+
 // Disable the following warnings for Visual Studio
 
 // This warning is:
@@ -1771,7 +1773,7 @@ namespace dlib
             explicit literal_assign_helper(matrix* m_): m(m_), r(0), c(0),has_been_used(false) {next();}
             ~literal_assign_helper() noexcept(false)
             {
-                DLIB_CASSERT(!has_been_used || r == m->nr(),
+                DLIB_CASSERT(!has_been_used || r == (*m).nr(),
                              "You have used the matrix comma based assignment incorrectly by failing to\n"
                              "supply a full set of values for every element of a matrix object.\n");
             }
@@ -1780,14 +1782,14 @@ namespace dlib
                 const T& val
             ) const
             {
-                DLIB_CASSERT(r < m->nr() && c < m->nc(),
+                DLIB_CASSERT(r < (*m).nr() && c < (*m).nc(),
                              "You have used the matrix comma based assignment incorrectly by attempting to\n" <<
                              "supply more values than there are elements in the matrix object being assigned to.\n\n" <<
                              "Did you forget to call set_size()?" 
                              << "\n\t r: " << r 
                              << "\n\t c: " << c 
-                             << "\n\t m->nr(): " << m->nr()
-                             << "\n\t m->nc(): " << m->nc());
+                             << "\n\t m->nr(): " << (*m).nr()
+                             << "\n\t m->nc(): " << (*m).nc());
                 (*m)(r,c) = val;
                 next();
                 has_been_used = true;
@@ -1802,7 +1804,7 @@ namespace dlib
             ) const
             {
                 ++c;
-                if (c == m->nc())
+                if (c == (*m).nc())
                 {
                     c = 0;
                     ++r;
@@ -2165,10 +2167,8 @@ namespace dlib
 }
 
 #ifdef _MSC_VER
-// put warnings back to their default settings
-#pragma warning(default : 4355)
-#pragma warning(default : 4723)
-#pragma warning(default : 4724)
+// restore warnings back to their previous settings
+#pragma warning(pop)
 #endif
 
 #endif // DLIB_MATRIx_

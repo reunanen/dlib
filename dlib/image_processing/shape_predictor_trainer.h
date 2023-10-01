@@ -131,7 +131,7 @@ namespace dlib
             _oversampling_amount = amount;
         }
 
-        unsigned long get_oversampling_translation_jitter (
+        double get_oversampling_translation_jitter (
         ) const { return _oversampling_translation_jitter; }
 
         void set_oversampling_translation_jitter (
@@ -346,7 +346,7 @@ namespace dlib
             }
 
             if (_verbose)
-                std::cout << "Training complete                          " << std::endl;
+                std::cout << "\nTraining complete" << std::endl;
 
             return shape_predictor(initial_shape, forests, pixel_coordinates);
         }

@@ -59,7 +59,7 @@ std::shared_ptr<cv> cv_from_object(py::object obj)
         auto temp = std::make_shared<cv>(nr);
         *temp = 0;
         return temp;
-    } catch(py::cast_error &e) {
+    } catch(py::cast_error&) {
         py::list li = obj.cast<py::list>();
         const long nr = len(obj);
         auto temp = std::make_shared<cv>(nr);
@@ -432,7 +432,7 @@ void bind_vector(py::module& m)
             .def(double() * py::self)
             .def("normalize", &type::normalize, "Returns a unit normalized copy of this vector.")
             .def_property("x", &point_x, [](point& p, long x){p.x()=x;}, "The x-coordinate of the point.")
-            .def_property("y", &point_y, [](point& p, long y){p.x()=y;}, "The y-coordinate of the point.")
+            .def_property("y", &point_y, [](point& p, long y){p.y()=y;}, "The y-coordinate of the point.")
             .def(py::pickle(&getstate<type>, &setstate<type>));
     }
     {
@@ -457,7 +457,7 @@ void bind_vector(py::module& m)
             .def("__str__", &dpoint__str__)
             .def("normalize", &type::normalize, "Returns a unit normalized copy of this vector.")
             .def_property("x", &dpoint_x, [](dpoint& p, double x){p.x()=x;}, "The x-coordinate of the dpoint.")
-            .def_property("y", &dpoint_y, [](dpoint& p, double y){p.x()=y;}, "The y-coordinate of the dpoint.")
+            .def_property("y", &dpoint_y, [](dpoint& p, double y){p.y()=y;}, "The y-coordinate of the dpoint.")
             .def(py::self + py::self)
             .def(py::self - py::self)
             .def(py::self / double())

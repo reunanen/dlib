@@ -78,14 +78,13 @@ namespace dlib
                 - image_view_type == an image_view or const_image_view object 
                 - pixel_traits<typename image_view_type::pixel_type>::has_alpha == false
                 - pixel_traits<pixel_type> is defined
+                - is_color_space_cartesian_image<image_view_type>::value == true
             ensures
                 - if (there is an interpolatable image location at point p in img) then
                     - #result == the interpolated pixel value from img at point p.
                     - assign_pixel() will be used to write to #result, therefore any
                       necessary color space conversion will be performed.
                     - returns true
-                    - if img contains RGB pixels then the interpolation will be in color.
-                      Otherwise, the interpolation will be performed in a grayscale mode.
                 - else
                     - returns false
         !*/
@@ -119,14 +118,13 @@ namespace dlib
                 - image_view_type == an image_view or const_image_view object. 
                 - pixel_traits<typename image_view_type::pixel_type>::has_alpha == false
                 - pixel_traits<pixel_type> is defined
+                - is_color_space_cartesian_image<image_view_type>::value == true
             ensures
                 - if (there is an interpolatable image location at point p in img) then
                     - #result == the interpolated pixel value from img at point p
                     - assign_pixel() will be used to write to #result, therefore any
                       necessary color space conversion will be performed.
                     - returns true
-                    - if img contains RGB pixels then the interpolation will be in color.
-                      Otherwise, the interpolation will be performed in a grayscale mode.
                 - else
                     - returns false
         !*/
@@ -430,12 +428,101 @@ namespace dlib
               dlib/image_processing/generic_image.h 
             - pixel_traits<typename image_traits<image_type>::pixel_type>::has_alpha == false
         ensures
-            - Resizes img so that each of it's dimensions are size_scale times larger than img.
+            - Resizes img so that each of its dimensions are size_scale times larger than img.
               In particular, we will have:
                 - #img.nr() == std::round(size_scale*img.nr())
                 - #img.nc() == std::round(size_scale*img.nc())
                 - #img == a bilinearly interpolated copy of the input image.
             - Returns immediately, if size_scale == 1.0
+    !*/
+
+// ----------------------------------------------------------------------------------------
+
+    template <
+        typename image_type1,
+        typename image_type2,
+        typename interpolation_type
+        >
+    point_transform_affine letterbox_image (
+        const image_type1& img_in,
+        image_type2& img_out,
+        long size
+        const interpolation_type interp
+    );
+    /*!
+        requires
+            - image_type1 == an image object that implements the interface defined in
+              dlib/image_processing/generic_image.h
+            - image_type2 == an image object that implements the interface defined in
+              dlib/image_processing/generic_image.h
+            - interpolation_type == interpolate_nearest_neighbor, interpolate_bilinear,
+              interpolate_quadratic, or a type with a compatible interface.
+            - size > 0
+            - is_same_object(in_img, out_img) == false
+        ensures
+            - Scales in_img so that it fits into a size * size square.
+              In particular, we will have:
+                - #img_out.nr() == size
+                - #img_out.nc() == size
+            - Preserves the aspect ratio of in_img by 0-padding the shortest side.
+            - Uses the supplied interpolation routine interp to perform the necessary
+              pixel interpolation.
+            - Returns a transformation object that maps points in in_img into their
+              corresponding location in #out_img.
+    !*/
+
+    template <
+        typename image_type1,
+        typename image_type2
+        >
+    point_transform_affine letterbox_image (
+        const image_type1& img_in,
+        image_type2& img_out,
+        long size
+    );
+    /*!
+        requires
+            - image_type1 == an image object that implements the interface defined in
+              dlib/image_processing/generic_image.h
+            - image_type2 == an image object that implements the interface defined in
+              dlib/image_processing/generic_image.h
+            - size > 0
+            - is_same_object(in_img, out_img) == false
+        ensures
+            - Scales in_img so that it fits into a size * size square.
+              In particular, we will have:
+                - #img_out.nr() == size
+                - #img_out.nc() == size
+            - Preserves the aspect ratio of in_img by 0-padding the shortest side.
+            - Uses the bilinear interpolation to perform the necessary pixel
+              interpolation.
+            - Returns a transformation object that maps points in in_img into their
+              corresponding location in #out_img.
+    !*/
+
+    template <
+        typename image_type1,
+        typename image_type2
+        >
+    point_transform_affine letterbox_image (
+        const image_type1& img_in,
+        image_type2& img_out
+    );
+    /*!
+        requires
+            - image_type1 == an image object that implements the interface defined in
+              dlib/image_processing/generic_image.h
+            - image_type2 == an image object that implements the interface defined in
+              dlib/image_processing/generic_image.h
+            - is_same_object(in_img, out_img) == false
+        ensures
+            - 0-pads in_img so that it fits into a square whose side is computed as
+              max(num_rows(in_img), num_columns(in_img)) and stores into #out_img.
+              In particular, we will have:
+                - #img_out.nr() == max(num_rows(in_img), num_columns(in_img))
+                - #img_out.nc() == max(num_rows(in_img), num_columns(in_img))
+            - Returns a transformation object that maps points in in_img into their
+              corresponding location in #out_img.
     !*/
 
 // ----------------------------------------------------------------------------------------
@@ -1037,7 +1124,7 @@ namespace dlib
                 - #angle == 0
                 - #rows and #cols is set such that the total size of the chip is as close
                   to size_ as possible but still matches the aspect ratio of rect_.
-                - As long as size_ and the aspect ratio of of rect_ stays constant then
+                - As long as size_ and the aspect ratio of rect_ stays constant then
                   #rows and #cols will always have the same values.  This means that, for
                   example, if you want all your chips to have the same dimensions then
                   ensure that size_ is always the same and also that rect_ always has the
@@ -1059,7 +1146,7 @@ namespace dlib
                 - #angle == angle_
                 - #rows and #cols is set such that the total size of the chip is as close
                   to size_ as possible but still matches the aspect ratio of rect_.
-                - As long as size_ and the aspect ratio of of rect_ stays constant then
+                - As long as size_ and the aspect ratio of rect_ stays constant then
                   #rows and #cols will always have the same values.  This means that, for
                   example, if you want all your chips to have the same dimensions then
                   ensure that size_ is always the same and also that rect_ always has the
@@ -1254,6 +1341,50 @@ namespace dlib
             - This function is a simple convenience / compatibility wrapper that calls the
               above-defined extract_image_chip() function using bilinear interpolation.
     !*/
+
+// ----------------------------------------------------------------------------------------
+
+    template <
+        typename image_type1,
+        typename image_type2,
+        typename interpolation_type
+    >
+    void insert_image_chip (
+        image_type1& image,
+        const image_type2& chip,
+        const chip_details& location,
+        const interpolation_type& interp
+    );
+    /*!
+        requires
+            - image_type1 == an image object that implements the interface defined in
+              dlib/image_processing/generic_image.h
+            - image_type2 == an image object that implements the interface defined in
+              dlib/image_processing/generic_image.h
+            - pixel_traits<typename image_traits<image_type1>::pixel_type>::has_alpha == false
+            - num_rows(chip) == location.rows && num_columns(chip) == location.cols
+            - interpolation_type == interpolate_nearest_neighbor, interpolate_bilinear, 
+              interpolate_quadratic, or a type with a compatible interface.
+        ensures
+            - This function inserts chip into the image according to the location and the
+              interpolation method supplied as a parameter.
+    !*/
+
+    template <
+        typename image_type1,
+        typename image_type2
+    >
+    void insert_image_chip (
+        image_type1& image,
+        const image_type2& chip,
+        const chip_details& location
+    );
+    /*!
+        ensures
+            - This function is a simple convenience / compatibility wrapper that calls the
+              above-defined insert_image_chip() function using bilinear interpolation.
+    !*/
+
 
 // ----------------------------------------------------------------------------------------
 
@@ -1455,7 +1586,7 @@ namespace dlib
     template <
         typename image_type
         >
-    void extract_image_4points (
+    point_transform_projective extract_image_4points (
         const image_type& img,
         image_type& out,
         const std::array<dpoint,4>& pts
@@ -1477,12 +1608,14 @@ namespace dlib
               left corner, upper right corner to upper right corner, etc.).
             - #out.nr() == out.nr() && #out.nc() == out.nc().  
               I.e. out should already be sized to whatever size you want it to be.
+            - Returns a transformation object that maps points in img into their
+              corresponding location in #out.
     !*/
 
     template <
         typename image_type
         >
-    void extract_image_4points (
+    point_transform_projective extract_image_4points (
         const image_type& img,
         image_type& out,
         const std::array<line,4>& lines 
@@ -1497,6 +1630,8 @@ namespace dlib
               convex quadrilateral and uses them in a call to the version of
               extract_image_4points() defined above.  i.e. extract_image_4points(img, out,
               intersections_between_lines)
+            - Returns a transformation object that maps points in img into their
+              corresponding location in #out.
         throws 
             - no_convex_quadrilateral: this is thrown if you can't make a convex
               quadrilateral out of the given lines.

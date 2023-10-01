@@ -18,25 +18,25 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
-    DLIB_DEFINE_FUNCTION_M(op_sqrt, sqrt, std::sqrt ,7);
-    DLIB_DEFINE_FUNCTION_M(op_log, log, std::log ,7);
-    DLIB_DEFINE_FUNCTION_M(op_log10, log10, std::log10 ,7);
-    DLIB_DEFINE_FUNCTION_M(op_exp, exp, std::exp ,7);
+    DLIB_DEFINE_FUNCTION_M(op_sqrt, sqrt, std::sqrt, 7)
+    DLIB_DEFINE_FUNCTION_M(op_log, log, std::log, 7)
+    DLIB_DEFINE_FUNCTION_M(op_log10, log10, std::log10, 7)
+    DLIB_DEFINE_FUNCTION_M(op_exp, exp, std::exp, 7)
 
-    DLIB_DEFINE_FUNCTION_M(op_conj, conj, std::conj ,2);
+    DLIB_DEFINE_FUNCTION_M(op_conj, conj, std::conj, 2)
 
-    DLIB_DEFINE_FUNCTION_M(op_ceil, ceil, std::ceil ,7);
-    DLIB_DEFINE_FUNCTION_M(op_floor, floor, std::floor ,7);
+    DLIB_DEFINE_FUNCTION_M(op_ceil, ceil, std::ceil, 7)
+    DLIB_DEFINE_FUNCTION_M(op_floor, floor, std::floor, 7)
 
-    DLIB_DEFINE_FUNCTION_M(op_sin, sin, std::sin ,7);
-    DLIB_DEFINE_FUNCTION_M(op_cos, cos, std::cos ,7);
-    DLIB_DEFINE_FUNCTION_M(op_tan, tan, std::tan ,7);
-    DLIB_DEFINE_FUNCTION_M(op_sinh, sinh, std::sinh ,7);
-    DLIB_DEFINE_FUNCTION_M(op_cosh, cosh, std::cosh ,7);
-    DLIB_DEFINE_FUNCTION_M(op_tanh, tanh, std::tanh ,7);
-    DLIB_DEFINE_FUNCTION_M(op_asin, asin, std::asin ,7);
-    DLIB_DEFINE_FUNCTION_M(op_acos, acos, std::acos ,7);
-    DLIB_DEFINE_FUNCTION_M(op_atan, atan, std::atan ,7);
+    DLIB_DEFINE_FUNCTION_M(op_sin, sin, std::sin, 7)
+    DLIB_DEFINE_FUNCTION_M(op_cos, cos, std::cos, 7)
+    DLIB_DEFINE_FUNCTION_M(op_tan, tan, std::tan, 7)
+    DLIB_DEFINE_FUNCTION_M(op_sinh, sinh, std::sinh, 7)
+    DLIB_DEFINE_FUNCTION_M(op_cosh, cosh, std::cosh, 7)
+    DLIB_DEFINE_FUNCTION_M(op_tanh, tanh, std::tanh, 7)
+    DLIB_DEFINE_FUNCTION_M(op_asin, asin, std::asin, 7)
+    DLIB_DEFINE_FUNCTION_M(op_acos, acos, std::acos, 7)
+    DLIB_DEFINE_FUNCTION_M(op_atan, atan, std::atan, 7)
 
 // ----------------------------------------------------------------------------------------
 
@@ -157,16 +157,16 @@ namespace dlib
 
     }
 
-    DLIB_DEFINE_FUNCTION_M(op_sigmoid, sigmoid, impl::sigmoid, 7);
-    DLIB_DEFINE_FUNCTION_MS(op_round_zeros, round_zeros, impl::round_zeros_eps, 7);
-    DLIB_DEFINE_FUNCTION_M(op_round_zeros2, round_zeros, impl::round_zeros, 7);
-    DLIB_DEFINE_FUNCTION_M(op_cubed, cubed, impl::cubed, 7);
-    DLIB_DEFINE_FUNCTION_M(op_squared, squared, impl::squared, 6);
-    DLIB_DEFINE_FUNCTION_M(op_sign, sign, impl::sign, 6);
-    DLIB_DEFINE_FUNCTION_MS(op_pow1, pow, impl::pow1, 7);
-    DLIB_DEFINE_FUNCTION_SM(op_pow2, pow, impl::pow2, 7);
-    DLIB_DEFINE_FUNCTION_M(op_reciprocal, reciprocal, impl::reciprocal, 6);
-    DLIB_DEFINE_FUNCTION_M(op_reciprocal_max, reciprocal_max, impl::reciprocal_max, 6);
+    DLIB_DEFINE_FUNCTION_M(op_sigmoid, sigmoid, impl::sigmoid, 7)
+    DLIB_DEFINE_FUNCTION_MS(op_round_zeros, round_zeros, impl::round_zeros_eps, 7)
+    DLIB_DEFINE_FUNCTION_M(op_round_zeros2, round_zeros, impl::round_zeros, 7)
+    DLIB_DEFINE_FUNCTION_M(op_cubed, cubed, impl::cubed, 7)
+    DLIB_DEFINE_FUNCTION_M(op_squared, squared, impl::squared, 6)
+    DLIB_DEFINE_FUNCTION_M(op_sign, sign, impl::sign, 6)
+    DLIB_DEFINE_FUNCTION_MS(op_pow1, pow, impl::pow1, 7)
+    DLIB_DEFINE_FUNCTION_SM(op_pow2, pow, impl::pow2, 7)
+    DLIB_DEFINE_FUNCTION_M(op_reciprocal, reciprocal, impl::reciprocal, 6)
+    DLIB_DEFINE_FUNCTION_M(op_reciprocal_max, reciprocal_max, impl::reciprocal_max, 6)
 
 // ----------------------------------------------------------------------------------------
 
@@ -179,8 +179,8 @@ namespace dlib
         typedef typename M::type type;
         typedef const typename M::type const_ret_type;
         const_ret_type apply (long r, long c) const
-        { 
-            return static_cast<type>(std::floor(this->m(r,c)+0.5)); 
+        {
+            return static_cast<type>(std::round(this->m(r,c)));
         }
     };
 
@@ -441,6 +441,40 @@ namespace dlib
     }
 
 // ----------------------------------------------------------------------------------------
+
+    template <typename M>
+    struct op_softmax : basic_op_m<M>
+    {
+        typedef typename M::type type;
+
+        op_softmax(const M& m_, const type& s_, const type& v_) : basic_op_m<M>(m_), s(s_), v(v_){}
+
+        const type s;
+        const type v;
+
+        const static long cost = M::cost + 9;
+        typedef type const_ret_type;
+        const_ret_type apply(long r, long c) const { return std::exp(this->m(r, c) - v) * s; }
+    };
+
+    template <
+      typename EXP
+      >
+    const matrix_op<op_softmax<EXP> > soft_max (
+        const matrix_exp<EXP>& m
+    )
+    {
+        // you can only compute softmax on matrices that contain floats, doubles or long doubles.
+        COMPILE_TIME_ASSERT((
+              is_same_type<typename EXP::type,float>::value == true ||
+              is_same_type<typename EXP::type,double>::value == true ||
+              is_same_type<typename EXP::type,long double>::value == true
+        ));
+        typedef op_softmax<EXP> op;
+        typename EXP::type max_val = max(m);
+        typename EXP::type temp = static_cast<typename EXP::type>(1) / sum(exp(m - max_val));
+        return matrix_op<op>(op(m.ref(), temp, max_val));
+    }
 
 }
 
