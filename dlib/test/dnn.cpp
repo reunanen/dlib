@@ -3623,6 +3623,124 @@ namespace
 
 // ----------------------------------------------------------------------------------------
 
+    void test_loss_multiclass_per_pixel_cost_sensitive()
+    {
+        // Train with explicit cost matrix
+
+        print_spinner();
+
+        constexpr int input_height = 5;
+        constexpr int input_width = 7;
+        constexpr int output_height = input_height;
+        constexpr int output_width = input_width;
+        const int num_samples = 1000;
+        const int num_classes = 6;
+
+        using weighted_label = loss_multiclass_log_per_pixel_weighted_::weighted_label;
+
+        ::std::default_random_engine generator(16);
+        ::std::uniform_real_distribution<double> u01(0.0, 1.0);
+        ::std::uniform_int_distribution<uint16_t> uniform_label_distribution(0, num_classes - 1);
+
+        const auto get_random_label = [&]()
+        {
+            return std::min(
+                uniform_label_distribution(generator),
+                uniform_label_distribution(generator)
+            );
+        };
+
+        ::std::vector<matrix<double>> x(num_samples);
+        ::std::vector<matrix<weighted_label>> y(num_samples);
+
+        matrix<double> xtmp(input_height, input_width);
+        matrix<weighted_label> ytmp(output_height, output_width);
+
+        // Generate input data
+        for (int ii = 0; ii < num_samples; ++ii) {
+            for (int jj = 0; jj < input_height; ++jj) {
+                for (int kk = 0; kk < input_width; ++kk) {
+
+                    const auto truth = get_random_label();
+
+                    if (u01(generator) <= 0.8)
+                        xtmp(jj, kk) = truth; // in most cases, make the classification task be trivial...
+                    else
+                        xtmp(jj, kk) = get_random_label(); // ... but just not always
+
+                    xtmp(jj, kk) += u01(generator); // add some noise
+
+                    ytmp(jj, kk).label = truth;
+                }
+            }
+            x[ii] = xtmp;
+            y[ii] = ytmp;
+        }
+
+        using net_type = loss_multiclass_log_per_pixel_weighted<con<num_classes,1,1,1,1,input<matrix<double>>>>;
+
+        for (int round = 0; round <= 1; ++round)
+        {
+            print_spinner();
+
+            net_type net;
+
+            const auto is_cost_sensitive = round > 0;
+
+            if (is_cost_sensitive)
+            {
+                cost_matrix costs(num_classes);
+
+                for (int truth = 0; truth < num_classes; ++truth)
+                {
+                    for (int prediction = 0; prediction < num_classes; ++prediction)
+                    {                        
+                        const float cost = prediction >= truth
+                            ? 0                             // prediction greater than truth
+                            : (truth - prediction) * truth; // prediction smaller than truth
+
+                        costs.set_cost(truth, prediction, cost);
+                    }
+                }
+                net.loss_details().set_cost_matrix(costs);
+            }
+
+            sgd defsolver(0,0.9);
+            dnn_trainer<net_type> trainer(net, defsolver);
+            trainer.set_learning_rate(0.1);
+            trainer.set_min_learning_rate(0.01);
+            trainer.set_mini_batch_size(10);
+            trainer.set_max_num_epochs(100);
+            trainer.train(x, y);
+
+            const ::std::vector<matrix<uint16_t>> predictions = net(x);
+
+            std::vector<int> prediction_histogram(num_classes);
+
+            for ( int ii = 0; ii < num_samples; ++ii ) {
+                const matrix<uint16_t>& prediction = predictions[ii];
+                DLIB_TEST(prediction.nr() == output_height);
+                DLIB_TEST(prediction.nc() == output_width);
+                for ( int jj = 0; jj < output_height; ++jj )
+                    for ( int kk = 0; kk < output_width; ++kk )
+                        ++prediction_histogram[prediction(jj, kk)];
+            }
+
+            if (is_cost_sensitive)
+            {
+                DLIB_TEST(prediction_histogram.front() < 10000);
+                DLIB_TEST(prediction_histogram.back() > 1500);
+            }
+            else
+            {
+                DLIB_TEST(prediction_histogram.front() > 12000);
+                DLIB_TEST(prediction_histogram.back() < 750);
+            }
+        }
+    }
+
+// ----------------------------------------------------------------------------------------
+
     void test_loss_multiclass_log_weighted()
     {
 
@@ -4476,6 +4594,7 @@ namespace
             test_loss_multiclass_per_pixel_outputs_on_trivial_task();
             test_loss_multiclass_per_pixel_with_noise_and_pixels_to_ignore();
             test_loss_multiclass_per_pixel_weighted();
+            test_loss_multiclass_per_pixel_cost_sensitive();
             test_loss_multiclass_log_weighted();
             test_loss_multibinary_log();
             test_serialization();

@@ -3252,26 +3252,53 @@ namespace dlib
                              "output size = " << output_tensor.nr() << " x " << output_tensor.nc());
             }
 
+            const dlib::tensor& outputs = costs.empty()
+                ? output_tensor
+                : costs.add_cost(truth, output_tensor);
+
             double loss;
 #ifdef DLIB_USE_CUDA
-            cuda_compute(truth, output_tensor, grad, loss);
+            cuda_compute(truth, outputs, grad, loss);
 #else
-            cpu_compute(truth, output_tensor, grad, loss);
+            cpu_compute(truth, outputs, grad, loss);
 #endif
             return loss;
         }
 
-        friend void serialize(const loss_multiclass_log_per_pixel_weighted_& , std::ostream& out)
+        void set_cost_matrix(const cost_matrix& costs)
         {
-            serialize("loss_multiclass_log_per_pixel_weighted_", out);
+            this->costs = costs;
         }
 
-        friend void deserialize(loss_multiclass_log_per_pixel_weighted_& , std::istream& in)
+        friend void serialize(const loss_multiclass_log_per_pixel_weighted_& loss, std::ostream& out)
+        {
+            if (loss.costs.empty())
+            {
+                serialize("loss_multiclass_log_per_pixel_weighted_", out);
+            }
+            else
+            {
+                serialize("loss_multiclass_log_per_pixel_weighted_with_costs_", out);
+                serialize(loss.costs, out);
+            }
+        }
+
+        friend void deserialize(loss_multiclass_log_per_pixel_weighted_& loss, std::istream& in)
         {
             std::string version;
             deserialize(version, in);
-            if (version != "loss_multiclass_log_per_pixel_weighted_")
-                throw serialization_error("Unexpected version found while deserializing dlib::loss_multiclass_log_per_pixel_weighted_.");
+            if (version == "loss_multiclass_log_per_pixel_weighted_with_costs_")
+            {
+                deserialize(loss.costs, in);
+            }
+            else
+            {
+                if (version != "loss_multiclass_log_per_pixel_weighted_")
+                {
+                    throw serialization_error("Unexpected version found while deserializing dlib::loss_multiclass_log_per_pixel_weighted_.");
+                }
+                loss.costs.clear();
+            }
         }
 
         friend std::ostream& operator<<(std::ostream& out, const loss_multiclass_log_per_pixel_weighted_& )
@@ -3293,6 +3320,7 @@ namespace dlib
         cpu::compute_loss_multiclass_log_per_pixel_weighted cpu_compute;
 #endif
 
+        cost_matrix costs;
     };
 
     template <typename SUBNET>
