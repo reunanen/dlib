@@ -3270,35 +3270,17 @@ namespace dlib
             this->costs = costs;
         }
 
-        friend void serialize(const loss_multiclass_log_per_pixel_weighted_& loss, std::ostream& out)
+        friend void serialize(const loss_multiclass_log_per_pixel_weighted_& , std::ostream& out)
         {
-            if (loss.costs.empty())
-            {
-                serialize("loss_multiclass_log_per_pixel_weighted_", out);
-            }
-            else
-            {
-                serialize("loss_multiclass_log_per_pixel_weighted_with_costs_", out);
-                serialize(loss.costs, out);
-            }
+            serialize("loss_multiclass_log_per_pixel_weighted_", out);
         }
 
-        friend void deserialize(loss_multiclass_log_per_pixel_weighted_& loss, std::istream& in)
+        friend void deserialize(loss_multiclass_log_per_pixel_weighted_& , std::istream& in)
         {
             std::string version;
             deserialize(version, in);
-            if (version == "loss_multiclass_log_per_pixel_weighted_with_costs_")
-            {
-                deserialize(loss.costs, in);
-            }
-            else
-            {
-                if (version != "loss_multiclass_log_per_pixel_weighted_")
-                {
-                    throw serialization_error("Unexpected version found while deserializing dlib::loss_multiclass_log_per_pixel_weighted_.");
-                }
-                loss.costs.clear();
-            }
+            if (version != "loss_multiclass_log_per_pixel_weighted_")
+                throw serialization_error("Unexpected version found while deserializing dlib::loss_multiclass_log_per_pixel_weighted_.");
         }
 
         friend std::ostream& operator<<(std::ostream& out, const loss_multiclass_log_per_pixel_weighted_& )
