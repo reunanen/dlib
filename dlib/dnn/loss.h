@@ -3252,13 +3252,22 @@ namespace dlib
                              "output size = " << output_tensor.nr() << " x " << output_tensor.nc());
             }
 
+            const dlib::tensor& outputs = costs.empty()
+                ? output_tensor
+                : costs.add_cost(truth, output_tensor);
+
             double loss;
 #ifdef DLIB_USE_CUDA
-            cuda_compute(truth, output_tensor, grad, loss);
+            cuda_compute(truth, outputs, grad, loss);
 #else
-            cpu_compute(truth, output_tensor, grad, loss);
+            cpu_compute(truth, outputs, grad, loss);
 #endif
             return loss;
+        }
+
+        void set_cost_matrix(const cost_matrix& costs)
+        {
+            this->costs = costs;
         }
 
         friend void serialize(const loss_multiclass_log_per_pixel_weighted_& , std::ostream& out)
@@ -3293,6 +3302,7 @@ namespace dlib
         cpu::compute_loss_multiclass_log_per_pixel_weighted cpu_compute;
 #endif
 
+        cost_matrix costs;
     };
 
     template <typename SUBNET>
