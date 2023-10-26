@@ -86,14 +86,14 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
-    class cost_matrix
+    class cost_matrix_additive
     {
     public:
         using label_type = size_t;
 
-        cost_matrix() {}
+        cost_matrix_additive() {}
 
-        cost_matrix(label_type max_label_count)
+        cost_matrix_additive(label_type max_label_count)
         {
             resize(max_label_count);
         }
@@ -112,12 +112,6 @@ namespace dlib
         {
             DLIB_CASSERT(truth != prediction || cost == 0.f);
             costs[truth][prediction] = cost;
-        }
-
-        float get_cost(label_type truth, label_type prediction) const
-        {
-            DLIB_CASSERT(truth != prediction);
-            return costs[truth][prediction];
         }
 
         // The returned tensor is valid only until the next call is made.
@@ -186,21 +180,21 @@ namespace dlib
 
         void clear()
         {
-            return costs.clear();
+            costs.clear();
         }
 
-        friend void serialize(const cost_matrix& costs, std::ostream& out)
+        friend void serialize(const cost_matrix_additive& costs, std::ostream& out)
         {
-            serialize("cost_matrix", out);
+            serialize("cost_matrix_additive", out);
             serialize(costs.costs, out);
         }
 
-        friend void deserialize(cost_matrix& costs, std::istream& in)
+        friend void deserialize(cost_matrix_additive& costs, std::istream& in)
         {
             std::string version;
             deserialize(version, in);
-            if (version != "cost_matrix")
-                throw serialization_error("Unexpected version found while deserializing dlib::cost_matrix.");
+            if (version != "cost_matrix_additive")
+                throw serialization_error("Unexpected version found while deserializing dlib::cost_matrix_additive.");
             deserialize(costs.costs, in);
         }
 
@@ -208,6 +202,67 @@ namespace dlib
         std::vector<std::vector<float>> costs;
 
         mutable dlib::resizable_tensor output_buffer;
+    };
+
+// ----------------------------------------------------------------------------------------
+
+    class cost_weight_matrix
+    {
+    public:
+        using label_type = std::string;
+
+        void set_cost_weight(const label_type& truth, const label_type& prediction, float cost_weight)
+        {
+            cost_weights[truth][prediction] = cost_weight;
+        }
+
+        float get_cost_weight(const label_type& truth, const label_type& prediction) const
+        {
+            const auto i = cost_weights.find(truth);
+            if (i == cost_weights.end())
+            {
+                return get_default_cost_weight(truth, prediction);
+            }
+            const auto j = i->second.find(prediction);
+            if (j == i->second.end())
+            {
+                return get_default_cost_weight(truth, prediction);
+            }
+            return j->second;
+        }
+
+        bool empty() const
+        {
+            return cost_weights.empty();
+        }
+
+        void clear()
+        {
+            cost_weights.clear();
+        }
+
+        friend void serialize(const cost_weight_matrix& costs, std::ostream& out)
+        {
+            serialize("cost_weight_matrix", out);
+            serialize(costs.cost_weights, out);
+        }
+
+        friend void deserialize(cost_weight_matrix& costs, std::istream& in)
+        {
+            std::string version;
+            deserialize(version, in);
+            if (version != "cost_weight_matrix")
+                throw serialization_error("Unexpected version found while deserializing dlib::cost_weight_matrix.");
+            deserialize(costs.cost_weights, in);
+        }
+
+    private:
+        static float get_default_cost_weight(const label_type& truth, const label_type& prediction)
+        {
+            return 1.f;
+        }
+
+        std::unordered_map<label_type, std::unordered_map<label_type, float>> cost_weights;
     };
 
 // ----------------------------------------------------------------------------------------
