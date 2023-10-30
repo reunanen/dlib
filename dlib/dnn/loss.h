@@ -1547,8 +1547,16 @@ namespace dlib
                 // The loss will measure the number of incorrect detections.  A detection is
                 // incorrect if it doesn't hit a truth rectangle or if it is a duplicate detection
                 // on a truth rectangle.
-                typedef std::pair<double, double> loss_and_gradient;
-                std::unordered_map<size_t, loss_and_gradient> loss_and_gradient_by_index;
+                struct bookkeeping_item
+                {
+                    double loss = 0.0;
+                    double gradient = 0.0;
+                    
+                    std::string truth_label;
+                    std::string predicted_label;
+                };
+
+                std::unordered_map<size_t, bookkeeping_item> bookkeeping_items;
 
                 for (auto&& x : *truth)
                 {
@@ -1580,19 +1588,23 @@ namespace dlib
                             continue;
                         }
 
-                        auto& loss_and_gradient = loss_and_gradient_by_index[idx];
-                        auto& loss = loss_and_gradient.first;
-                        auto& gradient = loss_and_gradient.second;
-                        loss = options.loss_per_missed_target;
-                        loss -= out_data[idx];
-                        gradient = -scale;
+                        auto& item = bookkeeping_items[idx];
+                        
+                        DLIB_ASSERT(item.loss == 0.0);
+                        DLIB_ASSERT(item.gradient == 0.0);
+                        DLIB_ASSERT(item.truth_label.empty());
+                        DLIB_CASSERT(item.predicted_label.empty());
+
+                        item.loss = options.loss_per_missed_target - out_data[idx];
+                        item.gradient = -scale;
+                        item.truth_label = x.label;
 
                         truth_idxs.push_back(idx);
                         idx_to_truth_rect[idx] = x.rect;
                     }
                     else
                     {
-                        // This box was ignored so shouldn't have been counted in the loss.
+                        // This box was ignored so it will not be counted in the loss.
                         truth_idxs.push_back(invalid_index);
                     }
                 }
@@ -1655,9 +1667,14 @@ namespace dlib
                                 // We are ignoring this box so we shouldn't have counted it in the
                                 // loss in the first place.  So we subtract out the loss values we
                                 // added for it in the code above.
-                                auto& loss_and_gradient = loss_and_gradient_by_index[idx];
-                                loss_and_gradient.first = 0;
-                                loss_and_gradient.second = 0;
+                                auto& item = bookkeeping_items[idx];
+
+                                DLIB_CASSERT(item.predicted_label.empty());
+
+                                item.loss = 0;
+                                item.gradient = 0;
+                                item.truth_label.clear();
+
                                 if (!options.be_quiet) 
                                 {
                                     std::cout << "Warning, ignoring object.  We encountered a truth rectangle located at " << (*truth)[i].rect;
@@ -1693,7 +1710,7 @@ namespace dlib
                         if (truth_score_hits[hittruth.second] > options.loss_per_missed_target)
                         {
                             const auto idx = truth_idxs[hittruth.second];
-                            auto& loss = loss_and_gradient_by_index[idx].first;
+                            auto& loss = bookkeeping_items[idx].loss;
 
                             if (!hit_truth_table[hittruth.second])
                             {
@@ -1763,11 +1780,32 @@ namespace dlib
                     }
                     else if (!overlaps_ignore_box(*truth, dets[i].rect))
                     {
-                        // didn't hit anything
+                        // we didn't hit truth having the correct label
                         final_dets.push_back(dets[i]);
                         const auto idx = dets[i].tensor_offset;
-                        auto& loss = loss_and_gradient_by_index[idx].first;
-                        loss += options.loss_per_false_alarm;
+                        auto& item = bookkeeping_items[idx];
+                        item.loss += options.loss_per_false_alarm;
+
+                        if (!cost_weights.empty())
+                        {
+                            // did we hit truth having an incorrect label?
+                            DLIB_ASSERT(item.truth_label.empty());
+                            for (const auto& x : *truth)
+                            {
+                                if (x.ignore || x.label == det_label)
+                                    continue;
+
+                                const double match = box_intersection_over_union(dets[i].rect, x);
+                                if (match > options.truth_match_iou_threshold)
+                                {
+                                    DLIB_ASSERT(item.truth_label.empty());
+                                    item.truth_label = x.label;
+#ifndef NDEBUG
+                                    break;
+#endif
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -1775,44 +1813,60 @@ namespace dlib
                 {
                     DLIB_CASSERT(!should_ignore_point(center(x.rect)));
 
-                    auto& loss_and_gradient = loss_and_gradient_by_index[x.tensor_offset];
-                    auto& loss = loss_and_gradient.first;
-                    auto& gradient = loss_and_gradient.second;
-                    loss += out_data[x.tensor_offset];
-                    gradient += scale;
+                    auto& item = bookkeeping_items[x.tensor_offset];
+
+                    item.loss += out_data[x.tensor_offset];
+                    item.gradient += scale;
+
+                    DLIB_ASSERT(item.predicted_label.empty());
+                    item.predicted_label = options.detector_windows[x.tensor_channel].label;
                 }
 
-                const auto add_loss = [](double sum, const auto& item)
+                const auto get_cost_weight = [this](const bookkeeping_item& item)
                 {
-                    return sum + item.second.first;
+                    return cost_weights.get_cost_weight(item.truth_label, item.predicted_label);
                 };
 
-                const auto calculate_loss = [&add_loss](const auto& items)
+                const auto add_loss = [get_cost_weight](double sum, const auto& i)
                 {
-                    return std::accumulate(items.begin(), items.end(), 0.0, add_loss);
+                    const bookkeeping_item& item = i.second;
+                    const auto cost_weight = get_cost_weight(item);
+
+                    return sum + item.loss * cost_weight;
                 };
 
-                const double raw_sample_loss = calculate_loss(loss_and_gradient_by_index);
+                const auto calculate_loss = [&add_loss](const auto& bookkeeping_items)
+                {
+                    return std::accumulate(
+                        bookkeeping_items.begin(),
+                        bookkeeping_items.end(),
+                        0.0,
+                        add_loss
+                    );
+                };
+
+                const double raw_sample_loss = calculate_loss(bookkeeping_items);
 
                 double actual_sample_loss = 0.0;
 
-                for (auto& item : loss_and_gradient_by_index)
+                for (auto& i : bookkeeping_items)
                 {
-                    const double item_loss = item.second.first;
-                    if (raw_sample_loss >= 0.0 || item_loss >= 0.0)
+                    const auto& item = i.second;
+                    if (raw_sample_loss >= 0.0 || item.loss >= 0.0)
                     {
-                        actual_sample_loss += item_loss;
+                        const auto cost_weight = get_cost_weight(item);
 
-                        const auto idx = item.first;
-                        const auto item_gradient = item.second.second;
+                        actual_sample_loss += item.loss * cost_weight;
+
+                        const auto idx = i.first;
 
                         if (idx != invalid_index)
                         {
-                            g[idx] += item_gradient;
+                            g[idx] += item.gradient * cost_weight;
                         }
                         else
                         {
-                            DLIB_CASSERT(item_gradient == 0.0);
+                            DLIB_CASSERT(item.gradient == 0.0);
                         }
                     }
                 }
@@ -1885,6 +1939,11 @@ namespace dlib
             return x >= 0 && x < mask.nc()
                 && y >= 0 && y < mask.nr()
                 && mask(y, x) == 0;
+        }
+
+        void set_cost_weight_matrix(const cost_weight_matrix& cost_weights)
+        {
+            this->cost_weights = cost_weights;
         }
 
     private:
@@ -2182,6 +2241,7 @@ namespace dlib
 
         mmod_options options;
 
+        cost_weight_matrix cost_weights;
     };
 
     template <typename SUBNET>
@@ -3265,7 +3325,7 @@ namespace dlib
             return loss;
         }
 
-        void set_cost_matrix(const cost_matrix& costs)
+        void set_cost_matrix(const cost_matrix_additive& costs)
         {
             this->costs = costs;
         }
@@ -3302,7 +3362,7 @@ namespace dlib
         cpu::compute_loss_multiclass_log_per_pixel_weighted cpu_compute;
 #endif
 
-        cost_matrix costs;
+        cost_matrix_additive costs;
     };
 
     template <typename SUBNET>

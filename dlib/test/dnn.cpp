@@ -3689,7 +3689,7 @@ namespace
 
             if (is_cost_sensitive)
             {
-                cost_matrix costs(num_classes);
+                cost_matrix_additive cost_matrix(num_classes);
 
                 for (int truth = 0; truth < num_classes; ++truth)
                 {
@@ -3699,10 +3699,10 @@ namespace
                             ? 0                             // prediction greater than truth
                             : (truth - prediction) * truth; // prediction smaller than truth
 
-                        costs.set_cost(truth, prediction, cost);
+                        cost_matrix.set_cost(truth, prediction, cost);
                     }
                 }
-                net.loss_details().set_cost_matrix(costs);
+                net.loss_details().set_cost_matrix(cost_matrix);
             }
 
             sgd defsolver(0,0.9);
