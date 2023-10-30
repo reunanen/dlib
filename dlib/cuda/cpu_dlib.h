@@ -794,7 +794,8 @@ namespace dlib
             const_label_iterator truth,
             const tensor& output_tensor,
             tensor& grad,
-            double& loss
+            double& loss,
+            const cost_weight_matrix_index_based& cost_weight_matrix
         ) const
         {
             softmax(grad, output_tensor);
@@ -802,6 +803,8 @@ namespace dlib
             const double scale = 1.0 / (output_tensor.num_samples() * output_tensor.nr() * output_tensor.nc());
             loss = 0;
             float* const g = grad.host();
+            const auto cost_weight_matrix_is_empty = cost_weight_matrix.empty();
+            const auto default_cost_weight = cost_weight_matrix_index_based::get_default_cost_weight();
             for (long i = 0; i < output_tensor.num_samples(); ++i, ++truth)
             {
                 for (long r = 0; r < output_tensor.nr(); ++r)
@@ -811,6 +814,9 @@ namespace dlib
                         const weighted_label<uint16_t>& weighted_label = truth->operator()(r, c);
                         const uint16_t y = weighted_label.label;
                         const float weight = weighted_label.weight;
+                        const float* cost_weights = cost_weight_matrix_is_empty || weight == 0.f
+                            ? nullptr
+                            : cost_weight_matrix.get_cost_weights(y).data();
                         // The network must produce a number of outputs that is equal to the number
                         // of labels when using this type of loss.
                         DLIB_CASSERT(static_cast<long>(y) < output_tensor.k() || weight == 0.f,
@@ -818,14 +824,17 @@ namespace dlib
                         for (long k = 0; k < output_tensor.k(); ++k)
                         {
                             const size_t idx = tensor_index(output_tensor, i, k, r, c);
+                            const auto cost_weight = cost_weights
+                                ? cost_weights[k]
+                                : default_cost_weight;
                             if (k == y)
                             {
                                 loss += weight*scale*-safe_log(g[idx]);
-                                g[idx] = weight*scale*(g[idx] - 1);
+                                g[idx] = weight*scale*cost_weight*(g[idx] - 1);
                             }
                             else
                             {
-                                g[idx] = weight*scale*g[idx];
+                                g[idx] = weight*scale*cost_weight*g[idx];
                             }
                         }
                     }

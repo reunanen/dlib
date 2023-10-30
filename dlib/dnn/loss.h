@@ -1786,7 +1786,7 @@ namespace dlib
                         auto& item = bookkeeping_items[idx];
                         item.loss += options.loss_per_false_alarm;
 
-                        if (!cost_weights.empty())
+                        if (!cost_weight_matrix.empty())
                         {
                             // did we hit truth having an incorrect label?
                             DLIB_ASSERT(item.truth_label.empty());
@@ -1824,7 +1824,7 @@ namespace dlib
 
                 const auto get_cost_weight = [this](const bookkeeping_item& item)
                 {
-                    return cost_weights.get_cost_weight(item.truth_label, item.predicted_label);
+                    return cost_weight_matrix.get_cost_weight(item.truth_label, item.predicted_label);
                 };
 
                 const auto add_loss = [get_cost_weight](double sum, const auto& i)
@@ -1941,9 +1941,9 @@ namespace dlib
                 && mask(y, x) == 0;
         }
 
-        void set_cost_weight_matrix(const cost_weight_matrix& cost_weights)
+        void set_cost_weight_matrix(const cost_weight_matrix_label_based& cost_weight_matrix)
         {
-            this->cost_weights = cost_weights;
+            this->cost_weight_matrix = cost_weight_matrix;
         }
 
     private:
@@ -2241,7 +2241,7 @@ namespace dlib
 
         mmod_options options;
 
-        cost_weight_matrix cost_weights;
+        cost_weight_matrix_label_based cost_weight_matrix;
     };
 
     template <typename SUBNET>
@@ -3312,22 +3312,18 @@ namespace dlib
                              "output size = " << output_tensor.nr() << " x " << output_tensor.nc());
             }
 
-            const dlib::tensor& outputs = costs.empty()
-                ? output_tensor
-                : costs.add_cost(truth, output_tensor);
-
             double loss;
 #ifdef DLIB_USE_CUDA
-            cuda_compute(truth, outputs, grad, loss);
+            cuda_compute(truth, output_tensor, grad, loss, cost_weight_matrix);
 #else
-            cpu_compute(truth, outputs, grad, loss);
+            cpu_compute(truth, output_tensor, grad, loss, cost_weight_matrix);
 #endif
             return loss;
         }
 
-        void set_cost_matrix(const cost_matrix_additive& costs)
+        void set_cost_weight_matrix(const cost_weight_matrix_index_based& cost_weight_matrix)
         {
-            this->costs = costs;
+            this->cost_weight_matrix = cost_weight_matrix;
         }
 
         friend void serialize(const loss_multiclass_log_per_pixel_weighted_& , std::ostream& out)
@@ -3362,7 +3358,7 @@ namespace dlib
         cpu::compute_loss_multiclass_log_per_pixel_weighted cpu_compute;
 #endif
 
-        cost_matrix_additive costs;
+        cost_weight_matrix_index_based cost_weight_matrix;
     };
 
     template <typename SUBNET>
