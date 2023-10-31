@@ -3608,8 +3608,9 @@ namespace
             double cuda_loss, cpu_loss;
             const tensor& output_tensor = net.subnet().get_output();
             resizable_tensor cuda_grad(output_tensor), cpu_grad(output_tensor);
-            cuda_compute(y_weighted.begin(), output_tensor, cuda_grad, cuda_loss);
-            cpu_compute(y_weighted.begin(), output_tensor, cpu_grad, cpu_loss);
+            cost_weight_matrix_index_based empty_cost_weight_matrix;
+            cuda_compute(y_weighted.begin(), output_tensor, cuda_grad, cuda_loss, empty_cost_weight_matrix);
+            cpu_compute(y_weighted.begin(), output_tensor, cpu_grad, cpu_loss, empty_cost_weight_matrix);
             DLIB_TEST(cuda_grad.size() == cpu_grad.size());
             for (size_t i = 0; i < cuda_grad.size(); ++i)
             {
@@ -3687,22 +3688,22 @@ namespace
 
             const auto is_cost_sensitive = round > 0;
 
+            cost_weight_matrix_index_based cost_weight_matrix(num_classes);
+
             if (is_cost_sensitive)
             {
-                cost_matrix_additive cost_matrix(num_classes);
-
                 for (int truth = 0; truth < num_classes; ++truth)
                 {
                     for (int prediction = 0; prediction < num_classes; ++prediction)
                     {                        
-                        const float cost = prediction >= truth
-                            ? 0                             // prediction greater than truth
-                            : (truth - prediction) * truth; // prediction smaller than truth
+                        const float cost_weight = prediction > truth
+                            ? (prediction - truth) * 0.2f         // prediction greater than truth
+                            : (truth - prediction) * truth + 1.f; // prediction smaller than truth
 
-                        cost_matrix.set_cost(truth, prediction, cost);
+                        cost_weight_matrix.set_cost_weight(truth, prediction, cost_weight);
                     }
                 }
-                net.loss_details().set_cost_matrix(cost_matrix);
+                net.loss_details().set_cost_weight_matrix(cost_weight_matrix);
             }
 
             sgd defsolver(0,0.9);
@@ -3736,6 +3737,25 @@ namespace
                 DLIB_TEST(prediction_histogram.front() > 12000);
                 DLIB_TEST(prediction_histogram.back() < 750);
             }
+
+#if DLIB_USE_CUDA
+            cuda::compute_loss_multiclass_log_per_pixel_weighted cuda_compute;
+            cpu::compute_loss_multiclass_log_per_pixel_weighted cpu_compute;
+            double cuda_loss, cpu_loss;
+            const tensor& output_tensor = net.subnet().get_output();
+            resizable_tensor cuda_grad(output_tensor), cpu_grad(output_tensor);
+            cuda_compute(y.begin(), output_tensor, cuda_grad, cuda_loss, cost_weight_matrix);
+            cpu_compute(y.begin(), output_tensor, cpu_grad, cpu_loss, cost_weight_matrix);
+            DLIB_TEST(cuda_grad.size() == cpu_grad.size());
+            for (size_t i = 0; i < cuda_grad.size(); ++i)
+            {
+                const auto cuda_value = *(cuda_grad.begin() + i);
+                const auto cpu_value = *(cpu_grad.begin() + i);
+                DLIB_TEST(::std::abs(*(cuda_grad.begin() + i) - *(cpu_grad.begin() + i)) < 1e-8);
+            }
+            const auto err = abs(cuda_loss - cpu_loss) / cpu_loss;
+            DLIB_TEST_MSG(err < 1e-6, "multi class log per pixel weighted cuda and cpu losses differ");
+#endif
         }
     }
 

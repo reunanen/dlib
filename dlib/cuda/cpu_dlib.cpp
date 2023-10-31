@@ -1506,7 +1506,7 @@ namespace dlib
 
                     float max_val = -std::numeric_limits<float>::infinity();
                     for (long k = 0; k < num_channels; ++k)
-                        max_val = std::max(max_val, ss[k*num_locations]);
+                        max_val = std::max(max_val, sss[k*num_locations]);
 
                     for (long k = 0; k < num_channels; ++k)
                         ddd[k*num_locations] = exp::exp(sss[k*num_locations]-max_val);

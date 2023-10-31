@@ -86,127 +86,105 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
-    class cost_matrix_additive
+    class cost_weight_matrix_index_based
     {
     public:
-        using label_type = size_t;
+        using index_type = size_t;
 
-        cost_matrix_additive() {}
+        cost_weight_matrix_index_based() {}
 
-        cost_matrix_additive(label_type max_label_count)
+        cost_weight_matrix_index_based(index_type index_count)
         {
-            resize(max_label_count);
+            resize(index_count);
         }
 
-        void resize(label_type max_label_count)
+        void resize(index_type index_count)
         {
-            costs.resize(max_label_count);
+            const auto default_cost_weight = get_default_cost_weight();
 
-            for (auto& column : costs)
+            cost_weights.resize(index_count, std::vector<float>(index_count, default_cost_weight));
+
+            for (auto& column : cost_weights)
             {
-                column.resize(max_label_count);
-            }
-        }
-
-        void set_cost(label_type truth, label_type prediction, float cost)
-        {
-            DLIB_CASSERT(truth != prediction || cost == 0.f);
-            costs[truth][prediction] = cost;
-        }
-
-        // The returned tensor is valid only until the next call is made.
-        template <
-            typename const_label_iterator
-        >
-        const dlib::tensor& add_cost(const_label_iterator truth, const tensor& input) const
-        {
-            if (empty())
-            {
-                output_buffer.clear();
-                return input;
+                column.resize(index_count, default_cost_weight);
             }
 
-            output_buffer.copy_size(input);
+            cost_weights_flat.clear();
+        }
 
-            const float* inp = input.host();
-            float* outp = output_buffer.host();
+        void set_cost_weight(index_type truth, index_type prediction, float cost)
+        {
+            cost_weights[truth][prediction] = cost;
+            cost_weights_flat.clear();
+        }
 
-            for (long i = 0; i < input.num_samples(); ++i, ++truth)
+        const std::vector<float>& get_cost_weights(const index_type& truth) const
+        {
+            return cost_weights[truth];
+        }
+
+        const std::vector<float>& get_cost_weights_flat() const
+        {
+            if (cost_weights_flat.empty())
             {
-                for (long r = 0; r < input.nr(); ++r)
+                const auto index_count = cost_weights.size();
+                cost_weights_flat.resize(index_count * index_count);
+                for (index_type truth = 0; truth < index_count; ++truth)
                 {
-                    for (long c = 0; c < input.nc(); ++c)
+                    for (index_type prediction = 0; prediction < index_count; ++prediction)
                     {
-                        const auto& weighted_label = truth->operator()(r, c);
-                        const auto y = weighted_label.label;
-
-                        if (y < costs.size())
-                        {
-                            const std::vector<float>& costs_column = costs[y];
-
-                            for (long k = 0; k < input.k(); ++k)
-                            {
-                                DLIB_ASSERT(y != k || costs_column[k] == 0.f);
-
-                                const size_t idx = tensor_index(input, i, k, r, c);
-                                DLIB_ASSERT(idx == tensor_index(output_buffer, i, k, r, c));
-
-                                outp[idx] = inp[idx] + costs_column[k];
-                            }
-                        }
-                        else
-                        {
-                            DLIB_ASSERT(y == std::numeric_limits<decltype(y)>::max());
-
-                            for (long k = 0; k < input.k(); ++k)
-                            {
-                                const size_t idx = tensor_index(input, i, k, r, c);
-                                DLIB_ASSERT(idx == tensor_index(output_buffer, i, k, r, c));
-
-                                outp[idx] = inp[idx];
-                            }
-                        }
+                        cost_weights_flat[truth * index_count + prediction] = cost_weights[truth][prediction];
                     }
                 }
             }
 
-            return output_buffer;
+            DLIB_ASSERT(cost_weights.size() * cost_weights.size() == cost_weights_flat.size());
+
+            return cost_weights_flat;
         }
 
         bool empty() const
         {
-            return costs.empty();
+            return cost_weights.empty();
         }
 
         void clear()
         {
-            costs.clear();
+            cost_weights.clear();
+            cost_weights_flat.clear();
         }
 
-        friend void serialize(const cost_matrix_additive& costs, std::ostream& out)
+        friend void serialize(const cost_weight_matrix_index_based& item, std::ostream& out)
         {
-            serialize("cost_matrix_additive", out);
-            serialize(costs.costs, out);
+            serialize("cost_weight_matrix_index_based", out);
+            serialize(item.cost_weights, out);
         }
 
-        friend void deserialize(cost_matrix_additive& costs, std::istream& in)
+        friend void deserialize(cost_weight_matrix_index_based& item, std::istream& in)
         {
             std::string version;
             deserialize(version, in);
-            if (version != "cost_matrix_additive")
-                throw serialization_error("Unexpected version found while deserializing dlib::cost_matrix_additive.");
-            deserialize(costs.costs, in);
+            if (version != "cost_weight_matrix_index_based")
+                throw serialization_error("Unexpected version found while deserializing dlib::cost_weight_matrix_index_based.");
+            deserialize(item.cost_weights, in);
+            
+            item.cost_weights_flat.clear();
+        }
+
+        static float get_default_cost_weight()
+        {
+            return 1.f;
         }
 
     private:
-        std::vector<std::vector<float>> costs;
+        std::vector<std::vector<float>> cost_weights;
 
-        mutable dlib::resizable_tensor output_buffer;
+        mutable std::vector<float> cost_weights_flat; // evaluated lazily
     };
 
 // ----------------------------------------------------------------------------------------
 
-    class cost_weight_matrix
+    class cost_weight_matrix_label_based
     {
     public:
         using label_type = std::string;
@@ -241,18 +219,18 @@ namespace dlib
             cost_weights.clear();
         }
 
-        friend void serialize(const cost_weight_matrix& costs, std::ostream& out)
+        friend void serialize(const cost_weight_matrix_label_based& costs, std::ostream& out)
         {
-            serialize("cost_weight_matrix", out);
+            serialize("cost_weight_matrix_label_based", out);
             serialize(costs.cost_weights, out);
         }
 
-        friend void deserialize(cost_weight_matrix& costs, std::istream& in)
+        friend void deserialize(cost_weight_matrix_label_based& costs, std::istream& in)
         {
             std::string version;
             deserialize(version, in);
-            if (version != "cost_weight_matrix")
-                throw serialization_error("Unexpected version found while deserializing dlib::cost_weight_matrix.");
+            if (version != "cost_weight_matrix_label_based")
+                throw serialization_error("Unexpected version found while deserializing dlib::cost_weight_matrix_label_based.");
             deserialize(costs.cost_weights, in);
         }
 
