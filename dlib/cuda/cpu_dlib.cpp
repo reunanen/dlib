@@ -2637,16 +2637,22 @@ namespace dlib
             DLIB_CASSERT(output.nr() == 1+(data.nr()+2*last_padding_y-filters.nr())/last_stride_y);
             DLIB_CASSERT(output.nc() == 1+(data.nc()+2*last_padding_x-filters.nc())/last_stride_x);
 
+            const int num_samples = data.num_samples();
 
-            matrix<float> temp;
-            for (long n = 0; n < data.num_samples(); ++n)
+#pragma omp parallel for
+            for (int n = 0; n < num_samples; ++n)
             {
+                thread_local matrix<float> temp;
+
                 img2col(temp, data, n, filters.nr(), filters.nc(), last_stride_y, last_stride_x, last_padding_y, last_padding_x);
 
-                if (add_to_output)
-                    output.add_to_sample(n, mat(filters)*trans(temp));
-                else 
-                    output.set_sample(n, mat(filters)*trans(temp));
+#pragma omp critical
+                {
+                    if (add_to_output)
+                        output.add_to_sample(n, mat(filters)*trans(temp));
+                    else 
+                        output.set_sample(n, mat(filters)*trans(temp));
+                }
             }
         }
 
@@ -2687,11 +2693,16 @@ namespace dlib
             tensor& data_gradient
         )
         {
-            matrix<float> temp;
             if (!add_to_output)
                 data_gradient = 0;
-            for (long n = 0; n < gradient_input.num_samples(); ++n)
+
+            const int num_samples = gradient_input.num_samples();
+
+#pragma omp parallel for
+            for (int n = 0; n < num_samples; ++n)
             {
+                thread_local matrix<float> temp;
+
                 auto gi = mat(gradient_input.host()+gradient_input.k()*gradient_input.nr()*gradient_input.nc()*n,
                               gradient_input.k(),
                               gradient_input.nr()*gradient_input.nc());
@@ -2712,25 +2723,37 @@ namespace dlib
             tensor& filters_gradient
         )
         {
-            matrix<float> temp;
-            for (long n = 0; n < gradient_input.num_samples(); ++n)
+            const int num_samples = gradient_input.num_samples();
+
+            bool first = true;
+
+#pragma omp parallel for
+            for (int n = 0; n < num_samples; ++n)
             {
+                thread_local matrix<float> temp;
+
                 auto gi = mat(gradient_input.host()+gradient_input.k()*gradient_input.nr()*gradient_input.nc()*n,
                               gradient_input.k(),
                               gradient_input.nr()*gradient_input.nc());
 
 
                 img2col(temp, data, n, filters_gradient.nr(), filters_gradient.nc(), last_stride_y, last_stride_x, last_padding_y, last_padding_x);
-                if (n == 0)
+
+#pragma omp critical
                 {
-                    if (add_to_output)
-                        filters_gradient += gi*temp;
+                    if (first)
+                    {
+                        if (add_to_output)
+                            filters_gradient += gi*temp;
+                        else
+                            filters_gradient = gi*temp;
+
+                        first = false;
+                    }
                     else
-                        filters_gradient = gi*temp;
-                }
-                else
-                {
-                    filters_gradient += gi*temp;
+                    {
+                        filters_gradient += gi*temp;
+                    }
                 }
             }
         }
