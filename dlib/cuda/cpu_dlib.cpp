@@ -2637,21 +2637,37 @@ namespace dlib
             DLIB_CASSERT(output.nr() == 1+(data.nr()+2*last_padding_y-filters.nr())/last_stride_y);
             DLIB_CASSERT(output.nc() == 1+(data.nc()+2*last_padding_x-filters.nc())/last_stride_x);
 
-            const int num_samples = data.num_samples();
-
-#pragma omp parallel for
-            for (int n = 0; n < num_samples; ++n)
+            const auto do_work = [&](int n) -> const matrix<float>&
             {
                 thread_local matrix<float> temp;
 
                 img2col(temp, data, n, filters.nr(), filters.nc(), last_stride_y, last_stride_x, last_padding_y, last_padding_x);
 
-#pragma omp critical
+                return temp;
+            };
+
+            const auto update_output = [&](int n, const matrix<float>& temp)
+            {
+                if (add_to_output)
+                    output.add_to_sample(n, mat(filters)*trans(temp));
+                else 
+                    output.set_sample(n, mat(filters)*trans(temp));
+            };
+
+            const int num_samples = data.num_samples();
+
+            if (num_samples == 1) // Avoid OpenMP overhead
+            {
+                update_output(0, do_work(0));
+            }
+            else
+            {
+#pragma omp parallel for
+                for (int n = 0; n < num_samples; ++n)
                 {
-                    if (add_to_output)
-                        output.add_to_sample(n, mat(filters)*trans(temp));
-                    else 
-                        output.set_sample(n, mat(filters)*trans(temp));
+                    const auto& temp = do_work(n);
+#pragma omp critical
+                    update_output(n, temp);
                 }
             }
         }
@@ -2696,20 +2712,31 @@ namespace dlib
             if (!add_to_output)
                 data_gradient = 0;
 
-            const int num_samples = gradient_input.num_samples();
-
-#pragma omp parallel for
-            for (int n = 0; n < num_samples; ++n)
+            const auto do_work = [&](int n)
             {
                 thread_local matrix<float> temp;
 
                 auto gi = mat(gradient_input.host()+gradient_input.k()*gradient_input.nr()*gradient_input.nc()*n,
                               gradient_input.k(),
                               gradient_input.nr()*gradient_input.nc());
-                                    
 
                 temp = trans(gi)*mat(filters);
                 col2img(temp, data_gradient, n, filters.nr(), filters.nc(), last_stride_y, last_stride_x, last_padding_y, last_padding_x);
+            };
+
+            const int num_samples = gradient_input.num_samples();
+
+            if (num_samples == 1) // Avoid OpenMP overhead
+            {
+                do_work(0);
+            }
+            else
+            {
+#pragma omp parallel for
+                for (int n = 0; n < num_samples; ++n)
+                {
+                    do_work(n);
+                }
             }
         }
 
@@ -2725,34 +2752,56 @@ namespace dlib
         {
             const int num_samples = gradient_input.num_samples();
 
-            bool first = true;
-
-#pragma omp parallel for
-            for (int n = 0; n < num_samples; ++n)
+            const auto gi = [&](int n)
             {
-                thread_local matrix<float> temp;
-
                 auto gi = mat(gradient_input.host()+gradient_input.k()*gradient_input.nr()*gradient_input.nc()*n,
                               gradient_input.k(),
                               gradient_input.nr()*gradient_input.nc());
+                return gi;
+            };
 
+            const auto temp = [&](int n) -> const matrix<float>&
+            {
+                thread_local matrix<float> temp;
 
                 img2col(temp, data, n, filters_gradient.nr(), filters_gradient.nc(), last_stride_y, last_stride_x, last_padding_y, last_padding_x);
 
-#pragma omp critical
-                {
-                    if (first)
-                    {
-                        if (add_to_output)
-                            filters_gradient += gi*temp;
-                        else
-                            filters_gradient = gi*temp;
+                return temp;
+            };
 
-                        first = false;
-                    }
-                    else
+            if (num_samples == 1) // Avoid OpenMP overhead
+            {
+                const auto result = gi(0) * temp(0);
+
+                if (add_to_output)
+                    filters_gradient += result;
+                else
+                    filters_gradient = result;
+            }
+            else
+            {
+                bool first = true;
+
+#pragma omp parallel for
+                for (int n = 0; n < num_samples; ++n)
+                {
+                    const matrix<float> result = gi(n) * temp(n);
+
+#pragma omp critical
                     {
-                        filters_gradient += gi*temp;
+                        if (first)
+                        {
+                            if (add_to_output)
+                                filters_gradient += result;
+                            else
+                                filters_gradient = result;
+
+                            first = false;
+                        }
+                        else
+                        {
+                            filters_gradient += result;
+                        }
                     }
                 }
             }
