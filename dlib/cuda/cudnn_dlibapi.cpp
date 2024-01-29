@@ -119,6 +119,14 @@ namespace dlib
             thread_local cudnn_context c;
             return c.get_handle();
         }
+
+    // ------------------------------------------------------------------------------------
+
+        void init()
+        {
+            context();
+        }
+
     // ------------------------------------------------------------------------------------
 
         class cudnn_activation_descriptor
