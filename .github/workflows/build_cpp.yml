@@ -225,13 +225,10 @@ jobs:
     - name: Build ancillary tools
       run: cmake --build build --config Release --target imglab htmlify dtoc --parallel 4
 
-  windows-pipe-test-only-debug-build-latest-visual-studio:
+  windows-pipe-test-only-debug-build:
     runs-on: 'windows-latest'
     steps:
     - uses: actions/checkout@v2
-    - name: Update Visual Studio 2022 Build Tools
-      run: |
-        choco install -y visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools;includeRecommended --passive"
     - name: Configure
       run: |
         # don't use CMake 3.25.0 https://gitlab.kitware.com/cmake/cmake/-/issues/23975
