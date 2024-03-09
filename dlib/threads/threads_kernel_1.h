@@ -44,7 +44,7 @@ namespace dlib
     public:
 
         mutex (
-        ) 
+        ) : cs(m, std::defer_lock)
         {
         }
 
@@ -61,7 +61,8 @@ namespace dlib
 
         friend class signaler;
 
-        mutable std::mutex cs;
+        mutable std::mutex m;
+        mutable std::unique_lock<std::mutex> cs;
 
         // restricted functions
         mutex(mutex&);        // copy constructor
@@ -92,16 +93,14 @@ namespace dlib
         void wait (
         ) const
         { 
-            std::unique_lock<std::mutex> cs(m.cs, std::defer_lock);
-            cv.wait(cs);
+            cv.wait(m.cs);
         }
 
         bool wait_or_timeout (
             unsigned long milliseconds
         ) const
         { 
-            std::unique_lock<std::mutex> cs(m.cs, std::defer_lock);
-            auto status = cv.wait_until(cs, std::chrono::system_clock::now() + std::chrono::milliseconds(milliseconds));
+            auto status = cv.wait_until(m.cs, std::chrono::system_clock::now() + std::chrono::milliseconds(milliseconds));
             return status == std::cv_status::no_timeout;
         }
 
