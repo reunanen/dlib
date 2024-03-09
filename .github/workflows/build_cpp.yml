@@ -224,6 +224,23 @@ jobs:
       run: cmake --build build --config Debug --target dtest --parallel 4
     - name: Build ancillary tools
       run: cmake --build build --config Release --target imglab htmlify dtoc --parallel 4
+
+  windows-pipe-test-only-debug-build-latest-visual-studio:
+    runs-on: 'windows-latest'
+    steps:
+    - uses: actions/checkout@v2
+    - name: Update Visual Studio 2022 Build Tools
+      run: |
+        choco install -y visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools;includeRecommended --passive"
+    - name: Configure
+      run: |
+        # don't use CMake 3.25.0 https://gitlab.kitware.com/cmake/cmake/-/issues/23975
+        pip3 install cmake==3.24.0
+        cmake . -B build
+    - name: Build just tests
+      run: cmake --build build --config Debug --target dtest --parallel 4
+    - name: Test
+      run: build/Debug/dtest.exe --test_pipe -q
   
   # Disable this because macos targets aren't working on github actions right now.
   #macos-latest:
