@@ -236,8 +236,6 @@ namespace dlib
             pixel_type& result
         ) const
         {
-            // Assign pixel gives special meaning to alpha channel that would break interpolation
-            static_assert(pixel_traits<typename image_view_type::pixel_type>::has_alpha == false, "Images with alpha channel not supported");
             // Interpolation currently supports only fully cartesian (non-polar) spaces.
             static_assert(is_color_space_cartesian_image<image_view_type>::value == true, "Non-cartesian color space used in interpolation");
 
