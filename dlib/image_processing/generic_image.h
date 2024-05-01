@@ -136,6 +136,7 @@ namespace dlib
     template <typename image_type>
     struct is_color_space_cartesian_image { const static bool value = 
         pixel_traits<typename image_traits<image_type>::pixel_type>::rgb || 
+        pixel_traits<typename image_traits<image_type>::pixel_type>::rgb_alpha ||
         pixel_traits<typename image_traits<image_type>::pixel_type>::lab || 
         pixel_traits<typename image_traits<image_type>::pixel_type>::grayscale; };
     /*
