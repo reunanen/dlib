@@ -237,13 +237,27 @@ namespace dlib
                 typedef typename image_traits<U>::pixel_type U_pix;
                 const static bool value = pixel_traits<T_pix>::rgb && pixel_traits<U_pix>::rgb;
             };
+            template <typename T, typename U>
+            struct both_images_rgba
+            {
+                typedef typename image_traits<T>::pixel_type T_pix;
+                typedef typename image_traits<U>::pixel_type U_pix;
+                const static bool value = pixel_traits<T_pix>::rgb_alpha && pixel_traits<U_pix>::rgb_alpha;
+            };
+            template <typename T, typename U>
+            struct both_images_rgb_or_rgba
+            {
+                typedef typename image_traits<T>::pixel_type T_pix;
+                typedef typename image_traits<U>::pixel_type U_pix;
+                const static bool value = (pixel_traits<T_pix>::rgb && pixel_traits<U_pix>::rgb) || (pixel_traits<T_pix>::rgb_alpha && pixel_traits<U_pix>::rgb_alpha);
+            };
         public:
 
             template <
                 typename in_image_type,
                 typename out_image_type
                 >
-            typename disable_if<both_images_rgb<in_image_type,out_image_type> >::type operator() (
+            typename disable_if<both_images_rgb_or_rgba<in_image_type,out_image_type> >::type operator() (
                 const in_image_type& original_,
                 out_image_type& down_
             ) const
@@ -335,6 +349,13 @@ namespace dlib
                 uint16 red;
                 uint16 green;
                 uint16 blue;
+            };
+            struct rgbaptype
+            {
+                uint16 red;
+                uint16 green;
+                uint16 blue;
+                uint16 alpha;
             };
         public:
         // ------------------------------------------
@@ -477,6 +498,149 @@ namespace dlib
                 swap(temp, img);
             }
 
+            // ------------------------------------------
+            //       OVERLOAD FOR RGBA TO RGBA IMAGES
+            // ------------------------------------------
+            template <
+                typename in_image_type,
+                typename out_image_type
+                >
+            typename enable_if<both_images_rgba<in_image_type,out_image_type> >::type operator() (
+                const in_image_type& original_,
+                out_image_type& down_
+            ) const
+            {
+                // make sure requires clause is not broken
+                DLIB_ASSERT( is_same_object(original_, down_) == false, 
+                            "\t void pyramid_down_2_1::operator()"
+                            << "\n\t is_same_object(original_, down_): " << is_same_object(original_, down_) 
+                            << "\n\t this:                           " << this
+                            );
+
+                typedef typename image_traits<in_image_type>::pixel_type in_pixel_type;
+                typedef typename image_traits<out_image_type>::pixel_type out_pixel_type;
+                COMPILE_TIME_ASSERT( pixel_traits<in_pixel_type>::has_alpha == true );
+                COMPILE_TIME_ASSERT( pixel_traits<out_pixel_type>::has_alpha == true );
+
+                const_image_view<in_image_type> original(original_);
+                image_view<out_image_type> down(down_);
+
+                if (original.nr() <= 8 || original.nc() <= 8)
+                {
+                    down.clear();
+                    return;
+                }
+
+                array2d<rgbaptype> temp_img;
+                temp_img.set_size(original.nr(), (original.nc()-3)/2);
+                down.set_size((original.nr()-3)/2, (original.nc()-3)/2);
+
+
+                // This function applies a 5x5 Gaussian filter to the image.  It
+                // does this by separating the filter into its horizontal and vertical
+                // components and then downsamples the image by dropping every other
+                // row and column.  Note that we can do these things all together in
+                // one step.
+
+                // apply row filter
+                for (long r = 0; r < temp_img.nr(); ++r)
+                {
+                    long oc = 0;
+                    for (long c = 0; c < temp_img.nc(); ++c)
+                    {
+                        rgbaptype pix1;
+                        rgbaptype pix2;
+                        rgbaptype pix3;
+                        rgbaptype pix4;
+                        rgbaptype pix5;
+
+                        pix1.red = original[r][oc].red;
+                        pix2.red = original[r][oc+1].red;
+                        pix3.red = original[r][oc+2].red;
+                        pix4.red = original[r][oc+3].red;
+                        pix5.red = original[r][oc+4].red;
+                        pix1.green = original[r][oc].green;
+                        pix2.green = original[r][oc+1].green;
+                        pix3.green = original[r][oc+2].green;
+                        pix4.green = original[r][oc+3].green;
+                        pix5.green = original[r][oc+4].green;
+                        pix1.blue = original[r][oc].blue;
+                        pix2.blue = original[r][oc+1].blue;
+                        pix3.blue = original[r][oc+2].blue;
+                        pix4.blue = original[r][oc+3].blue;
+                        pix5.blue = original[r][oc+4].blue;
+                        pix1.alpha = original[r][oc].alpha;
+                        pix2.alpha = original[r][oc+1].alpha;
+                        pix3.alpha = original[r][oc+2].alpha;
+                        pix4.alpha = original[r][oc+3].alpha;
+                        pix5.alpha = original[r][oc+4].alpha;
+
+                        pix2.red *= 4;
+                        pix3.red *= 6;
+                        pix4.red *= 4;
+
+                        pix2.green *= 4;
+                        pix3.green *= 6;
+                        pix4.green *= 4;
+
+                        pix2.blue *= 4;
+                        pix3.blue *= 6;
+                        pix4.blue *= 4;
+
+                        pix2.alpha *= 4;
+                        pix3.alpha *= 6;
+                        pix4.alpha *= 4;
+
+                        rgbaptype temp;
+                        temp.red = pix1.red + pix2.red + pix3.red + pix4.red + pix5.red;
+                        temp.green = pix1.green + pix2.green + pix3.green + pix4.green + pix5.green;
+                        temp.blue = pix1.blue + pix2.blue + pix3.blue + pix4.blue + pix5.blue;
+                        temp.alpha = pix1.alpha + pix2.alpha + pix3.alpha + pix4.alpha + pix5.alpha;
+
+                        temp_img[r][c] = temp;
+
+                        oc += 2;
+                    }
+                }
+
+
+                // apply column filter
+                long dr = 0;
+                for (long r = 2; r < temp_img.nr()-2; r += 2)
+                {
+                    for (long c = 0; c < temp_img.nc(); ++c)
+                    {
+                        rgbaptype temp;
+                        temp.red = temp_img[r-2][c].red + 
+                                temp_img[r-1][c].red*4 +  
+                                temp_img[r  ][c].red*6 +  
+                                temp_img[r+1][c].red*4 +  
+                                temp_img[r+2][c].red;  
+                        temp.green = temp_img[r-2][c].green + 
+                                    temp_img[r-1][c].green*4 +  
+                                    temp_img[r  ][c].green*6 +  
+                                    temp_img[r+1][c].green*4 +  
+                                    temp_img[r+2][c].green;  
+                        temp.blue = temp_img[r-2][c].blue + 
+                                    temp_img[r-1][c].blue*4 +  
+                                    temp_img[r  ][c].blue*6 +  
+                                    temp_img[r+1][c].blue*4 +  
+                                    temp_img[r+2][c].blue;  
+                        temp.alpha = temp_img[r-2][c].alpha + 
+                                    temp_img[r-1][c].alpha*4 +
+                                    temp_img[r  ][c].alpha*6 +  
+                                    temp_img[r+1][c].alpha*4 +  
+                                    temp_img[r+2][c].alpha;  
+
+                        down[dr][c].red = temp.red/256;
+                        down[dr][c].green = temp.green/256;
+                        down[dr][c].blue = temp.blue/256;
+                        down[dr][c].alpha = temp.alpha/256;
+                    }
+                    ++dr;
+                }
+
+            }
         private:
 
 

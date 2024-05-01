@@ -1016,6 +1016,149 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
+    template <typename PYRAMID_TYPE>
+    class input_rgba_image_pyramid : public detail::input_image_pyramid<PYRAMID_TYPE>
+    {
+    public:
+        typedef matrix<rgb_alpha_pixel> input_type;
+        typedef PYRAMID_TYPE pyramid_type;
+
+        input_rgba_image_pyramid (
+        ) :
+            avg_red(122.782),
+            avg_green(117.001),
+            avg_blue(104.298),
+            avg_alpha(127.500)
+        {
+        }
+
+        input_rgba_image_pyramid (
+            float avg_red_,
+            float avg_green_,
+            float avg_blue_,
+            float avg_alpha
+        ) : avg_red(avg_red_), avg_green(avg_green_), avg_blue(avg_blue_), avg_alpha(avg_alpha_)
+        {}
+
+        float get_avg_red()   const { return avg_red; }
+        float get_avg_green() const { return avg_green; }
+        float get_avg_blue()  const { return avg_blue; }
+        float get_avg_alpha() const { return avg_alpha; }
+
+        template <typename forward_iterator>
+        void to_tensor (
+            forward_iterator ibegin,
+            forward_iterator iend,
+            resizable_tensor& data
+        ) const
+        {
+            this->to_tensor_init(ibegin, iend, data, 4);
+
+            const auto rects = data.annotation().get<std::vector<rectangle>>();
+            if (rects.size() == 0)
+                return;
+
+            // copy the first raw image into the top part of the tiled pyramid.  We need to
+            // do this for each of the input images/samples in the tensor.
+            auto ptr = data.host_write_only();
+            for (auto i = ibegin; i != iend; ++i)
+            {
+                auto& img = *i;
+                ptr += rects[0].top()*data.nc();
+                for (long r = 0; r < img.nr(); ++r)
+                {
+                    auto p = ptr+rects[0].left();
+                    for (long c = 0; c < img.nc(); ++c)
+                        p[c] = (img(r,c).red-avg_red)/256.0;
+                    ptr += data.nc();
+                }
+                ptr += data.nc()*(data.nr()-rects[0].bottom()-1);
+
+                ptr += rects[0].top()*data.nc();
+                for (long r = 0; r < img.nr(); ++r)
+                {
+                    auto p = ptr+rects[0].left();
+                    for (long c = 0; c < img.nc(); ++c)
+                        p[c] = (img(r,c).green-avg_green)/256.0;
+                    ptr += data.nc();
+                }
+                ptr += data.nc()*(data.nr()-rects[0].bottom()-1);
+
+                ptr += rects[0].top()*data.nc();
+                for (long r = 0; r < img.nr(); ++r)
+                {
+                    auto p = ptr+rects[0].left();
+                    for (long c = 0; c < img.nc(); ++c)
+                        p[c] = (img(r,c).blue-avg_blue)/256.0;
+                    ptr += data.nc();
+                }
+                ptr += data.nc()*(data.nr()-rects[0].bottom()-1);
+
+                ptr += rects[0].top()*data.nc();
+                for (long r = 0; r < img.nr(); ++r)
+                {
+                    auto p = ptr+rects[0].left();
+                    for (long c = 0; c < img.nc(); ++c)
+                        p[c] = (img(r,c).alpha-avg_alpha)/256.0;
+                    ptr += data.nc();
+                }
+                ptr += data.nc()*(data.nr()-rects[0].bottom()-1);
+            }
+
+            this->create_tiled_pyramid(rects, data);
+        }
+
+        friend void serialize(const input_rgba_image_pyramid& item, std::ostream& out)
+        {
+            serialize("input_rgba_image_pyramid", out);
+            serialize(item.avg_red, out);
+            serialize(item.avg_green, out);
+            serialize(item.avg_blue, out);
+            serialize(item.avg_alpha, out);
+            serialize(item.pyramid_padding, out);
+            serialize(item.pyramid_outer_padding, out);
+        }
+
+        friend void deserialize(input_rgba_image_pyramid& item, std::istream& in)
+        {
+            std::string version;
+            deserialize(version, in);
+            if (version != "input_rgba_image_pyramid")
+                throw serialization_error("Unexpected version found while deserializing dlib::input_rgba_image_pyramid.");
+            deserialize(item.avg_red, in);
+            deserialize(item.avg_green, in);
+            deserialize(item.avg_blue, in);
+            deserialize(item.avg_alpha, in);
+            deserialize(item.pyramid_padding, in);
+            deserialize(item.pyramid_outer_padding, in);
+        }
+
+        friend std::ostream& operator<<(std::ostream& out, const input_rgba_image_pyramid& item)
+        {
+            out << "input_rgba_image_pyramid("<<item.avg_red<<","<<item.avg_green<<","<<item.avg_blue<<","<<item.avg_alpha<<")";
+            out << " pyramid_padding="<<item.pyramid_padding;
+            out << " pyramid_outer_padding="<<item.pyramid_outer_padding;
+            return out;
+        }
+
+        friend void to_xml(const input_rgba_image_pyramid& item, std::ostream& out)
+        {
+            out << "<input_rgb_image_pyramid r='"<<item.avg_red<<"' g='"<<item.avg_green
+                <<"' b='"<<item.avg_blue<<"' a='"<<item.avg_alpha
+s                <<"' pyramid_padding='"<<item.pyramid_padding
+                <<"' pyramid_outer_padding='"<<item.pyramid_outer_padding
+                <<"'/>";
+        }
+
+    private:
+        float avg_red;
+        float avg_green;
+        float avg_blue;
+        float avg_alpha;
+    };
+
+    // ----------------------------------------------------------------------------------------
+
     class input_grayscale_image_stack
     {
     public:
