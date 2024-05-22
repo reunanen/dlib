@@ -157,6 +157,8 @@ namespace dlib
                 return r - l + 1; 
         }
 
+#pragma warning(push)
+#pragma warning(disable: 4723)
         unsigned long height (
         ) const 
         { 
@@ -165,6 +167,7 @@ namespace dlib
             else
                 return b - t + 1; 
         }
+#pragma warning(pop)
 
         unsigned long area (
         ) const
