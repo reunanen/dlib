@@ -1036,7 +1036,7 @@ namespace dlib
             float avg_red_,
             float avg_green_,
             float avg_blue_,
-            float avg_alpha
+            float avg_alpha_
         ) : avg_red(avg_red_), avg_green(avg_green_), avg_blue(avg_blue_), avg_alpha(avg_alpha_)
         {}
 
