@@ -1145,7 +1145,7 @@ namespace dlib
         {
             out << "<input_rgb_image_pyramid r='"<<item.avg_red<<"' g='"<<item.avg_green
                 <<"' b='"<<item.avg_blue<<"' a='"<<item.avg_alpha
-s                <<"' pyramid_padding='"<<item.pyramid_padding
+                <<"' pyramid_padding='"<<item.pyramid_padding
                 <<"' pyramid_outer_padding='"<<item.pyramid_outer_padding
                 <<"'/>";
         }
