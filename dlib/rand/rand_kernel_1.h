@@ -265,6 +265,48 @@ namespace dlib
                 return r.real();
             }
 
+            double get_random_exponential (
+                double lambda
+            )
+            {
+                DLIB_ASSERT(lambda > 0, "lambda must be greater than zero");
+                double u = 0.0;
+                while (u == 0.0)
+                    u = get_random_double();
+                return -std::log( u ) / lambda;
+            }
+
+            double get_random_weibull (
+                double lambda,
+                double k,
+                double gamma
+            )
+            {
+                DLIB_ASSERT(k > 0, "k must be greater than zero");
+                DLIB_ASSERT(lambda > 0, "lambda must be greater than zero");
+                double u = 0.0;
+                while (u == 0.0)
+                    u = get_random_double();
+                return gamma + lambda*std::pow(-std::log(u), 1.0 / k);
+            }
+
+            double get_random_beta (
+                double alpha,
+                double beta
+            )
+            {
+                DLIB_CASSERT(alpha > 0, "alpha must be greater than zero")
+                DLIB_CASSERT(beta > 0, "beta must be greater than zero");
+                auto u = std::pow(get_random_double(), 1 / alpha);
+                auto v = std::pow(get_random_double(), 1 / beta);
+                while ((u + v) > 1 || (u == 0 && v == 0))
+                {
+                    u = std::pow(get_random_double(), 1 / alpha);
+                    v = std::pow(get_random_double(), 1 / beta);
+                }
+                return u / (u + v);
+            }
+
             void swap (
                 rand& item
             )

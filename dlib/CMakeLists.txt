@@ -4,14 +4,11 @@
 #
 
 
-cmake_minimum_required(VERSION 2.8.12)
+cmake_minimum_required(VERSION 3.10.0)
 
 set(CMAKE_DISABLE_SOURCE_CHANGES ON)
 set(CMAKE_DISABLE_IN_SOURCE_BUILD ON)
 
-if(POLICY CMP0048)
-   cmake_policy(SET CMP0048 NEW)
-endif()
 if(POLICY CMP0077)
    cmake_policy(SET CMP0077 NEW)
 endif()
@@ -19,8 +16,8 @@ endif()
 project(dlib)
 
 set(CPACK_PACKAGE_NAME "dlib")
-set(CPACK_PACKAGE_VERSION_MAJOR "19")
-set(CPACK_PACKAGE_VERSION_MINOR "21")
+set(CPACK_PACKAGE_VERSION_MAJOR "20")
+set(CPACK_PACKAGE_VERSION_MINOR "0")
 set(CPACK_PACKAGE_VERSION_PATCH "99")
 set(VERSION ${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH})
 # Only print these messages once, even if dlib is added multiple times via add_subdirectory()
@@ -36,18 +33,12 @@ include(cmake_utils/set_compiler_specific_options.cmake)
 # Adhere to GNU filesystem layout conventions
 include(GNUInstallDirs)
 
-if (POLICY CMP0063)
-   # This policy tells cmake to really honor CXX_VISIBILITY_PRESET rather than
-   # ignore it for backwards compatibility.
-   cmake_policy(SET CMP0063 NEW)
-endif()
 if (POLICY CMP0075)
    cmake_policy(SET CMP0075 NEW)
 endif()
 
 # default to a Release build (except if CMAKE_BUILD_TYPE is set)
 include(cmake_utils/release_build_by_default)
-include(cmake_utils/use_cpp_11.cmake)
 
 # Set DLIB_VERSION in the including CMake file so they can use it to do whatever they want. 
 get_directory_property(has_parent PARENT_DIRECTORY)
@@ -57,6 +48,7 @@ if(has_parent)
       set(DLIB_IN_PROJECT_BUILD true)
    endif()
 endif()
+
 
 if (COMMAND pybind11_add_module AND MSVC)
    # True when building a python extension module using Visual Studio.  We care
@@ -144,10 +136,12 @@ endmacro()
 
 
 # Suppress superfluous randlib warnings about libdlib.a having no symbols on MacOSX.
-if (APPLE)
+if (CMAKE_C_COMPILER_ID STREQUAL "AppleClang")
    set(CMAKE_C_ARCHIVE_CREATE   "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
-   set(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
    set(CMAKE_C_ARCHIVE_FINISH   "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
+endif()
+if (CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+   set(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
    set(CMAKE_CXX_ARCHIVE_FINISH "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
 endif()
 
@@ -171,6 +165,8 @@ if (NOT TARGET dlib)
       "Disable this if you don't want to use a LAPACK library" )
    set (DLIB_USE_CUDA_STR
       "Disable this if you don't want to use NVIDIA CUDA" )
+   set (DLIB_USE_CUDA_COMPUTE_CAPABILITIES_STR
+      "Set this to a comma-separated list of CUDA compute capabilities" )
    set (DLIB_USE_MKL_SEQUENTIAL_STR
       "Enable this if you have MKL installed and want to use the sequential version instead of the multi-core version." )
    set (DLIB_USE_MKL_WITH_TBB_STR
@@ -181,6 +177,10 @@ if (NOT TARGET dlib)
       "Disable this if you don't want to link against libgif" )
    set (DLIB_JPEG_SUPPORT_STR
       "Disable this if you don't want to link against libjpeg" )
+   set (DLIB_WEBP_SUPPORT_STR
+      "Disable this if you don't want to link against libwebp" )
+   set (DLIB_JXL_SUPPORT_STR
+      "Disable this if you don't want to link against libjxl" )
    set (DLIB_LINK_WITH_SQLITE3_STR
       "Disable this if you don't want to link against sqlite3" )
    #set (DLIB_USE_FFTW_STR "Disable this if you don't want to link against fftw" )
@@ -188,7 +188,8 @@ if (NOT TARGET dlib)
       "Disable this is you don't want to use the MKL DFTI FFT implementation" )
    set (DLIB_ENABLE_ASSERTS_STR
       "Enable this if you want to turn on the DLIB_ASSERT macro" )
-
+   set (DLIB_USE_FFMPEG_STR
+      "Disable this if you don't want to use the FFMPEG library" )
 
    option(DLIB_ENABLE_ASSERTS ${DLIB_ENABLE_ASSERTS_STR} OFF)
    option(DLIB_ISO_CPP_ONLY ${DLIB_ISO_CPP_ONLY_STR} OFF)
@@ -237,18 +238,25 @@ if (NOT TARGET dlib)
       option(DLIB_USE_CUDA ${DLIB_USE_CUDA_STR} OFF)
       option(DLIB_PNG_SUPPORT ${DLIB_PNG_SUPPORT_STR} OFF)
       option(DLIB_GIF_SUPPORT ${DLIB_GIF_SUPPORT_STR} OFF)
+      option(DLIB_WEBP_SUPPORT ${DLIB_WEBP_SUPPORT_STR} OFF)
+      option(DLIB_JXL_SUPPORT ${DLIB_JXL_SUPPORT_STR} OFF)
       #option(DLIB_USE_FFTW ${DLIB_USE_FFTW_STR} OFF)
       option(DLIB_USE_MKL_FFT ${DLIB_USE_MKL_FFT_STR} OFF)
+      option(DLIB_USE_FFMPEG ${DLIB_USE_FFMPEG_STR} OFF)
    else()
       option(DLIB_JPEG_SUPPORT ${DLIB_JPEG_SUPPORT_STR} ON)
       option(DLIB_LINK_WITH_SQLITE3 ${DLIB_LINK_WITH_SQLITE3_STR} ON)
       option(DLIB_USE_BLAS ${DLIB_USE_BLAS_STR} ON)
       option(DLIB_USE_LAPACK ${DLIB_USE_LAPACK_STR} ON)
       option(DLIB_USE_CUDA ${DLIB_USE_CUDA_STR} ON)
+      set(DLIB_USE_CUDA_COMPUTE_CAPABILITIES 50 CACHE STRING ${DLIB_USE_CUDA_COMPUTE_CAPABILITIES_STR})
       option(DLIB_PNG_SUPPORT ${DLIB_PNG_SUPPORT_STR} ON)
       option(DLIB_GIF_SUPPORT ${DLIB_GIF_SUPPORT_STR} ON)
+      option(DLIB_WEBP_SUPPORT ${DLIB_WEBP_SUPPORT_STR} ON)
+      option(DLIB_JXL_SUPPORT ${DLIB_JXL_SUPPORT_STR} ON)
       #option(DLIB_USE_FFTW ${DLIB_USE_FFTW_STR} ON)
       option(DLIB_USE_MKL_FFT ${DLIB_USE_MKL_FFT_STR} ON)
+      option(DLIB_USE_FFMPEG ${DLIB_USE_FFMPEG_STR} ON)
    endif()
    toggle_preprocessor_switch(DLIB_JPEG_SUPPORT)
    toggle_preprocessor_switch(DLIB_USE_BLAS)
@@ -256,11 +264,14 @@ if (NOT TARGET dlib)
    toggle_preprocessor_switch(DLIB_USE_CUDA)
    toggle_preprocessor_switch(DLIB_PNG_SUPPORT) 
    toggle_preprocessor_switch(DLIB_GIF_SUPPORT) 
+   toggle_preprocessor_switch(DLIB_WEBP_SUPPORT)
+   toggle_preprocessor_switch(DLIB_JXL_SUPPORT) 
    #toggle_preprocessor_switch(DLIB_USE_FFTW)
    toggle_preprocessor_switch(DLIB_USE_MKL_FFT)
+   toggle_preprocessor_switch(DLIB_USE_FFMPEG)
 
 
-   set(source_files 
+   set(source_files
       base64/base64_kernel_1.cpp
       bigint/bigint_kernel_1.cpp
       bigint/bigint_kernel_2.cpp
@@ -273,11 +284,15 @@ if (NOT TARGET dlib)
       tokenizer/tokenizer_kernel_1.cpp
       unicode/unicode.cpp
       test_for_odr_violations.cpp
+      fft/fft.cpp
       )
 
-
-   set(dlib_needed_libraries)
-   set(dlib_needed_includes)
+   set(dlib_needed_public_libraries)
+   set(dlib_needed_public_includes)
+   set(dlib_needed_public_cflags)
+   set(dlib_needed_public_ldflags)
+   set(dlib_needed_private_libraries)
+   set(dlib_needed_private_includes)
 
    if (DLIB_ISO_CPP_ONLY)
       add_library(dlib ${source_files} )
@@ -289,6 +304,7 @@ if (NOT TARGET dlib)
          dir_nav/dir_nav_kernel_1.cpp
          dir_nav/dir_nav_kernel_2.cpp
          dir_nav/dir_nav_extensions.cpp
+         gui_widgets/fonts.cpp
          linker/linker_kernel_1.cpp
          logger/extra_logger_headers.cpp
          logger/logger_kernel_1.cpp
@@ -315,6 +331,7 @@ if (NOT TARGET dlib)
          cuda/tensor_tools.cpp
          data_io/image_dataset_metadata.cpp
          data_io/mnist.cpp
+         data_io/cifar.cpp
          global_optimization/global_function_search.cpp
          filtering/kalman_filter.cpp
          svm/auto.cpp
@@ -323,15 +340,15 @@ if (NOT TARGET dlib)
       if(UNIX)
          set(CMAKE_THREAD_PREFER_PTHREAD ON)
          find_package(Threads REQUIRED)
-         set(dlib_needed_libraries ${dlib_needed_libraries} ${CMAKE_THREAD_LIBS_INIT})
+         list (APPEND dlib_needed_private_libraries ${CMAKE_THREAD_LIBS_INIT})
       endif()
 
       # we want to link to the right stuff depending on our platform.  
       if (WIN32 AND NOT CYGWIN) ###############################################################################
          if (DLIB_NO_GUI_SUPPORT)
-            set (dlib_needed_libraries ws2_32 winmm)
+            list (APPEND dlib_needed_private_libraries ws2_32 winmm)
          else()
-            set (dlib_needed_libraries ws2_32 winmm comctl32 gdi32 imm32)
+            list (APPEND dlib_needed_private_libraries ws2_32 winmm comctl32 gdi32 imm32)
          endif()
       elseif(APPLE) ############################################################################
          set(CMAKE_MACOSX_RPATH 1)
@@ -345,8 +362,8 @@ if (NOT TARGET dlib)
                      list (REMOVE_ITEM X11_INCLUDE_DIR ${ITR})
                   endif ()
                endforeach(ITR)
-               include_directories(${X11_INCLUDE_DIR})
-               set (dlib_needed_libraries ${dlib_needed_libraries} ${X11_LIBRARIES})
+               list (APPEND dlib_needed_public_includes ${X11_INCLUDE_DIR})
+               list (APPEND dlib_needed_public_libraries ${X11_LIBRARIES})
             else()
                find_library(xlib X11)
                # Make sure X11 is in the include path.  Note that we look for
@@ -360,8 +377,8 @@ if (NOT TARGET dlib)
                   )
                if (xlib AND xlib_path)
                   get_filename_component(x11_path ${xlib_path} PATH CACHE)
-                  include_directories(${x11_path})
-                  set(dlib_needed_libraries ${dlib_needed_libraries} ${xlib} )
+                  list (APPEND dlib_needed_public_includes ${x11_path})
+                  list (APPEND dlib_needed_public_libraries ${xlib})
                   set(X11_FOUND 1)
                endif()
             endif()
@@ -381,14 +398,14 @@ if (NOT TARGET dlib)
          # link to the socket library if it exists.  this is something you need on solaris
          find_library(socketlib socket)
          if (socketlib)
-            set (dlib_needed_libraries ${dlib_needed_libraries} ${socketlib})
+            list (APPEND dlib_needed_private_libraries ${socketlib})
          endif ()
 
          if (NOT DLIB_NO_GUI_SUPPORT)
             include(FindX11)
             if (X11_FOUND)
-               include_directories(${X11_INCLUDE_DIR})
-               set (dlib_needed_libraries ${dlib_needed_libraries} ${X11_LIBRARIES})
+               list (APPEND dlib_needed_private_includes ${X11_INCLUDE_DIR})
+               list (APPEND dlib_needed_private_libraries ${X11_LIBRARIES})
             else()
                message(" *****************************************************************************")
                message(" *** DLIB GUI SUPPORT DISABLED BECAUSE X11 DEVELOPMENT LIBRARIES NOT FOUND ***")
@@ -405,7 +422,6 @@ if (NOT TARGET dlib)
 
       if (NOT DLIB_NO_GUI_SUPPORT)
          set(source_files ${source_files}
-            gui_widgets/fonts.cpp
             gui_widgets/widgets.cpp
             gui_widgets/drawable.cpp
             gui_widgets/canvas_drawing.cpp
@@ -421,8 +437,8 @@ if (NOT TARGET dlib)
       if (DLIB_GIF_SUPPORT)
          find_package(GIF QUIET)
          if (GIF_FOUND)
-            set (dlib_needed_includes ${dlib_needed_includes} ${GIF_INCLUDE_DIR})
-            set (dlib_needed_libraries ${dlib_needed_libraries} ${GIF_LIBRARY})
+            list (APPEND dlib_needed_public_includes ${GIF_INCLUDE_DIR})
+            list (APPEND dlib_needed_public_libraries ${GIF_LIBRARY})
          else()
             set(DLIB_GIF_SUPPORT OFF CACHE STRING ${DLIB_GIF_SUPPORT_STR} FORCE )
             toggle_preprocessor_switch(DLIB_GIF_SUPPORT)
@@ -432,14 +448,15 @@ if (NOT TARGET dlib)
       if (DLIB_PNG_SUPPORT)
          include(cmake_utils/find_libpng.cmake)
          if (PNG_FOUND)
-            include_directories(${PNG_INCLUDE_DIR})
-            set (dlib_needed_libraries ${dlib_needed_libraries} ${PNG_LIBRARIES})
+            list (APPEND dlib_needed_private_includes ${PNG_INCLUDE_DIR})
+            list (APPEND dlib_needed_private_libraries ${PNG_LIBRARIES})
          else()
             # If we can't find libpng then statically compile it in.
             include_directories(external/libpng external/zlib)
             set(source_files ${source_files}
                external/libpng/arm/arm_init.c
                external/libpng/arm/filter_neon_intrinsics.c
+               external/libpng/arm/palette_neon_intrinsics.c
                external/libpng/png.c
                external/libpng/pngerror.c
                external/libpng/pngget.c
@@ -493,8 +510,8 @@ if (NOT TARGET dlib)
       if (DLIB_JPEG_SUPPORT)
          include(cmake_utils/find_libjpeg.cmake)
          if (JPEG_FOUND)
-            include_directories(${JPEG_INCLUDE_DIR})
-            set (dlib_needed_libraries ${dlib_needed_libraries} ${JPEG_LIBRARY})
+            list (APPEND dlib_needed_private_includes ${JPEG_INCLUDE_DIR})
+            list (APPEND dlib_needed_private_libraries ${JPEG_LIBRARY})
          else()
             # If we can't find libjpeg then statically compile it in.
             add_definitions(-DDLIB_JPEG_STATIC)
@@ -550,6 +567,37 @@ if (NOT TARGET dlib)
             image_saver/save_jpeg.cpp
             )
       endif()
+      if (DLIB_WEBP_SUPPORT)
+         include(cmake_utils/find_libwebp.cmake)
+         if (WEBP_FOUND)
+            list (APPEND dlib_needed_private_includes ${WEBP_INCLUDE_DIR})
+            list (APPEND dlib_needed_private_libraries ${WEBP_LIBRARY})
+            set(source_files ${source_files}
+               image_loader/webp_loader.cpp
+               image_saver/save_webp.cpp
+               )
+         else()
+             set(DLIB_WEBP_SUPPORT OFF CACHE BOOL ${DLIB_WEBP_SUPPORT_STR} FORCE )
+             toggle_preprocessor_switch(DLIB_WEBP_SUPPORT)
+         endif()
+      endif()
+      if (DLIB_JXL_SUPPORT)
+         include(cmake_utils/find_libjxl.cmake)
+         if (JXL_FOUND)
+            list (APPEND dlib_needed_private_includes ${JXL_INCLUDE_DIRS})
+            list (APPEND dlib_needed_private_libraries ${JXL_LIBRARIES})
+            list (APPEND dlib_needed_public_cflags ${JXL_CFLAGS})
+            list (APPEND dlib_needed_public_ldflags ${JXL_LDFLAGS})
+            set(source_files ${source_files}
+               image_loader/jxl_loader.cpp
+               image_saver/save_jxl.cpp
+               )
+            enable_preprocessor_switch(DLIB_JXL_SUPPORT)
+         else()
+            set(DLIB_JXL_SUPPORT OFF CACHE BOOL ${DLIB_JXL_SUPPORT_STR} FORCE)
+            disable_preprocessor_switch(DLIB_JXL_SUPPORT)
+         endif()
+      endif()
 
 
       if (DLIB_USE_BLAS OR DLIB_USE_LAPACK OR DLIB_USE_MKL_FFT)
@@ -565,7 +613,7 @@ if (NOT TARGET dlib)
 
          if (DLIB_USE_BLAS)
             if (blas_found)
-               set (dlib_needed_libraries ${dlib_needed_libraries} ${blas_libraries})
+               list (APPEND dlib_needed_public_libraries ${blas_libraries})
             else()
                set(DLIB_USE_BLAS OFF CACHE STRING ${DLIB_USE_BLAS_STR} FORCE )
                toggle_preprocessor_switch(DLIB_USE_BLAS)
@@ -574,7 +622,7 @@ if (NOT TARGET dlib)
 
          if (DLIB_USE_LAPACK)
             if (lapack_found)
-               set (dlib_needed_libraries ${dlib_needed_libraries} ${lapack_libraries})
+               list (APPEND dlib_needed_public_libraries ${lapack_libraries})
                if (lapack_with_underscore)
                   set(LAPACK_FORCE_UNDERSCORE 1)
                   enable_preprocessor_switch(LAPACK_FORCE_UNDERSCORE)
@@ -590,8 +638,8 @@ if (NOT TARGET dlib)
 
          if (DLIB_USE_MKL_FFT)
             if (found_intel_mkl AND found_intel_mkl_headers)
-               set (dlib_needed_includes ${dlib_needed_includes} ${mkl_include_dir})
-               set (dlib_needed_libraries ${dlib_needed_libraries} ${mkl_libraries})
+               list (APPEND dlib_needed_public_includes ${mkl_include_dir})
+               list (APPEND dlib_needed_public_libraries ${mkl_libraries})
             else()
                set(DLIB_USE_MKL_FFT OFF CACHE STRING ${DLIB_USE_MKL_FFT_STR} FORCE )
                toggle_preprocessor_switch(DLIB_USE_MKL_FFT)
@@ -614,7 +662,13 @@ if (NOT TARGET dlib)
             set(CUDA_FOUND 0)
          endif()
 
-         if (CUDA_FOUND AND (NOT USING_OLD_VISUAL_STUDIO_COMPILER))
+         if (NOT CUDA_CUBLAS_LIBRARIES)
+            message(STATUS "Found CUDA, but CMake was unable to find the cuBLAS libraries that should be part of every basic CUDA "
+               "install. Your CUDA install is somehow broken or incomplete. Since cuBLAS is required for dlib to use CUDA we won't use CUDA.")
+            set(CUDA_FOUND 0)
+         endif()
+
+         if (CUDA_FOUND)
 
             # There is some bug in cmake that causes it to mess up the
             # -std=c++11 option if you let it propagate it to nvcc in some
@@ -634,16 +688,19 @@ if (NOT TARGET dlib)
             endif()
 
             set(CUDA_HOST_COMPILATION_CPP ON)
+            string(REPLACE "," ";" DLIB_CUDA_COMPUTE_CAPABILITIES ${DLIB_USE_CUDA_COMPUTE_CAPABILITIES})
+            foreach(CAP ${DLIB_CUDA_COMPUTE_CAPABILITIES})
+                list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_${CAP},code=[sm_${CAP},compute_${CAP}]")
+            endforeach()
             # Note that we add __STRICT_ANSI__ to avoid freaking out nvcc with gcc specific
-            # magic in the standard C++ header files (since nvcc uses gcc headers on
-            # linux).
-            list(APPEND CUDA_NVCC_FLAGS "-arch=sm_50;-D__STRICT_ANSI__;-D_MWAITXINTRIN_H_INCLUDED;-D_FORCE_INLINES;${FLAGS_FOR_NVCC}")
+            # magic in the standard C++ header files (since nvcc uses gcc headers on linux).
+            list(APPEND CUDA_NVCC_FLAGS "-D__STRICT_ANSI__;-D_MWAITXINTRIN_H_INCLUDED;-D_FORCE_INLINES;${FLAGS_FOR_NVCC}")
             list(APPEND CUDA_NVCC_FLAGS ${active_preprocessor_switches})
             if (NOT DLIB_IN_PROJECT_BUILD)
                LIST(APPEND CUDA_NVCC_FLAGS -DDLIB__CMAKE_GENERATED_A_CONFIG_H_FILE)
             endif()
             if (NOT MSVC)
-               list(APPEND CUDA_NVCC_FLAGS "-std=c++11")
+               list(APPEND CUDA_NVCC_FLAGS "-std=c++14")
             endif()
             if (CMAKE_POSITION_INDEPENDENT_CODE)
                # sometimes this setting isn't propagated to NVCC, which then causes the
@@ -743,7 +800,7 @@ if (NOT TARGET dlib)
             endif()
          endif()
 
-         if (CUDA_FOUND AND cudnn AND (NOT USING_OLD_VISUAL_STUDIO_COMPILER) AND cuda_test_compile_worked AND cudnn_test_compile_worked AND cudnn_include)
+         if (CUDA_FOUND AND cudnn AND cuda_test_compile_worked AND cudnn_test_compile_worked AND cudnn_include)
             set(source_files ${source_files} 
                cuda/cuda_dlib.cu 
                cuda/cudnn_dlibapi.cpp
@@ -753,25 +810,20 @@ if (NOT TARGET dlib)
                cuda/cuda_data_ptr.cpp
                cuda/gpu_data.cpp
                )
-            set(dlib_needed_libraries ${dlib_needed_libraries} 
-               ${CUDA_CUBLAS_LIBRARIES} 
-               ${cudnn}
-               ${CUDA_curand_LIBRARY}
-               ${CUDA_cusolver_LIBRARY}
-               ${CUDA_CUDART_LIBRARY}
-               )
+            list (APPEND dlib_needed_private_libraries ${CUDA_CUBLAS_LIBRARIES})
+            list (APPEND dlib_needed_private_libraries ${cudnn})
+            list (APPEND dlib_needed_private_libraries ${CUDA_curand_LIBRARY})
+            list (APPEND dlib_needed_private_libraries ${CUDA_cusolver_LIBRARY})
+            list (APPEND dlib_needed_private_libraries ${CUDA_CUDART_LIBRARY})
             if(openmp_libraries)
-               list(APPEND dlib_needed_libraries ${openmp_libraries})
+               list (APPEND dlib_needed_private_libraries ${openmp_libraries})
             endif()
 
             include_directories(${cudnn_include})
-            message(STATUS "Enabling CUDA support for dlib.  DLIB WILL USE CUDA")
+            message(STATUS "Enabling CUDA support for dlib.  DLIB WILL USE CUDA, compute capabilities: ${DLIB_CUDA_COMPUTE_CAPABILITIES}")
          else()
             set(DLIB_USE_CUDA OFF CACHE STRING ${DLIB_USE_BLAS_STR} FORCE )
             toggle_preprocessor_switch(DLIB_USE_CUDA)
-            if (USING_OLD_VISUAL_STUDIO_COMPILER)
-               message(STATUS "*** Dlib CUDA support requires C++11 but your compiler doesn't support it. ***")
-            endif()
             if (NOT CUDA_FOUND)
                message(STATUS "DID NOT FIND CUDA")
             endif()
@@ -785,8 +837,8 @@ if (NOT TARGET dlib)
          # make sure sqlite3.h is in the include path
          find_path(sqlite_path sqlite3.h)
          if (sqlite AND sqlite_path)
-            set(dlib_needed_includes ${dlib_needed_includes} ${sqlite_path})
-            set(dlib_needed_libraries ${dlib_needed_libraries} ${sqlite} )
+            list (APPEND dlib_needed_public_includes ${sqlite_path})
+            list (APPEND dlib_needed_public_libraries ${sqlite} )
          else()
             set(DLIB_LINK_WITH_SQLITE3 OFF CACHE STRING ${DLIB_LINK_WITH_SQLITE3_STR} FORCE )
          endif()
@@ -800,8 +852,8 @@ if (NOT TARGET dlib)
          # make sure fftw3.h is in the include path
          find_path(fftw_path fftw3.h)
          if (fftw AND fftw_path)
-            set(dlib_needed_includes ${dlib_needed_includes} ${fftw_path})
-            set(dlib_needed_libraries ${dlib_needed_libraries} ${fftw} )
+           list (APPEND dlib_needed_private_includes ${fftw_path})
+           list (APPEND dlib_needed_private_libraries ${fftw})
          else()
             set(DLIB_USE_FFTW OFF CACHE STRING ${DLIB_USE_FFTW_STR} FORCE )
             toggle_preprocessor_switch(DLIB_USE_FFTW)
@@ -809,13 +861,25 @@ if (NOT TARGET dlib)
          mark_as_advanced(fftw fftw_path)
       endif()
 
-
+      if (DLIB_USE_FFMPEG)
+         include(cmake_utils/find_ffmpeg.cmake)
+         if (FFMPEG_FOUND)
+            list (APPEND dlib_needed_public_includes ${FFMPEG_INCLUDE_DIRS})
+            list (APPEND dlib_needed_public_libraries ${FFMPEG_LINK_LIBRARIES})
+            list (APPEND dlib_needed_public_cflags ${FFMPEG_CFLAGS})
+            list (APPEND dlib_needed_public_ldflags ${FFMPEG_LDFLAGS})
+            enable_preprocessor_switch(DLIB_USE_FFMPEG)
+         else()
+            set(DLIB_USE_FFMPEG OFF CACHE BOOL ${DLIB_USE_FFMPEG_STR} FORCE )
+            disable_preprocessor_switch(DLIB_USE_FFMPEG)
+         endif()
+      endif()
 
       # Tell CMake to build dlib via add_library()/cuda_add_library()
       if (DLIB_USE_CUDA)
          # The old cuda_add_library() command doesn't support CMake's newer dependency
          # stuff, so we have to set the include path manually still, which we do here.
-         include_directories(${dlib_needed_includes})
+         include_directories(${dlib_needed_public_includes})
          cuda_add_library(dlib ${source_files} )
       else()
          add_library(dlib ${source_files} )
@@ -827,9 +891,12 @@ if (NOT TARGET dlib)
    target_include_directories(dlib
       INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
       INTERFACE $<INSTALL_INTERFACE:include>
-      PUBLIC ${dlib_needed_includes}
+      PUBLIC ${dlib_needed_public_includes}
+      PRIVATE ${dlib_needed_private_includes}
       )
-   target_link_libraries(dlib PUBLIC ${dlib_needed_libraries})
+   target_link_libraries(dlib PUBLIC ${dlib_needed_public_libraries} ${dlib_needed_public_ldflags})
+   target_link_libraries(dlib PRIVATE ${dlib_needed_private_libraries})
+   target_compile_options(dlib PUBLIC ${dlib_needed_public_cflags})
    if (DLIB_IN_PROJECT_BUILD)
       target_compile_options(dlib PUBLIC ${active_preprocessor_switches})
    else()
@@ -856,11 +923,11 @@ if (NOT TARGET dlib)
       add_library(dlib_all_source_cpp STATIC all/source.cpp) 
       target_link_libraries(dlib_all_source_cpp dlib)
       target_compile_options(dlib_all_source_cpp PUBLIC ${active_preprocessor_switches})
-      enable_cpp11_for_target(dlib_all_source_cpp)
+      target_compile_features(dlib_all_source_cpp PUBLIC cxx_std_14)
    endif()
 
-   enable_cpp11_for_target(dlib)
-   if((MSVC AND CMAKE_VERSION VERSION_LESS 3.11) OR CMAKE_VERSION VERSION_LESS 3.3)
+   target_compile_features(dlib PUBLIC cxx_std_14)
+   if((MSVC AND CMAKE_VERSION VERSION_LESS 3.11))
       target_compile_options(dlib PUBLIC ${active_compile_opts})
       target_compile_options(dlib PRIVATE ${active_compile_opts_private})
    else()
@@ -870,9 +937,9 @@ if (NOT TARGET dlib)
 
    # Install the library
    if (NOT DLIB_IN_PROJECT_BUILD)
-      string (REPLACE ";" " " pkg_config_dlib_needed_libraries "${dlib_needed_libraries}")
+      string (REPLACE ";" " " pkg_config_dlib_needed_libraries "${dlib_needed_public_libraries}")
       # Make the -I include options for pkg-config
-      foreach (ITR ${dlib_needed_includes})
+      foreach (ITR ${dlib_needed_public_includes})
          set (pkg_config_dlib_needed_includes "${pkg_config_dlib_needed_includes} -I${ITR}")
       endforeach()
       set_target_properties(dlib PROPERTIES

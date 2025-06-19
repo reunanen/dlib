@@ -12,6 +12,157 @@
 
 <current>
 New Features and Improvements:
+   - Machine Learning
+      - Added auto_train_multiclass_svm_linear_classifier(), a tool that trains a multiclass
+        SVM linear classifier without requiring the user to supply any hyperparameters.
+      - YOLO improvements: Smoothed L1 loss, Focal Loss, Weighted Loss (PR #2628)
+      - Add Byte Pair Encoding (BPE) class, bpe_tokenizer, for subword tokenization (PR #3056)
+      - Many new DNN layers: input_tensor, dropout_rate_, rms_norm_, transpose_,
+        tril_, positional_encodings_, embeddings_, multm_prev_, slice_, linear_,
+        reshape_to_
+
+   - Unify all conversions to UTF-32 #2737
+      - Adds convert_to_utf32()
+
+   - Backports of new C++ tooling not yet available in C++14:
+      - Added bind_front() and bind_back() (PR #2705)
+      - Added dlib/type_traits.h
+         - Contains type trait back ports and also many older dlib type traits that can now be
+           aliased to those in C++14 or earlier.
+      - dlib::optional (PR #2815)
+   - Added constexpr if like tooling for C++14 (PR #2654)
+   - Container classes
+      - Support noexcept dlib::type_safe_union::swap() (PR #2604)
+      - New type erasure tooling in dlib/any/storage.h (PR #2666)
+
+   - Update libraries in dlib/external
+      - Update libjpeg to version 9e (PR #2619)
+      - Update Pybind11 to v2.12.0 (PR #2970)
+
+   - Speeding things up:
+      - Optimize pointer to matrix assignment (PR #2822)
+      - circular_buffer : 10X speedup (PR #2779)
+      - type_safe_union : visit() and apply_to_contents() performance improvements (PR #2615)
+      - Speed up DNN execution.  PRs: 2656, 2839, 2842
+
+   - Add support for loading custom label fonts in imglab via --font (PR #2733)
+   - Add HSV pixel support (PR #2758)
+   - Add draw_solid_polygon() (PR #2775)
+   - Add insert_image_chip() (PR #2781)
+   - Add simple polygon class (PR #2750)
+   - Added a lot of new FFT tooling
+      - Added short time Fourier transforms stft(), istft(), stftr() and istftr()
+        for variants for matrix objects (PR #2627)
+      - Added generalized FFT tooling in the dlib/fft folder (PR #2793)
+   - FFMPEG wrappers: dlib::ffmpeg::decoder and dlib::ffmpeg::demuxer (PR #2707)
+
+Non-Backwards Compatible Changes:
+   - Dlib now requires C++14 and at least CMake version 3.10.0.
+
+Bug fixes:
+   - Various adjustments to avoid errors on unusual platforms of system configurations.
+   - Fix saving grayscale WebP images (PR #2591)
+   - Fix dnn dot visitor when a tag layer is followed by a skip layer (PR #2662)
+   - Fix memory leak in WebP saving (PR #2600)
+   - Bug fix for fftr on matrix expression (PR #2626)
+   - Problem: CUDA error having `code: 716, reason: misaligned address` (PR #2796)
+   - Fix pixel saturation in interpolate_quadratic (PR #2806)
+   - Fix convolution backward filter cache issue when using cudnn 7 and above (PR #2828)
+   - Fix a bug in the gradient computation code for the layer_normalize layer.
+</current>
+
+<!-- **************************************************************************************  -->
+
+<old name="19.24" date="May 8, 2022">
+New Features and Improvements:
+   - Added Beta distribution to dlib::rand.
+   - Added directory_exists.
+   - Added bgr_alpha_pixel type.
+   - Added support for loading and saving WebP images.
+   - Deep learning tooling:
+      - Added ReOrg layer.
+      - Added SiLU layer.
+      - Added visitor to draw network architectures using the DOT language.
+      - Made Barlow Twins loss much faster for high dimensionality inputs.
+      - Added Focal loss gamma to loss_multibinary_log_.
+      - Added SmeLU activation layer.
+
+Non-Backwards Compatible Changes:
+   - Do not round coordinates in rectangle_transform (PR #2498).
+
+Bug fixes:
+   - Fix missing ssize_t definition on Windows (PR #2492)
+   - Fix Barlow Twins loss gradient (PR #2518)
+   - Fix bug with some versions of cuDNN (PR #2527)
+   - Fix python import errors on some systems.
+   - Various cmake adjustments to avoid build failures on some systems.
+</old>
+
+<!-- **************************************************************************************  -->
+
+<old name="19.23" date="Jan 24, 2022">
+New Features and Improvements:
+   - Added serialization support for std::variant and std::optional.
+   - Added upgrades to dlib::type_safe_union: type_safe_union_size, type_safe_union_alternative_t,
+     made into variadic template, more generic visit() method.
+   - Added dlib/invoke.hh which contains C++11 backports of std::invoke and related tooling.
+   - Added letterbox_image()
+   - Exposed momentum_filter to Python.
+   - Deep learning tooling:
+      - Added Clipped ReLU and ELU activations
+      - Made input_layer() work with networks that contain repeat layers.
+      - Added loss_yolo_ for training YOLO style object detectors.
+      - Added support for fused convolutions, see dlib::fuse_layers().
+      - Added dnn self supervised learning example: dnn_self_supervised_learning_ex.cpp
+
+Non-Backwards Compatible Changes:
+
+Bug fixes:
+   - Fix input/output mappings with repeat layers (PR #2337)
+   - Fix disable_duplicative_biases when the input is a skip layer (PR #2367)
+   - Fix cannot compile iso only code (PR #2384)
+   - Fix running gradient crashing sometimes (PR #2401)
+   - Fix trainer with unsupervised loss (PR #2436)
+   - Fix dnn_trainer trying to decrease the learning rate (PR #2442)
+   - Fix Layer Normalize (PR #2489)
+</old>
+
+<!-- **************************************************************************************  -->
+
+<old name="19.22" date="Mar 28, 2021">
+New Features and Improvements:
+   - Deep learning tooling:
+      - Added loss_multibinary_log_
+      - Added scale_prev layer
+      - Various ease of use improvements to the deep learning tooling, such as improved layer
+        visitors and increased DNN training stability.
+      - Added CUDA implementation for loss_multiclass_log_per_pixel_weighted.
+      - Add GELU activation layer
+      - Add Layer Normalization
+      - Add CIFAR-10 dataset loader: load_cifar_10_dataset()
+   - Add probability_values_are_increasing() and probability_values_are_increasing_robust().
+   - Expanded list of serializable types and added DLIB_DEFINE_DEFAULT_SERIALIZATION, a macro that
+     lets you make a class serializable with a single simple declaration.
+   - Added exponential and Weibull distributions to dlib::rand.
+   - For dlib::matrix:
+         - Added soft_max() and pointwise_pow()
+         - The FFT methods now support arbitrary sized FFTs and are more performant.
+   - Added user definable stopping condition support to find_min_global() and find_max_global().
+
+Non-Backwards Compatible Changes:
+   - Rename POSIX macro to DLIB_POSIX to avoid name clashes with some libraries.
+   - Dropped support for gcc 4.8.
+
+Bug fixes:
+   - Fixed bug in loss_mmod that degraded the quality of bounding box regression.  Now
+     bounding box regression works a lot better.
+   - Fixes for code not compiling in various environments and support newer CUDA tooling.
+</old>
+
+<!-- **************************************************************************************  -->
+
+<old name="19.21" date="Aug 08, 2020">
+New Features and Improvements:
    - Added support for cuDNN 8.0.
    - Added support for CUDA in Python 3.8 on Windows.
    - Allow forwarding initial function evaluations into find_max_global().
@@ -24,7 +175,7 @@ Bug fixes:
      with CUDA enabled or who are using windows.
    - Fix random forest regression not doing quite the right thing.
 
-</current>
+</old>
 
 <!-- **************************************************************************************  -->
 

@@ -75,6 +75,21 @@ namespace dlib
         return (output_components_ == 4);
     }
 
+
+// ----------------------------------------------------------------------------------------
+
+    long jpeg_loader::nr() const
+    {
+        return static_cast<long>(height_);
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    long jpeg_loader::nc() const
+    {
+        return static_cast<long>(width_);
+    }
+
 // ----------------------------------------------------------------------------------------
 
     struct jpeg_loader_error_mgr 
@@ -167,7 +182,7 @@ namespace dlib
         data.resize(height_*width_*output_components_);
 
         // setup pointers to each row
-        for (unsigned long i = 0; i < rows.size(); ++i)
+        for (size_t i = 0; i < rows.size(); ++i)
             rows[i] = &data[i*width_*output_components_];
 
         // read the data into the buffer

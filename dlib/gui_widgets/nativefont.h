@@ -2,10 +2,12 @@
 // License: Boost Software License   See LICENSE.txt for the full license.
 #ifndef DLIB_IGG_FONT_RENDERER_H_
 #define DLIB_IGG_FONT_RENDERER_H_
+#ifndef DLIB_NO_GUI_SUPPORT
+
 #include "../platform.h"
 
 
-#include "../gui_widgets.h"
+#include "../gui_widgets/fonts.h"
 #include "../unicode.h"
 #include "../uintn.h"
 
@@ -343,14 +345,13 @@ namespace nativefont
 
                         cmap = DefaultColormap(d, DefaultScreen(d));
                     }
-                    char fontset[256];
+                    char fontset[256] = {0};
                     {
-                        char *p = fontset;
-                        p += sprintf(fontset, "-*-*-%s-%c-normal--%d-*-*-*-%c",
-                                     bold ? "bold" : "medium", italic ? 'i' : 'r', height_want, fixed ? 'c' : 'p');
+                        int offset = snprintf(fontset, sizeof(fontset), "-*-*-%s-%c-normal--%d-*-*-*-%c",
+                                              bold ? "bold" : "medium", italic ? 'i' : 'r', height_want, fixed ? 'c' : 'p');
                         if (fixed){
-                            sprintf(p, ",-*-*-%s-%c-normal--%d-*-*-*-m",
-                                    bold ? "bold" : "medium", italic ? 'i' : 'r', height_want);
+                            snprintf(&fontset[offset], sizeof(fontset) - offset, ",-*-*-%s-%c-normal--%d-*-*-*-m",
+                                     bold ? "bold" : "medium", italic ? 'i' : 'r', height_want);
                         }
                     }
                     bool equal_font;
@@ -608,5 +609,6 @@ namespace nativefont
 
 }
 
+#endif // DLIB_NO_GUI_SUPPORT
 #endif // DLIB_IGG_FONT_RENDERER_H_
 

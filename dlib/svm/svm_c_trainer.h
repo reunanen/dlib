@@ -3,8 +3,6 @@
 #ifndef DLIB_SVm_C_TRAINER_Hh_ 
 #define DLIB_SVm_C_TRAINER_Hh_
 
-//#include "local/make_label_kernel_matrix.h"
-
 #include "svm_c_trainer_abstract.h"
 #include <cmath>
 #include <limits>
@@ -226,7 +224,6 @@ namespace dlib
             solve_qp3_using_smo<scalar_vector_type> solver;
 
             solver(symmetric_matrix_cache<float>((diagm(y)*kernel_matrix(kernel_function,x)*diagm(y)), cache_size), 
-            //solver(symmetric_matrix_cache<float>(make_label_kernel_matrix(kernel_matrix(kernel_function,x),y), cache_size), 
                    uniform_matrix<scalar_type>(y.size(),1,-1),
                    y, 
                    0,
@@ -280,12 +277,11 @@ namespace dlib
             scalar_type& b
         ) const
         {
-            using namespace std;
             long num_free = 0;
             scalar_type sum_free = 0;
 
-            scalar_type upper_bound = -numeric_limits<scalar_type>::infinity();
-            scalar_type lower_bound = numeric_limits<scalar_type>::infinity();
+            scalar_type upper_bound = -std::numeric_limits<scalar_type>::infinity();
+            scalar_type lower_bound = std::numeric_limits<scalar_type>::infinity();
 
             for(long i = 0; i < alpha.nr(); ++i)
             {

@@ -131,11 +131,11 @@ namespace dlib
             cudnn_activation_descriptor(
                 cudnnActivationMode_t mode,
                 cudnnNanPropagation_t reluNanOpt,
-                double reluCeiling
+                double coef
             )
             {
                 CHECK_CUDNN(cudnnCreateActivationDescriptor(&handle));
-                CHECK_CUDNN(cudnnSetActivationDescriptor(handle, mode, reluNanOpt, reluCeiling));
+                CHECK_CUDNN(cudnnSetActivationDescriptor(handle, mode, reluNanOpt, coef));
             }
 
             ~cudnn_activation_descriptor()
@@ -151,6 +151,12 @@ namespace dlib
         private:
             cudnnActivationDescriptor_t handle;
         };
+
+        static cudnnActivationDescriptor_t identity_activation_descriptor()
+        {
+            thread_local cudnn_activation_descriptor des(CUDNN_ACTIVATION_IDENTITY, CUDNN_PROPAGATE_NAN,0);
+            return des.get_handle();
+        }
 
         static cudnnActivationDescriptor_t relu_activation_descriptor()
         {
@@ -781,10 +787,11 @@ namespace dlib
         void tensor_conv::
         select_best_algorithms (
             const tensor& data,
-            const tensor_descriptor& dest_desc
+            const tensor_descriptor& dest_desc,
+            allow_cache_use allow_cache_use_
         ) 
         {
-            // Calling the cuDNN "find the best algorithm" functions are really slow.  So we keep a
+            // Calling the cuDNN "find the best algorithm" functions is really slow.  So we keep a
             // cache that tells us what method was best for a particular configuration.
             thread_local std::map<std::tuple<int,int,int,int,long,long>,
                                   std::tuple<int,int,int>> config_to_algo_cache;
@@ -793,7 +800,7 @@ namespace dlib
             // the cache.
             const auto cache_key = std::make_tuple(stride_y, stride_x, padding_y, padding_x, filters_nr, filters_nc);
             const auto iter = config_to_algo_cache.find(cache_key);
-            if (iter != config_to_algo_cache.end())
+            if (iter != config_to_algo_cache.end() && allow_cache_use_ == allow_cache_use::yes)
             {
                 std::tie(forward_algo, backward_data_algo, backward_filters_algo) = iter->second;
                 return;
@@ -906,6 +913,7 @@ namespace dlib
                     &backward_filters_best_algo));
 #endif
 
+#if CUDNN_MAJOR < 7
             // cuDNN 5.1 has a bug that causes
             // cudnnGetConvolutionBackwardFilterAlgorithm() to pick the winograd
             // algorithm even for cases where cuDNN doesn't support it, leading to
@@ -919,11 +927,45 @@ namespace dlib
             {
                 backward_filters_best_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0;
             }
+#endif
             backward_filters_algo = backward_filters_best_algo;
-
 
             // Save this algorithm selection in the cache
             config_to_algo_cache[cache_key] = std::make_tuple(forward_algo, backward_data_algo, backward_filters_algo);
+        }
+
+        void tensor_conv::
+        update_convolution_data_workspace_sizes(
+            const tensor& data,
+            const tensor_descriptor& dest_desc
+        )
+        {
+            CHECK_CUDNN(cudnnGetConvolutionForwardWorkspaceSize(
+                context(),
+                descriptor(data),
+                (const cudnnFilterDescriptor_t)filter_handle,
+                (const cudnnConvolutionDescriptor_t)conv_handle,
+                descriptor(dest_desc),
+                (cudnnConvolutionFwdAlgo_t)forward_algo,
+                &forward_workspace_size_in_bytes));
+
+            CHECK_CUDNN(cudnnGetConvolutionBackwardDataWorkspaceSize(
+                context(),
+                (const cudnnFilterDescriptor_t)filter_handle,
+                descriptor(dest_desc),
+                (const cudnnConvolutionDescriptor_t)conv_handle,
+                descriptor(data),
+                (cudnnConvolutionBwdDataAlgo_t)backward_data_algo,
+                &backward_data_workspace_size_in_bytes));
+
+            CHECK_CUDNN(cudnnGetConvolutionBackwardFilterWorkspaceSize(
+                context(),
+                descriptor(data),
+                descriptor(dest_desc),
+                (const cudnnConvolutionDescriptor_t)conv_handle,
+                (const cudnnFilterDescriptor_t)filter_handle,
+                (cudnnConvolutionBwdFilterAlgo_t)backward_filters_algo,
+                &backward_filters_workspace_size_in_bytes));
         }
 
         void tensor_conv::
@@ -1014,36 +1056,18 @@ namespace dlib
                 tensor_descriptor dest_desc;
                 dest_desc.set_size(out_num_samples,out_k,out_nr,out_nc);
 
-                select_best_algorithms(data, dest_desc);
-
-                CHECK_CUDNN(cudnnGetConvolutionForwardWorkspaceSize( 
-                        context(),
-                        descriptor(data),
-                        (const cudnnFilterDescriptor_t)filter_handle,
-                        (const cudnnConvolutionDescriptor_t)conv_handle,
-                        descriptor(dest_desc),
-                        (cudnnConvolutionFwdAlgo_t)forward_algo,
-                        &forward_workspace_size_in_bytes));
-
-
-                CHECK_CUDNN(cudnnGetConvolutionBackwardDataWorkspaceSize(
-                        context(),
-                        (const cudnnFilterDescriptor_t)filter_handle,
-                        descriptor(dest_desc),
-                        (const cudnnConvolutionDescriptor_t)conv_handle,
-                        descriptor(data),
-                        (cudnnConvolutionBwdDataAlgo_t)backward_data_algo,
-                        &backward_data_workspace_size_in_bytes));
-
-
-                CHECK_CUDNN(cudnnGetConvolutionBackwardFilterWorkspaceSize( 
-                        context(),
-                        descriptor(data),
-                        descriptor(dest_desc),
-                        (const cudnnConvolutionDescriptor_t)conv_handle,
-                        (const cudnnFilterDescriptor_t)filter_handle,
-                        (cudnnConvolutionBwdFilterAlgo_t)backward_filters_algo,
-                        &backward_filters_workspace_size_in_bytes));
+                try
+                {
+                    select_best_algorithms(data, dest_desc, allow_cache_use::yes);
+                    update_convolution_data_workspace_sizes(data, dest_desc);
+                }
+                catch (dlib::cudnn_error&)
+                {
+                    // Sometimes the values stored in `config_to_algo_cache` do not quite work -
+                    // so let's get a fresh estimate, instead of using a cached value.
+                    select_best_algorithms(data, dest_desc, allow_cache_use::no);
+                    update_convolution_data_workspace_sizes(data, dest_desc);
+                }
             }
             catch(...)
             {
@@ -1128,6 +1152,105 @@ namespace dlib
                     &beta,
                     descriptor(output),
                     output.device()));
+
+        }
+
+        void tensor_conv::operator() (
+            const bool add_to_output,
+            resizable_tensor& output,
+            const tensor& data,
+            const tensor& filters,
+            const tensor& biases,
+            bool use_relu
+        )
+        {
+            DLIB_CASSERT(stride_y > 0 && stride_x > 0, "You must call setup() before calling this function");
+
+            output.set_size(out_num_samples, out_k, out_nr, out_nc);
+            (*this)(add_to_output, static_cast<tensor&>(output), data, filters, biases, use_relu);
+        }
+
+        void tensor_conv::operator() (
+            const bool add_to_output,
+            tensor& output,
+            const tensor& data,
+            const tensor& filters,
+            const tensor& biases,
+            bool use_relu
+        )
+        {
+
+            // Function cudnnConvolutionBiasActivationForward should only be called with CUDNN_ACTIVATION_IDENTITY when
+            // the chosen forward algorithm is CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM, as cuDNN documentation explicitly says.
+            // In case the algorithm is different, perform the forward pass and bias addition separately.
+            // If use_relu is true, any algorithm can be used.
+            if (!use_relu && forward_algo != CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM)
+            {
+                (*this)(add_to_output, output, data, filters);
+
+                tt::add(1, output, 1, biases);
+
+                return;
+            }
+
+            DLIB_CASSERT(is_same_object(output,data) == false);
+            DLIB_CASSERT(is_same_object(output,filters) == false);
+            DLIB_CASSERT(filters.k() == data.k());
+            DLIB_CASSERT(stride_y > 0 && stride_x > 0, "You must call setup() before calling this function");
+            DLIB_CASSERT(filters.nc() <= data.nc() + 2*padding_x,
+                "Filter windows must be small enough to fit into the padded image."
+                << "\n\t filters.nc(): " << filters.nc()
+                << "\n\t data.nc():  " << data.nc()
+                << "\n\t padding_x: " << padding_x
+                );
+            DLIB_CASSERT(filters.nr() <= data.nr() + 2*padding_y,
+                "Filter windows must be small enough to fit into the padded image."
+                << "\n\t filters.nr(): " << filters.nr()
+                << "\n\t data.nr():  " << data.nr()
+                << "\n\t padding_y: " << padding_y
+                );
+
+
+            DLIB_CASSERT(output.num_samples() == data.num_samples(),out_num_samples << "  " << data.num_samples());
+            DLIB_CASSERT(output.k() == filters.num_samples());
+            DLIB_CASSERT(output.nr() == 1+(data.nr()+2*padding_y-filters.nr())/stride_y);
+            DLIB_CASSERT(output.nc() == 1+(data.nc()+2*padding_x-filters.nc())/stride_x);
+            DLIB_CASSERT(filters.num_samples() == biases.k());
+
+
+
+            const float alpha1 = 1;
+            const float alpha2 = add_to_output ? 1 : 0;
+
+            // Since cudnnConvolutionBiasActivationForward() is an asynchronous call,
+            // we need to hold a reference to the workspace buffer so we can be sure it
+            // isn't reallocated while the function is still executing on the device.
+            // But each time we come here, we make sure to grab the latest workspace
+            // buffer so that, globally, we minimize the number of such buffers.
+            forward_workspace = device_global_buffer(forward_workspace_size_in_bytes);
+
+            float* out = output.device();
+            const cudnnTensorDescriptor_t out_desc = descriptor(output);
+
+            CHECK_CUDNN(cudnnConvolutionBiasActivationForward(
+                    context(),
+                    &alpha1,
+                    descriptor(data),
+                    data.device(),
+                    (const cudnnFilterDescriptor_t)filter_handle,
+                    filters.device(),
+                    (const cudnnConvolutionDescriptor_t)conv_handle,
+                    (cudnnConvolutionFwdAlgo_t)forward_algo,
+                    forward_workspace,
+                    forward_workspace_size_in_bytes,
+                    &alpha2,
+                    out_desc,
+                    out,
+                    descriptor(biases),
+                    biases.device(),
+                    use_relu ? relu_activation_descriptor() : identity_activation_descriptor(),
+                    out_desc,
+                    out));
         }
 
         void tensor_conv::get_gradient_for_data (
@@ -1406,60 +1529,122 @@ namespace dlib
         }
 
     // ------------------------------------------------------------------------------------
-    // ------------------------------------------------------------------------------------
 
-        void softmax (
+        void softmax(
             tensor& dest,
-            const tensor& src
+            const tensor& src,
+            operation_mode mode
         )
         {
-            DLIB_CASSERT(have_same_dimensions(dest,src));
-            if (src.size() == 0)
-                return;
+            DLIB_CASSERT(have_same_dimensions(dest, src));
+            if (src.size() == 0) return;
 
             const float alpha = 1;
             const float beta = 0;
 
-            CHECK_CUDNN(cudnnSoftmaxForward(context(),
-                                      CUDNN_SOFTMAX_ACCURATE,
-                                      CUDNN_SOFTMAX_MODE_CHANNEL,
-                                      &alpha,
-                                      descriptor(src),
-                                      src.device(),
-                                      &beta,
-                                      descriptor(dest),
-                                      dest.device()));
+            if (mode == operation_mode::CHANNEL_WISE)
+            {
+                CHECK_CUDNN(cudnnSoftmaxForward(context(),
+                    CUDNN_SOFTMAX_ACCURATE,
+                    CUDNN_SOFTMAX_MODE_CHANNEL,
+                    &alpha,
+                    descriptor(src),
+                    src.device(),
+                    &beta,
+                    descriptor(dest),
+                    dest.device()));
+            }
+            else if (mode == operation_mode::PLANE_WISE)
+            {
+                const long num_samples = src.num_samples();
+                const long num_channels = src.k();
+                const size_t plane_size = src.nr() * src.nc();
+
+                for (long s = 0; s < num_samples; ++s)
+                {
+                    for (long k = 0; k < num_channels; ++k)
+                    {
+                        auto src_slice = src.device() + (s * num_channels + k) * plane_size;
+                        auto dest_slice = dest.device() + (s * num_channels + k) * plane_size;
+                        auto a_src_slice = alias_tensor(src.nr(), src.nc())(src, (s * num_channels + k) * plane_size);
+                        auto a_dest_slice = alias_tensor(dest.nr(), dest.nc())(dest, (s * num_channels + k) * plane_size);
+
+                        CHECK_CUDNN(cudnnSoftmaxForward(context(),
+                            CUDNN_SOFTMAX_ACCURATE,
+                            CUDNN_SOFTMAX_MODE_CHANNEL,
+                            &alpha,
+                            descriptor(a_src_slice),
+                            src_slice,
+                            &beta,
+                            descriptor(a_dest_slice),
+                            dest_slice));
+                    }
+                }
+            }
         }
 
-
-        void softmax_gradient (
+        void softmax_gradient(
             tensor& grad,
             const tensor& dest,
-            const tensor& gradient_input
+            const tensor& gradient_input,
+            operation_mode mode
         )
         {
             DLIB_CASSERT(
-                  have_same_dimensions(dest,gradient_input) == true &&
-                  have_same_dimensions(dest,grad) == true );
-            if (dest.size() == 0)
-                return;
+                have_same_dimensions(dest, gradient_input) == true &&
+                have_same_dimensions(dest, grad) == true);
+            if (dest.size() == 0) return;
 
             const float alpha = 1;
-            const float beta = is_same_object(grad,gradient_input) ? 0 : 1;
-            CHECK_CUDNN(cudnnSoftmaxBackward(context(),
-                                      CUDNN_SOFTMAX_ACCURATE,
-                                      CUDNN_SOFTMAX_MODE_CHANNEL,
-                                      &alpha,
-                                      descriptor(dest),
-                                      dest.device(),
-                                      descriptor(gradient_input),
-                                      gradient_input.device(),
-                                      &beta,
-                                      descriptor(grad),
-                                      grad.device()));
+            const float beta = is_same_object(grad, gradient_input) ? 0 : 1;
+
+            if (mode == operation_mode::CHANNEL_WISE)
+            {
+                CHECK_CUDNN(cudnnSoftmaxBackward(context(),
+                    CUDNN_SOFTMAX_ACCURATE,
+                    CUDNN_SOFTMAX_MODE_CHANNEL,
+                    &alpha,
+                    descriptor(dest),
+                    dest.device(),
+                    descriptor(gradient_input),
+                    gradient_input.device(),
+                    &beta,
+                    descriptor(grad),
+                    grad.device()));
+            }
+            else if (mode == operation_mode::PLANE_WISE)
+            {
+                const long num_samples = dest.num_samples();
+                const long num_channels = dest.k();
+                const size_t plane_size = dest.nr() * dest.nc();
+
+                for (long s = 0; s < num_samples; ++s)
+                {
+                    for (long k = 0; k < num_channels; ++k)
+                    {
+                        auto dest_slice = dest.device() + (s * num_channels + k) * plane_size;
+                        auto gi_slice = gradient_input.device() + (s * num_channels + k) * plane_size;
+                        auto grad_slice = grad.device() + (s * num_channels + k) * plane_size;
+                        auto a_dest_slice = alias_tensor(dest.nr(), dest.nc())(dest, (s * num_channels + k) * plane_size);
+                        auto a_gi_slice = alias_tensor(gradient_input.nr(), gradient_input.nc())(gradient_input, (s * num_channels + k) * plane_size);
+                        auto a_grad_slice = alias_tensor(grad.nr(), grad.nc())(grad, (s * num_channels + k) * plane_size);
+
+                        CHECK_CUDNN(cudnnSoftmaxBackward(context(),
+                            CUDNN_SOFTMAX_ACCURATE,
+                            CUDNN_SOFTMAX_MODE_CHANNEL,
+                            &alpha,
+                            descriptor(a_dest_slice),
+                            dest_slice,
+                            descriptor(a_gi_slice),
+                            gi_slice,
+                            &beta,
+                            descriptor(a_grad_slice),
+                            grad_slice));
+                    }
+                }
+            }
         }
 
-    // ------------------------------------------------------------------------------------
     // ------------------------------------------------------------------------------------
 
         void softmax_all (
@@ -1668,6 +1853,7 @@ namespace dlib
         }
 
     // ------------------------------------------------------------------------------------
+
     }
 }
 

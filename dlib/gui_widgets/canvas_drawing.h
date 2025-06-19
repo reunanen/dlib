@@ -258,8 +258,8 @@ namespace dlib
         const long y = center_point.y();
         if (radius > 1)
         {
-            long first_x = static_cast<long>(x - radius + 0.5);
-            long last_x = static_cast<long>(x + radius + 0.5);
+            long first_x = std::lround(x - radius);
+            long last_x = std::lround(x + radius);
             const double rs = radius*radius;
 
             // ensure that we only loop over the part of the x dimension that this
@@ -271,7 +271,7 @@ namespace dlib
 
             long top, bottom;
 
-            top = static_cast<long>(sqrt(std::max(rs - (first_x-x-0.5)*(first_x-x-0.5),0.0))+0.5);
+            top = std::lround(sqrt(std::max(rs - (first_x-x-0.5)*(first_x-x-0.5),0.0)));
             top += y;
             long last = top;
 
@@ -281,7 +281,7 @@ namespace dlib
             {
                 double a = i - x + 0.5;
                 // find the top of the arc
-                top = static_cast<long>(sqrt(std::max(rs - a*a,0.0))+0.5);
+                top = std::lround(sqrt(std::max(rs - a*a,0.0)));
                 top += y;
                 long temp = top;
 
@@ -304,7 +304,7 @@ namespace dlib
             }
 
             middle = std::max(x,first_x);
-            top = static_cast<long>(sqrt(std::max(rs - (last_x-x+0.5)*(last_x-x+0.5),0.0))+0.5);
+            top = std::lround(sqrt(std::max(rs - (last_x-x+0.5)*(last_x-x+0.5),0.0)));
             top += y;
             last = top;
             // draw the right half of the circle
@@ -312,7 +312,7 @@ namespace dlib
             {
                 double a = i - x - 0.5;
                 // find the top of the arc
-                top = static_cast<long>(sqrt(std::max(rs - a*a,0.0))+0.5);
+                top = std::lround(sqrt(std::max(rs - a*a,0.0)));
                 top += y;
                 long temp = top;
 
@@ -365,8 +365,8 @@ namespace dlib
         const long y = center_point.y();
         if (radius > 1)
         {
-            long first_x = static_cast<long>(x - radius + 0.5);
-            long last_x = static_cast<long>(x + radius + 0.5);
+            long first_x = std::lround(x - radius);
+            long last_x = std::lround(x + radius);
             const double rs = radius*radius;
 
             // ensure that we only loop over the part of the x dimension that this
@@ -378,7 +378,7 @@ namespace dlib
 
             long top, bottom;
 
-            top = static_cast<long>(sqrt(std::max(rs - (first_x-x-0.5)*(first_x-x-0.5),0.0))+0.5);
+            top = std::lround(sqrt(std::max(rs - (first_x-x-0.5)*(first_x-x-0.5),0.0)));
             top += y;
             long last = top;
 
@@ -388,7 +388,7 @@ namespace dlib
             {
                 double a = i - x + 0.5;
                 // find the top of the arc
-                top = static_cast<long>(sqrt(std::max(rs - a*a,0.0))+0.5);
+                top = std::lround(sqrt(std::max(rs - a*a,0.0)));
                 top += y;
                 long temp = top;
 
@@ -403,7 +403,7 @@ namespace dlib
             }
 
             middle = std::max(x,first_x);
-            top = static_cast<long>(sqrt(std::max(rs - (last_x-x+0.5)*(last_x-x+0.5),0.0))+0.5);
+            top = std::lround(sqrt(std::max(rs - (last_x-x+0.5)*(last_x-x+0.5),0.0)));
             top += y;
             last = top;
             // draw the right half of the circle
@@ -411,7 +411,7 @@ namespace dlib
             {
                 double a = i - x - 0.5;
                 // find the top of the arc
-                top = static_cast<long>(sqrt(std::max(rs - a*a,0.0))+0.5);
+                top = std::lround(sqrt(std::max(rs - a*a,0.0)));
                 top += y;
                 long temp = top;
 
@@ -440,85 +440,10 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
-    namespace impl
-    {
-
-        template <typename alloc>
-        void get_convex_polygon_shape (
-            const std::vector<point>& points,
-            const long top,
-            const long bottom,
-            std::vector<double,alloc>& left_boundary,
-            std::vector<double,alloc>& right_boundary
-        )
-        /*!
-            requires
-                - 0 <= top <= bottom 
-            ensures
-                - interprets points as the coordinates defining a convex polygon.  In
-                  particular, we interpret points as a list of the vertices of the polygon
-                  and assume they are ordered in clockwise order.
-                - #left_boundary.size() == bottom-top+1
-                - #right_boundary.size() == bottom-top+1
-                - for all top <= y <= bottom:
-                    - #left_boundary[y-top] == the x coordinate for the left most side of
-                      the polygon at coordinate y.
-                    - #right_boundary[y-top] == the x coordinate for the right most side of
-                      the polygon at coordinate y.
-        !*/
-        {
-            using std::min;
-            using std::max;
-
-            left_boundary.assign(bottom-top+1, std::numeric_limits<double>::infinity());
-            right_boundary.assign(bottom-top+1, -std::numeric_limits<double>::infinity());
-
-            // trace out the points along the edge of the polynomial and record them
-            for (unsigned long i = 0; i < points.size(); ++i)
-            {
-                const point p1 = points[i];
-                const point p2 = points[(i+1)%points.size()];
-
-                if (p1.y() == p2.y())
-                {
-                    if (top <= p1.y() && p1.y() <= bottom)
-                    {
-                        const long y = p1.y() - top;
-                        const double xmin = min(p1.x(), p2.x());
-                        const double xmax = min(p1.x(), p2.x());
-                        left_boundary[y]  = min(left_boundary[y], xmin);
-                        right_boundary[y] = max(right_boundary[y], xmax);
-                    }
-                }
-                else
-                {
-                    // Here we trace out the line from p1 to p2 and record where it hits.  
-
-                    // x = m*y + b
-                    const double m = (p2.x() - p1.x())/(double)(p2.y()-p1.y());
-                    const double b = p1.x() - m*p1.y(); // because: x1 = m*y1 + b
-
-                    const long ymin = max(top,min(p1.y(), p2.y()));
-                    const long ymax = min(bottom,max(p1.y(), p2.y()));
-                    for (long y = ymin; y <= ymax; ++y)
-                    {
-                        const double x = m*y + b;
-                        const unsigned long idx = y-top;
-                        left_boundary[idx]  = min(left_boundary[idx], x);
-                        right_boundary[idx] = max(right_boundary[idx], x);
-                    }
-                }
-            }
-        }
-
-    // ------------------------------------------------------------------------------------
-
-    }
-
     template <typename pixel_type>
     void draw_solid_convex_polygon (
         const canvas& c,
-        const std::vector<point>& polygon,
+        const polygon& poly,
         const pixel_type& pixel,
         const rectangle& area = rectangle(std::numeric_limits<long>::min(), std::numeric_limits<long>::min(),
                                           std::numeric_limits<long>::max(), std::numeric_limits<long>::max())
@@ -528,9 +453,7 @@ namespace dlib
         using std::min;
         const rectangle valid_area(c.intersect(area));
 
-        rectangle bounding_box;
-        for (unsigned long i = 0; i < polygon.size(); ++i)
-            bounding_box += polygon[i];
+        const rectangle bounding_box = poly.get_rect();
 
         // Don't do anything if the polygon is totally outside the area we can draw in
         // right now.
@@ -558,8 +481,7 @@ namespace dlib
 
         std::vector<double> left_boundary;
         std::vector<double> right_boundary;
-        impl::get_convex_polygon_shape(polygon, top, bottom, left_boundary, right_boundary);
-
+        poly.get_left_and_right_bounds(top, bottom, left_boundary, right_boundary);
 
         // draw the polygon row by row
         for (unsigned long i = top_offset; i < left_boundary.size(); ++i)

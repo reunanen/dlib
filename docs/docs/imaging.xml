@@ -38,6 +38,10 @@
                   <ul>The <a href="#hsi_pixel">hsi_pixel</a> is a 24bit pixel which represents a point in the Hue Saturation Intensity 
                   (HSI) color space. </ul>
                </li>
+               <li><b>HSV</b>
+                  <ul>The <a href="#hsv_pixel">hsv_pixel</a> is a 24bit pixel which represents a point in the Hue Saturation Value 
+                  (HSV) color space. </ul>
+               </li>
                <li><b>LAB</b>
                   <ul>The <a href="#lab_pixel">lab_pixel</a> is a 24bit pixel which represents a point in the CIELab color space. </ul>
                </li>
@@ -68,7 +72,9 @@
          <item>rgb_pixel</item>
          <item>bgr_pixel</item>
          <item>rgb_alpha_pixel</item>
+         <item>bgr_alpha_pixel</item>
          <item>hsi_pixel</item>
+         <item>hsv_pixel</item>
          <item>lab_pixel</item>
          <item>pixel_traits</item>
          <item>get_pixel_intensity</item> 
@@ -89,6 +95,9 @@
          <item>save_dng</item> 
          <item>save_png</item> 
          <item>save_jpeg</item> 
+         <item>webp_loader</item>
+         <item>load_webp</item>
+         <item>save_webp</item>
       </section>
 
       <section>
@@ -98,6 +107,7 @@
          <item>evaluate_detectors</item>
          <item>full_object_detection</item>
          <item>mmod_rect</item>
+         <item>yolo_rect</item>
          <item>scan_image</item>
          <item>scan_image_movable_parts</item>
          <item>find_points_above_thresh</item>
@@ -226,6 +236,7 @@
          <item>transform_image</item> 
          <item>rotate_image</item> 
          <item>resize_image</item> 
+         <item>letterbox_image</item> 
          <item>flip_image_left_right</item> 
          <item>flip_image_up_down</item> 
          <item>add_image_left_right_flips</item> 
@@ -233,6 +244,7 @@
          <item>upsample_image_dataset</item> 
          <item>flip_image_dataset_left_right</item> 
          <item>rotate_image_dataset</item> 
+         <item>insert_image_chip</item> 
          <item>extract_image_chips</item> 
          <item>extract_image_4points</item> 
          <item>random_cropper</item> 
@@ -247,6 +259,8 @@
          <item>jet</item>
          <item>render_face_detections</item> 
          <item>draw_line</item> 
+         <item>draw_solid_polygon</item> 
+         <item>draw_solid_convex_polygon</item> 
          <item>draw_solid_circle</item> 
          <item>draw_surf_points</item> 
          <item>draw_rectangle</item> 
@@ -829,6 +843,18 @@
    <!-- ************************************************************************* -->
       
       <component>
+         <name>hsv_pixel</name>
+         <file>dlib/pixel.h</file>
+         <spec_file link="true">dlib/pixel.h</spec_file>
+         <description>
+            This is a simple struct that represents a HSV colored graphical pixel.  
+         </description>
+                                 
+      </component>
+            
+   <!-- ************************************************************************* -->
+      
+      <component>
          <name>lab_pixel</name>
          <file>dlib/pixel.h</file>
          <spec_file link="true">dlib/pixel.h</spec_file>
@@ -850,7 +876,27 @@
          </description>
                                  
       </component>
-            
+
+   <!-- ************************************************************************* -->
+
+      <component>
+         <name>bgr_alpha_pixel</name>
+         <file>dlib/pixel.h</file>
+         <spec_file link="true">dlib/pixel.h</spec_file>
+         <description>
+            This is a simple struct that represents an BGR colored graphical pixel with an
+            alpha channel.
+            <p>
+            The difference between this object and the <a href="#rgb_alpha_pixel">rgb_alpha_pixel</a>
+            is just that this struct lays its pixels down in memory in BGR order rather
+            than RGB order.  You only care about this if you are doing something like
+            using the <a href="#cv_image">cv_image</a> object to map an OpenCV image
+            into a more object oriented form.
+            </p>
+         </description>
+
+      </component>
+
    <!-- ************************************************************************* -->
       
       <component>
@@ -1065,7 +1111,26 @@
          </description>
                                  
       </component>
-            
+
+   <!-- ************************************************************************* -->
+
+      <component>
+         <name>webp_loader</name>
+         <file>dlib/image_io.h</file>
+         <spec_file link="true">dlib/image_loader/webp_loader_abstract.h</spec_file>
+         <description>
+            This object loads a WebP image file into
+            an <a href="containers.html#array2d">array2d</a> of <a href="dlib/pixel.h.html">pixels</a>.
+            <p>
+               Note that you must define DLIB_WEBP_SUPPORT if you want to use this object.  You
+               must also set your build environment to link to the libwebp library.  However,
+               if you use CMake and dlib's default CMakeLists.txt file then it will get setup
+               automatically.
+            </p>
+         </description>
+
+      </component>
+
    <!-- ************************************************************************* -->
       
       <component>
@@ -1076,7 +1141,7 @@
             This function loads a JPEG image file into 
             an <a href="containers.html#array2d">array2d</a> of <a href="dlib/pixel.h.html">pixels</a>.
             <p>
-               Note that you must define DLIB_JPEG_SUPPORT if you want to use this object.  You
+               Note that you must define DLIB_JPEG_SUPPORT if you want to use this function.  You
                must also set your build environment to link to the libjpeg library.  However,
                if you use CMake and dlib's default CMakeLists.txt file then it will get setup
                automatically.
@@ -1098,6 +1163,24 @@
                                  
       </component>
             
+   <!-- ************************************************************************* -->
+
+      <component>
+         <name>load_webp</name>
+         <file>dlib/image_io.h</file>
+         <spec_file link="true">dlib/image_loader/image_loader_abstract.h</spec_file>
+         <description>
+            This function loads a WebP image file into
+            an <a href="containers.html#array2d">array2d</a> of <a href="dlib/pixel.h.html">pixels</a>.
+            <p>
+               Note that you must define DLIB_WEBP_SUPPORT if you want to use this function.  You
+               must also set your build environment to link to the libwebp library.  However,
+               if you use CMake and dlib's default CMakeLists.txt file then it will get setup
+               automatically.
+            </p>
+         </description>
+      </component>
+
    <!-- ************************************************************************* -->
       
       <component>
@@ -1167,7 +1250,32 @@
          </description>
                                  
       </component>
-            
+
+   <!-- ************************************************************************* -->
+
+      <component>
+         <name>save_webp</name>
+         <file>dlib/image_io.h</file>
+         <spec_file link="true">dlib/image_saver/save_webp_abstract.h</spec_file>
+         <description>
+      This global function writes an image to disk as a WebP file.
+            <p>
+               Note that you must define DLIB_WEBP_SUPPORT if you want to use this function.  You
+               must also set your build environment to link to the libwebp library.  However,
+               if you use CMake and dlib's default CMakeLists.txt file then it will get setup
+               automatically.
+            </p>
+            <p>
+               This routine can save images containing any type of pixel.  However, save_webp() can
+               only natively store the following pixel types: <b>rgb_pixel</b>,
+               <b>rgb_alpha_pixel</b>, <b>bgr_pixel</b>, and <b>bgr_alpha_pixel</b>.
+               All other pixel types will be converted into one of these types as appropriate
+               before being saved to disk.
+            </p>
+         </description>
+
+      </component>
+
    <!-- ************************************************************************* -->
       
       <component>
@@ -1217,7 +1325,7 @@
             This function loads a Portable Network Graphics (PNG) image file into 
             an <a href="containers.html#array2d">array2d</a> of <a href="dlib/pixel.h.html">pixels</a>.
             <p>
-               Note that you must define DLIB_PNG_SUPPORT if you want to use this object.  You
+               Note that you must define DLIB_PNG_SUPPORT if you want to use this function.  You
                must also set your build environment to link to the libpng library.  However,
                if you use CMake and dlib's default CMakeLists.txt file then it will get setup
                automatically.
@@ -1267,6 +1375,33 @@
             This global function draws a solid circle on an image.
          </description>
                                  
+      </component>
+            
+   <!-- ************************************************************************* -->
+      
+      <component>
+         <name>draw_solid_polygon</name>
+         <file>dlib/image_transforms.h</file>
+         <spec_file link="true">dlib/image_transforms/draw_abstract.h</spec_file>
+         <description>        
+            Draws a filled in polygon onto an image.
+         </description>
+      </component>
+            
+   <!-- ************************************************************************* -->
+      
+      <component>
+         <name>draw_solid_convex_polygon</name>
+         <file>dlib/image_transforms.h</file>
+         <spec_file link="true">dlib/image_transforms/draw_abstract.h</spec_file>
+         <description>        
+            Draws a filled in polygon onto an image. Also filling in part
+            of the convex hull of the polygon as well. Specifically,
+            fills in any row of pixels falling horizontally between two parts of 
+            the polygon.
+
+            <p>Supports alpha blending</p>
+         </description>
       </component>
             
    <!-- ************************************************************************* -->
@@ -1886,6 +2021,34 @@
    <!-- ************************************************************************* -->
 
       <component>
+         <name>letterbox_image</name>
+         <file>dlib/image_transforms.h</file>
+         <spec_file link="true">dlib/image_transforms/interpolation_abstract.h</spec_file>
+         <description>        
+            Scales an image so that it fits into another size, while preserving the aspect
+            ratio of the actual contents by appropriate 0 padding.
+
+         <examples>
+            <example>dnn_yolo_train_ex.cpp.html</example>
+         </examples>
+         </description>
+      </component>
+
+   <!-- ************************************************************************* -->
+
+      <component>
+         <name>insert_image_chip</name>
+         <file>dlib/image_transforms.h</file>
+         <spec_file link="true">dlib/image_transforms/interpolation_abstract.h</spec_file>
+         <description>        
+            This function does the opposite of <a href="#extract_image_chips">extract_image_chips</a>.
+            That is, it takes a cropped image and draws it into a larger image in some user defined location.
+         </description>
+      </component>
+
+   <!-- ************************************************************************* -->
+
+      <component>
          <name>extract_image_chips</name>
          <file>dlib/image_transforms.h</file>
          <spec_file link="true">dlib/image_transforms/interpolation_abstract.h</spec_file>
@@ -2095,21 +2258,6 @@
             supplied threshold.
          </description>
                                  
-      </component>
-            
-   <!-- ************************************************************************* -->
-      
-      <component>
-         <name>partition_pixels</name>
-         <file>dlib/image_transforms.h</file>
-         <spec_file link="true">dlib/image_transforms/thresholding_abstract.h</spec_file>
-         <description>        
-              Finds a threshold value that would be reasonable to use with
-              <a href="#threshold_image">threshold_image</a>.  It does this by
-              finding the threshold that partitions the pixels in an image into
-              two groups such that the sum of absolute deviations between each
-              pixel and the mean of its group is minimized.
-         </description>
       </component>
             
    <!-- ************************************************************************* -->
@@ -2534,6 +2682,19 @@
                                  
       </component>
             
+   <!-- ************************************************************************* -->
+
+      <component>
+         <name>yolo_rect</name>
+         <file>dlib/image_processing.h</file>
+         <spec_file link="true">dlib/image_processing/full_object_detection_abstract.h</spec_file>
+         <description>
+                This is a simple struct that is used to give training data and receive detections
+                from the <a href="ml.html#loss_yolo_">YOLO loss layer for object detection</a>.
+         </description>
+
+      </component>
+
    <!-- ************************************************************************* -->
 
       <component>

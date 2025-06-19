@@ -7,6 +7,8 @@
 #include "../string.h"
 #include "png_loader.h"
 #include "jpeg_loader.h"
+#include "webp_loader.h"
+#include "jxl_loader.h"
 #include "image_loader.h"
 #include <fstream>
 #include <sstream>
@@ -25,6 +27,8 @@ namespace dlib
             PNG,
             DNG,
             GIF,
+            WEBP,
+            JXL,
             UNKNOWN
         };
 
@@ -34,23 +38,31 @@ namespace dlib
             if (!file)
                 throw image_load_error("Unable to open file: " + file_name);
 
-            char buffer[9];
-            file.read((char*)buffer, 8);
-            buffer[8] = 0;
+            char buffer[13];
+            file.read((char*)buffer, 12);
+            buffer[12] = 0;
 
             // Determine the true image type using link:
             // http://en.wikipedia.org/wiki/List_of_file_signatures
+            static const char *pngHeader = "\x89\x50\x4E\x47\x0D\x0A\x1A\x0A";
+            static const char *jxlHeader = "\x00\x00\x00\x0C\x4A\x58\x4C\x20\x0D\x0A\x87\x0A";
 
-            if (strcmp(buffer, "\x89\x50\x4E\x47\x0D\x0A\x1A\x0A") == 0) 
-                return PNG;
-            else if(buffer[0]=='\xff' && buffer[1]=='\xd8' && buffer[2]=='\xff') 
+            if (buffer[0]=='\xff' && buffer[1]=='\xd8' && buffer[2]=='\xff') 
                 return JPG;
-            else if(buffer[0]=='B' && buffer[1]=='M') 
+            else if (memcmp(buffer, pngHeader, strlen(pngHeader)) == 0)
+                return PNG;
+            else if (buffer[0]=='B' && buffer[1]=='M') 
                 return BMP;
-            else if(buffer[0]=='D' && buffer[1]=='N' && buffer[2] == 'G') 
+            else if (buffer[0]=='D' && buffer[1]=='N' && buffer[2] == 'G') 
                 return DNG;
-            else if(buffer[0]=='G' && buffer[1]=='I' && buffer[2] == 'F') 
+            else if (buffer[0]=='G' && buffer[1]=='I' && buffer[2] == 'F') 
                 return GIF;
+            else if ((buffer[0] == '\xff' && buffer[1] == '\x0a') ||
+                      memcmp(buffer, jxlHeader, 12) == 0)  // we can't use strlen because the header starts with \x00.
+                return JXL;
+            else if (buffer[0]=='R' && buffer[1]=='I' && buffer[2] == 'F' && buffer[3] == 'F' &&
+                    buffer[8]=='W' && buffer[9]=='E' && buffer[10] == 'B' && buffer[11] == 'P')
+                return WEBP;
 
             return UNKNOWN;
         }
@@ -59,7 +71,7 @@ namespace dlib
 // ----------------------------------------------------------------------------------------
 
 // handle the differences in API between libgif v5 and older.
-#if defined(GIFLIB_MAJOR) && GIFLIB_MAJOR >= 5
+#if defined(GIFLIB_MAJOR) && (GIFLIB_MAJOR > 5 || (GIFLIB_MAJOR == 5 && defined(GIFLIB_MINOR) && GIFLIB_MINOR >= 1))
 #define DLIB_GIFLIB_HANDLE_DIFF_VERSIONS ,0
 #else
 #define DLIB_GIFLIB_HANDLE_DIFF_VERSIONS 
@@ -81,6 +93,12 @@ namespace dlib
 #endif
 #ifdef DLIB_JPEG_SUPPORT
             case image_file_type::JPG: load_jpeg(image, file_name); return;
+#endif
+#ifdef DLIB_WEBP_SUPPORT
+            case image_file_type::WEBP: load_webp(image, file_name); return;
+#endif
+#ifdef DLIB_JXL_SUPPORT
+            case image_file_type::JXL: load_jxl(image, file_name); return;
 #endif
 #ifdef DLIB_GIF_SUPPORT
             case image_file_type::GIF: 
@@ -208,6 +226,40 @@ namespace dlib
 #else
             sout << "Note that you must cause DLIB_GIF_SUPPORT to be defined for your entire project.\n";
             sout << "So don't #define it in one file. Instead, use a compiler switch like -DDLIB_GIF_SUPPORT\n";
+            sout << "so it takes effect for your entire application.";
+#endif
+            throw image_load_error(sout.str());
+        }
+        else if (im_type == image_file_type::WEBP)
+        {
+            std::ostringstream sout;
+            sout << "Unable to load image in file " + file_name + ".\n" +
+                    "You must #define DLIB_WEBP_SUPPORT and link to libwebp to read WebP files.\n" +
+                    "Do this by following the instructions at http://dlib.net/compile.html.\n\n";
+#ifdef _MSC_VER
+            sout << "Note that you must cause DLIB_WEBP_SUPPORT to be defined for your entire project.\n";
+            sout << "So don't #define it in one file. Instead, add it to the C/C++->Preprocessor->Preprocessor Definitions\n";
+            sout << "field in Visual Studio's Property Pages window so it takes effect for your entire application.";
+#else
+            sout << "Note that you must cause DLIB_WEBP_SUPPORT to be defined for your entire project.\n";
+            sout << "So don't #define it in one file. Instead, use a compiler switch like -DDLIB_WEBP_SUPPORT\n";
+            sout << "so it takes effect for your entire application.";
+#endif
+            throw image_load_error(sout.str());
+        }
+        else if (im_type == image_file_type::JXL)
+        {
+            std::ostringstream sout;
+            sout << "Unable to load image in file " + file_name + ".\n" +
+                    "You must #define DLIB_JXL_SUPPORT and link to libjxl to read JPEG XL files.\n" +
+                    "Do this by following the instructions at http://dlib.net/compile.html.\n\n";
+#ifdef _MSC_VER
+            sout << "Note that you must cause DLIB_JXL_SUPPORT to be defined for your entire project.\n";
+            sout << "So don't #define it in one file. Instead, add it to the C/C++->Preprocessor->Preprocessor Definitions\n";
+            sout << "field in Visual Studio's Property Pages window so it takes effect for your entire application.";
+#else
+            sout << "Note that you must cause DLIB_JXL_SUPPORT to be defined for your entire project.\n";
+            sout << "So don't #define it in one file. Instead, use a compiler switch like -DDLIB_JXL_SUPPORT\n";
             sout << "so it takes effect for your entire application.";
 #endif
             throw image_load_error(sout.str());

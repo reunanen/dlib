@@ -247,6 +247,8 @@ int cluster_dataset(
         {
             idata[i].first = std::numeric_limits<double>::infinity();
             idata[i].second.filename = data.images[i].filename;
+            idata[i].second.width = data.images[i].width;
+            idata[i].second.height = data.images[i].height;
             if (!has_non_ignored_boxes(data.images[i]))
                 continue;
 
@@ -299,10 +301,31 @@ int cluster_dataset(
             if (assignments[i].c == c)
                 temp.push_back(images[assignments[i].idx]);
         }
-
-        string outfile = "cluster_"+pad_int_with_zeros(c+1, 3) + ".jpg";
-        cout << "Saving " << outfile << endl;
-        save_jpeg(tile_images(temp), outfile);
+#ifdef DLIB_JXL_SUPPORT
+        if (parser.option("jxl"))
+        {
+            string outfile = "cluster_"+pad_int_with_zeros(c+1, 3) + ".jxl";
+            cout << "Saving " << outfile << endl;
+            const float jxl_quality = std::stof(parser.option("jxl").argument());
+            save_jxl(tile_images(temp), outfile, jxl_quality);
+        }
+        else
+#endif
+#ifdef DLIB_WEBP_SUPPORT
+        if (parser.option("webp"))
+        {
+            string outfile = "cluster_"+pad_int_with_zeros(c+1, 3) + ".webp";
+            cout << "Saving " << outfile << endl;
+            const float webp_quality = std::stof(parser.option("webp").argument());
+            save_webp(tile_images(temp), outfile, webp_quality);
+        }
+        else
+#endif
+        {
+            string outfile = "cluster_"+pad_int_with_zeros(c+1, 3) + ".jpg";
+            cout << "Saving " << outfile << endl;
+            save_jpeg(tile_images(temp), outfile);
+        }
     }
 
 

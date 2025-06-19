@@ -3,7 +3,7 @@
 # that additional library dependencies can be added like this: add_mex_function(name lib1 dlib libetc).
 # That is, just add more libraries after the name and they will be build into the mex file.
 
-cmake_minimum_required(VERSION 2.8.12)
+cmake_minimum_required(VERSION 3.8.0)
 
 set(BUILDING_MATLAB_MEX_FILE true)
 set(CMAKE_POSITION_INDEPENDENT_CODE True)
@@ -38,12 +38,14 @@ if (WIN32)
    find_library(MATLAB_MEX_LIBRARY libmex PATHS ${MATLAB_LIB_FOLDERS} )
    find_library(MATLAB_MX_LIBRARY  libmx  PATHS ${MATLAB_LIB_FOLDERS} )
    find_library(MATLAB_ENG_LIBRARY libeng PATHS ${MATLAB_LIB_FOLDERS} )
+   find_library(MATLAB_UT_LIBRARY  libut  PATHS ${MATLAB_LIB_FOLDERS} )
 else()
    find_library(MATLAB_MEX_LIBRARY mex    PATHS ${MATLAB_LIB_FOLDERS} )
    find_library(MATLAB_MX_LIBRARY  mx     PATHS ${MATLAB_LIB_FOLDERS} )
    find_library(MATLAB_ENG_LIBRARY eng    PATHS ${MATLAB_LIB_FOLDERS} )
+   find_library(MATLAB_UT_LIBRARY  ut     PATHS ${MATLAB_LIB_FOLDERS} )
 endif()
-set(MATLAB_LIBRARIES ${MATLAB_MEX_LIBRARY} ${MATLAB_MX_LIBRARY} ${MATLAB_ENG_LIBRARY})
+set(MATLAB_LIBRARIES ${MATLAB_MEX_LIBRARY} ${MATLAB_MX_LIBRARY} ${MATLAB_ENG_LIBRARY} ${MATLAB_UT_LIBRARY})
 # Figure out the path to MATLAB's mex.h so we can add it to the include search path.
 find_path(mex_header_path mex.h
     PATHS "$ENV{MATLAB_HOME}/extern/include"

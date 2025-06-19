@@ -35,7 +35,7 @@ namespace dlib
 
         void clear()
         {
-            sum = 0;
+            sum_     = 0;
             sum_sqr  = 0;
             sum_cub  = 0;
             sum_four = 0;
@@ -49,7 +49,7 @@ namespace dlib
             const T& val
         )
         {
-            sum      += val;
+            sum_     += val;
             sum_sqr  += val*val;
             sum_cub  += cubed(val);
             sum_four += quaded(val);
@@ -68,11 +68,17 @@ namespace dlib
             return n;
         }
 
+        T sum (
+        ) const
+        {
+            return sum_;
+        }
+
         T mean (
         ) const
         {
             if (n != 0)
-                return sum/n;
+                return sum_/n;
             else
                 return 0;
         }
@@ -114,7 +120,7 @@ namespace dlib
                 );
 
             T temp = 1/(n-1);
-            temp = temp*(sum_sqr - sum*sum/n);
+            temp = temp*(sum_sqr - sum_*sum_/n);
             // make sure the variance is never negative.  This might
             // happen due to numerical errors.
             if (temp >= 0)
@@ -148,8 +154,8 @@ namespace dlib
 
             T temp  = 1/n;
             T temp1 = std::sqrt(n*(n-1))/(n-2); 
-            temp    = temp1*temp*(sum_cub - 3*sum_sqr*sum*temp + 2*cubed(sum)*temp*temp)/
-                      (std::sqrt(std::pow(temp*(sum_sqr-sum*sum*temp),3)));
+            temp    = temp1*temp*(sum_cub - 3*sum_sqr*sum_*temp + 2*cubed(sum_)*temp*temp)/
+                      (std::sqrt(std::pow(temp*(sum_sqr-sum_*sum_*temp),3)));
 
             return temp; 
         }
@@ -165,9 +171,9 @@ namespace dlib
             );
 
             T temp = 1/n;
-            T m4   = temp*(sum_four - 4*sum_cub*sum*temp+6*sum_sqr*sum*sum*temp*temp
-                     -3*quaded(sum)*cubed(temp));
-            T m2   = temp*(sum_sqr-sum*sum*temp);
+            T m4   = temp*(sum_four - 4*sum_cub*sum_*temp+6*sum_sqr*sum_*sum_*temp*temp
+                     -3*quaded(sum_)*cubed(temp));
+            T m2   = temp*(sum_sqr-sum_*sum_*temp);
             temp   = (n-1)*((n+1)*m4/(m2*m2)-3*(n-1))/((n-2)*(n-3));
 
             return temp; 
@@ -192,7 +198,7 @@ namespace dlib
         {
             running_stats temp(*this);
 
-            temp.sum += rhs.sum;
+            temp.sum_ += rhs.sum_;
             temp.sum_sqr += rhs.sum_sqr;
             temp.sum_cub += rhs.sum_cub;
             temp.sum_four += rhs.sum_four;
@@ -215,7 +221,7 @@ namespace dlib
         ); 
 
     private:
-        T sum;
+        T sum_;
         T sum_sqr;
         T sum_cub;
         T sum_four;
@@ -236,7 +242,7 @@ namespace dlib
         int version = 2;
         serialize(version, out);
 
-        serialize(item.sum, out);
+        serialize(item.sum_, out);
         serialize(item.sum_sqr, out);
         serialize(item.sum_cub, out);
         serialize(item.sum_four, out);
@@ -256,7 +262,7 @@ namespace dlib
         if (version != 2)
             throw dlib::serialization_error("Unexpected version number found while deserializing dlib::running_stats object.");
 
-        deserialize(item.sum, in);
+        deserialize(item.sum_, in);
         deserialize(item.sum_sqr, in);
         deserialize(item.sum_cub, in);
         deserialize(item.sum_four, in);
@@ -1821,20 +1827,20 @@ namespace dlib
 // ----------------------------------------------------------------------------------------
 
     inline double binomial_random_vars_are_different (
-        uint64_t k1,
-        uint64_t n1,
-        uint64_t k2,
-        uint64_t n2
+        double k1,
+        double n1,
+        double k2,
+        double n2
     )
     {
         DLIB_ASSERT(k1 <= n1, "k1: "<< k1 << "  n1: "<< n1);
         DLIB_ASSERT(k2 <= n2, "k2: "<< k2 << "  n2: "<< n2);
 
-        const double p1 = k1/(double)n1;
-        const double p2 = k2/(double)n2;
-        const double p = (k1+k2)/(double)(n1+n2);
+        const double p1 = n1 != 0 ? k1/n1 : 0;
+        const double p2 = n2 != 0 ? k2/n2 : 0;
+        const double p = (k1+k2)/(n1+n2);
 
-        auto ll = [](double p, uint64_t k, uint64_t n) {      
+        auto ll = [](double p, double k, double n) {
             if (p == 0 || p == 1)
                 return 0.0;
             return k*std::log(p) + (n-k)*std::log(1-p);
@@ -1854,10 +1860,10 @@ namespace dlib
 // ----------------------------------------------------------------------------------------
 
     inline double event_correlation (
-        uint64_t A_count,
-        uint64_t B_count,
-        uint64_t AB_count,
-        uint64_t total_num_observations
+        double A_count,
+        double B_count,
+        double AB_count,
+        double total_num_observations
     )
     {
         DLIB_ASSERT(AB_count <= A_count && A_count <= total_num_observations,

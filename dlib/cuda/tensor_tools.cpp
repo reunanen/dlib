@@ -208,33 +208,99 @@ namespace dlib { namespace tt
         const tensor& lhs,
         bool trans_lhs,
         const tensor& rhs,
-        bool trans_rhs
+        bool trans_rhs,
+        operation_mode mode
     )
     {
 #ifdef DLIB_USE_CUDA
-        cuda::gemm(beta, dest, alpha, lhs, trans_lhs, rhs, trans_rhs);
+        cuda::gemm(beta, dest, alpha, lhs, trans_lhs, rhs, trans_rhs, mode);
 #else
-        if (beta != 0)
+        if (mode == operation_mode::CHANNEL_WISE)
         {
-            if (trans_lhs && trans_rhs)
-                dest = alpha*trans(mat(lhs))*trans(mat(rhs)) + beta*mat(dest);
-            else if (!trans_lhs && trans_rhs)
-                dest = alpha*mat(lhs)*trans(mat(rhs)) + beta*mat(dest);
-            else if (trans_lhs && !trans_rhs)
-                dest = alpha*trans(mat(lhs))*mat(rhs) + beta*mat(dest);
+            if (beta != 0)
+            {
+                if (trans_lhs && trans_rhs)
+                    dest = alpha * trans(mat(lhs)) * trans(mat(rhs)) + beta * mat(dest);
+                else if (!trans_lhs && trans_rhs)
+                    dest = alpha * mat(lhs) * trans(mat(rhs)) + beta * mat(dest);
+                else if (trans_lhs && !trans_rhs)
+                    dest = alpha * trans(mat(lhs)) * mat(rhs) + beta * mat(dest);
+                else
+                    dest = alpha * mat(lhs) * mat(rhs) + beta * mat(dest);
+            }
             else
-                dest = alpha*mat(lhs)*mat(rhs) + beta*mat(dest);
+            {
+                if (trans_lhs && trans_rhs)
+                    dest = alpha * trans(mat(lhs)) * trans(mat(rhs));
+                else if (!trans_lhs && trans_rhs)
+                    dest = alpha * mat(lhs) * trans(mat(rhs));
+                else if (trans_lhs && !trans_rhs)
+                    dest = alpha * trans(mat(lhs)) * mat(rhs);
+                else
+                    dest = alpha * mat(lhs) * mat(rhs);
+            }
         }
-        else
+        else if (mode == operation_mode::PLANE_WISE)
         {
-            if (trans_lhs && trans_rhs)
-                dest = alpha*trans(mat(lhs))*trans(mat(rhs));
-            else if (!trans_lhs && trans_rhs)
-                dest = alpha*mat(lhs)*trans(mat(rhs));
-            else if (trans_lhs && !trans_rhs)
-                dest = alpha*trans(mat(lhs))*mat(rhs);
-            else
-                dest = alpha*mat(lhs)*mat(rhs);
+            auto is_matrix = [](const auto& tensor) {
+                return ((tensor.num_samples() * tensor.k() == 1 && tensor.nr() * tensor.nc() > 1) ||
+                    (tensor.num_samples() * tensor.k() > 1 && tensor.nr() * tensor.nc() == 1));
+                };
+
+            long num_samples = std::min({ lhs.num_samples(), rhs.num_samples(), dest.num_samples() });
+            long num_channels = std::min({ lhs.k(), rhs.k(), dest.k() });
+            const bool lhs_is_matrix = is_matrix(lhs), rhs_is_matrix = is_matrix(rhs), dest_is_matrix = is_matrix(dest);
+
+            if (lhs_is_matrix && rhs_is_matrix && dest_is_matrix) {
+                num_samples = num_channels = 1;
+            }
+
+            long lhs_rows = (lhs_is_matrix && lhs.num_samples() > 1) ? lhs.num_samples() : lhs.nr();
+            long lhs_cols = (lhs_is_matrix && lhs.k() > 1) ? lhs.k() : lhs.nc();
+            long rhs_rows = (rhs_is_matrix && rhs.num_samples() > 1) ? rhs.num_samples() : rhs.nr();
+            long rhs_cols = (rhs_is_matrix && rhs.k() > 1) ? rhs.k() : rhs.nc();
+            long dest_rows = (dest_is_matrix && dest.num_samples() > 1) ? dest.num_samples() : dest.nr();
+            long dest_cols = (dest_is_matrix && dest.k() > 1) ? dest.k() : dest.nc();
+
+            const size_t lhs_plane_size = lhs_rows * lhs_cols;
+            const size_t rhs_plane_size = rhs_rows * rhs_cols;
+            const size_t dest_plane_size = dest_rows * dest_cols;
+
+            for (long b = 0; b < num_samples; ++b)
+            {
+                for (long c = 0; c < num_channels; ++c)
+                {
+                    auto lhs_slice = lhs_is_matrix ? alias_tensor(lhs_rows, lhs_cols)(lhs, 0) :
+                        alias_tensor(lhs_rows, lhs_cols)(lhs, (b * num_channels + c) * lhs_plane_size);
+                    auto rhs_slice = rhs_is_matrix ? alias_tensor(rhs_rows, rhs_cols)(rhs, 0) :
+                        alias_tensor(rhs_rows, rhs_cols)(rhs, (b * num_channels + c) * rhs_plane_size);
+                    auto dest_slice = dest_is_matrix ? alias_tensor(dest_rows, dest_cols)(dest, 0) :
+                        alias_tensor(dest_rows, dest_cols)(dest, (b * num_channels + c) * dest_plane_size);
+
+                    if (beta != 0)
+                    {
+                        if (trans_lhs && trans_rhs)
+                            dest_slice = alpha * trans(mat(lhs_slice)) * trans(mat(rhs_slice)) + beta * mat(dest_slice);
+                        else if (!trans_lhs && trans_rhs)
+                            dest_slice = alpha * mat(lhs_slice) * trans(mat(rhs_slice)) + beta * mat(dest_slice);
+                        else if (trans_lhs && !trans_rhs)
+                            dest_slice = alpha * trans(mat(lhs_slice)) * mat(rhs_slice) + beta * mat(dest_slice);
+                        else
+                            dest_slice = alpha * mat(lhs_slice) * mat(rhs_slice) + beta * mat(dest_slice);
+                    }
+                    else
+                    {
+                        if (trans_lhs && trans_rhs)
+                            dest_slice = alpha * trans(mat(lhs_slice)) * trans(mat(rhs_slice));
+                        else if (!trans_lhs && trans_rhs)
+                            dest_slice = alpha * mat(lhs_slice) * trans(mat(rhs_slice));
+                        else if (trans_lhs && !trans_rhs)
+                            dest_slice = alpha * trans(mat(lhs_slice)) * mat(rhs_slice);
+                        else
+                            dest_slice = alpha * mat(lhs_slice) * mat(rhs_slice);
+                    }
+                }
+            }
         }
 #endif
     }
@@ -658,6 +724,80 @@ namespace dlib { namespace tt
 
 // ----------------------------------------------------------------------------------------
 
+    void layer_normalize (
+        const double eps,
+        resizable_tensor& dest,
+        resizable_tensor& means,
+        resizable_tensor& vars,
+        const tensor& src,
+        const tensor& gamma,
+        const tensor& beta
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::layer_normalize(eps, dest, means, vars, src, gamma, beta);
+#else
+        cpu::layer_normalize(eps, dest, means, vars, src, gamma, beta);
+#endif
+    }
+
+    void layer_normalize_gradient (
+        const double eps,
+            const tensor& gradient_input,
+            const tensor& means,
+            const tensor& invstds,
+            const tensor& src,
+            const tensor& gamma,
+            tensor& src_grad,
+            tensor& gamma_grad,
+            tensor& beta_grad,
+            resizable_tensor& dmeans,
+            resizable_tensor& dvars
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::layer_normalize_gradient(eps, gradient_input, means, invstds, src, gamma, src_grad, gamma_grad, beta_grad, dmeans, dvars);
+#else
+        cpu::layer_normalize_gradient(eps, gradient_input, means, invstds, src, gamma, src_grad, gamma_grad, beta_grad, dmeans, dvars);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    void rms_normalize(
+        const double eps,
+        resizable_tensor& dest,
+        resizable_tensor& scale,
+        const tensor& src,
+        const tensor& gamma
+    )
+    {            
+#ifdef DLIB_USE_CUDA
+        cuda::rms_normalize(eps, dest, scale, src, gamma);
+#else
+        cpu::rms_normalize(eps, dest, scale, src, gamma);
+#endif
+    }
+
+    void rms_normalize_gradient(
+        const tensor& gradient_input,
+        const tensor& scale,
+        const tensor& src,
+        const tensor& gamma,
+        tensor& src_grad,
+        tensor& gamma_grad,
+        resizable_tensor& dscale
+    )
+    {            
+#ifdef DLIB_USE_CUDA
+        cuda::rms_normalize_gradient(gradient_input, scale, src, gamma, src_grad, gamma_grad, dscale);
+#else
+        cpu::rms_normalize_gradient(gradient_input, scale, src, gamma, src_grad, gamma_grad, dscale);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
     void threshold (
         tensor& data,
         float thresh
@@ -744,30 +884,31 @@ namespace dlib { namespace tt
     }
 
 // ----------------------------------------------------------------------------------------
-// ----------------------------------------------------------------------------------------
 
-    void softmax (
+    void softmax(
         tensor& dest,
-        const tensor& src
+        const tensor& src,
+        operation_mode mode
     )
     {
 #ifdef DLIB_USE_CUDA
-        cuda::softmax(dest,src);
+        cuda::softmax(dest, src, mode);
 #else
-        cpu::softmax(dest,src);
+        cpu::softmax(dest, src, mode);
 #endif
     }
 
-    void softmax_gradient (
+    void softmax_gradient(
         tensor& grad,
         const tensor& dest,
-        const tensor& gradient_input
+        const tensor& gradient_input,
+        operation_mode mode
     )
     {
 #ifdef DLIB_USE_CUDA
-        cuda::softmax_gradient(grad, dest, gradient_input);
+        cuda::softmax_gradient(grad, dest, gradient_input, mode);
 #else
-        cpu::softmax_gradient(grad, dest, gradient_input);
+        cpu::softmax_gradient(grad, dest, gradient_input, mode);
 #endif
     }
 
@@ -967,6 +1108,149 @@ namespace dlib { namespace tt
 
 // ----------------------------------------------------------------------------------------
 
+    void clipped_relu (
+        tensor& dest,
+        const tensor& src,
+        const float ceiling
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::clipped_relu(dest, src, ceiling);
+#else
+        cpu::clipped_relu(dest, src, ceiling);
+#endif
+    }
+
+    void clipped_relu_gradient (
+        tensor& grad,
+        const tensor& dest,
+        const tensor& gradient_input,
+        const float ceiling
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::clipped_relu_gradient(grad, dest, gradient_input, ceiling);
+#else
+        cpu::clipped_relu_gradient(grad, dest, gradient_input, ceiling);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    void elu (
+        tensor& dest,
+        const tensor& src,
+        const float alpha
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::elu(dest, src, alpha);
+#else
+        cpu::elu(dest, src, alpha);
+#endif
+    }
+
+    void elu_gradient (
+        tensor& grad,
+        const tensor& dest,
+        const tensor& gradient_input,
+        const float alpha
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::elu_gradient(grad, dest, gradient_input, alpha);
+#else
+        cpu::elu_gradient(grad, dest, gradient_input, alpha);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    void gelu (
+        tensor& dest,
+        const tensor& src
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::gelu(dest,src);
+#else
+        cpu::gelu(dest,src);
+#endif
+    }
+
+    void gelu_gradient (
+        tensor& grad,
+        const tensor& src,
+        const tensor& gradient_input
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::gelu_gradient(grad, src, gradient_input);
+#else
+        cpu::gelu_gradient(grad, src, gradient_input);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    void smelu (
+        tensor& dest,
+        const tensor& src,
+        const float beta
+    )
+    {
+        DLIB_CASSERT(beta > 0);
+#ifdef DLIB_USE_CUDA
+        cuda::smelu(dest, src, beta);
+#else
+        cpu::smelu(dest, src, beta);
+#endif
+    }
+
+    void smelu_gradient (
+        tensor& grad,
+        const tensor& dest,
+        const tensor& gradient_input,
+        const float beta
+    )
+    {
+        DLIB_CASSERT(beta > 0);
+#ifdef DLIB_USE_CUDA
+        cuda::smelu_gradient(grad, dest, gradient_input, beta);
+#else
+        cpu::smelu_gradient(grad, dest, gradient_input, beta);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    void silu (
+        tensor& dest,
+        const tensor& src
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::silu(dest,src);
+#else
+        cpu::silu(dest,src);
+#endif
+    }
+
+    void silu_gradient (
+        tensor& grad,
+        const tensor& src,
+        const tensor& gradient_input
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::silu_gradient(grad, src, gradient_input);
+#else
+        cpu::silu_gradient(grad, src, gradient_input);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
     void resize_bilinear (
         tensor& dest,
         long dest_row_stride,
@@ -1001,6 +1285,38 @@ namespace dlib { namespace tt
 
 // ------------------------------------------------------------------------------------
 
+    void reorg (
+        bool add_to,
+        tensor& dest,
+        const int row_stride,
+        const int col_stride,
+        const tensor& src
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::reorg(add_to, dest, row_stride, col_stride, src);
+#else
+        cpu::reorg(add_to, dest, row_stride, col_stride, src);
+#endif
+    }
+
+    void reorg_gradient (
+        bool add_to,
+        tensor& grad,
+        const int row_stride,
+        const int col_stride,
+        const tensor& gradient_input
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::reorg_gradient(add_to, grad, row_stride, col_stride, gradient_input);
+#else
+        cpu::reorg_gradient(add_to, grad, row_stride, col_stride, gradient_input);
+#endif
+    }
+
+// ------------------------------------------------------------------------------------
+
     void copy_tensor(
             bool add_to,
             tensor& dest,
@@ -1014,6 +1330,24 @@ namespace dlib { namespace tt
         cuda::copy_tensor(add_to, dest, dest_k_offset, src, src_k_offset, count_k);
 #else
         cpu::copy_tensor(add_to, dest, dest_k_offset, src, src_k_offset, count_k);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    void copy_tensor(
+        bool add_to,
+        tensor& dest,
+        size_t dk, size_t dnr, size_t dnc,
+        const tensor& src,
+        size_t sk, size_t snr, size_t snc,
+        size_t k, size_t nr, size_t nc
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::copy_tensor(add_to, dest, dk, dnr, dnc , src, sk, snr, snc, k, nr, nc);
+#else
+        cpu::copy_tensor(add_to, dest, dk, dnr, dnc, src, sk, snr, snc, k, nr, nc);
 #endif
     }
 
@@ -1034,7 +1368,52 @@ namespace dlib { namespace tt
 
 // ----------------------------------------------------------------------------------------
 
+    void transpose(
+        bool add_to,
+        tensor& dest,
+        const tensor& src
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::transpose(add_to, dest, src);
+#else
+        cpu::transpose(add_to, dest, src);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    void embeddings(
+        resizable_tensor& dest,
+        const tensor& src,
+        const tensor& embs
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::embeddings(dest, src, embs);
+#else
+        cpu::embeddings(dest, src, embs);
+#endif
+    }
+
+    void embeddings_gradient(
+        const tensor& prev,
+        const tensor& gradient_input,
+        tensor& grads,
+        const tensor& freqs,
+        float learning_rate,
+        bool scale
+    )
+    {
+#ifdef DLIB_USE_CUDA
+        cuda::embeddings_gradient(prev, gradient_input, grads, freqs, learning_rate, scale);
+#else
+        cpu::embeddings_gradient(prev, gradient_input, grads, freqs, learning_rate, scale);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
 }}
 
 #endif // DLIB_TeNSOR_TOOLS_CPP_
-

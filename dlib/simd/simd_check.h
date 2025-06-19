@@ -83,12 +83,14 @@
 
 #ifdef DLIB_HAVE_ALTIVEC
 #include <altivec.h>
+#undef bool
+#undef vector
+#undef pixel
 #endif
 
 #ifdef DLIB_HAVE_SSE2
     #include <xmmintrin.h>
     #include <emmintrin.h>
-    #include <mmintrin.h>
 #endif
 #ifdef DLIB_HAVE_SSE3
     #include <pmmintrin.h> // SSE3
@@ -137,7 +139,8 @@
 
     inline std::array<unsigned int,4> cpuid(int) 
     {
-        return std::array<unsigned int,4>{};
+        std::array<unsigned int,4> info = { 0 };
+        return info;
     }
 
 #endif

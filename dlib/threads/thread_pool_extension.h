@@ -516,14 +516,12 @@ namespace dlib
             {
                 std::cerr << "An unhandled exception was inside a dlib::thread_pool when it was destructed." << std::endl;
                 std::cerr << "It's what string is: \n" << e.what() << std::endl;
-                using namespace std;
                 assert(false);
                 abort();
             }
             catch (...)
             {
                 std::cerr << "An unhandled exception was inside a dlib::thread_pool when it was destructed." << std::endl;
-                using namespace std;
                 assert(false);
                 abort();
             }
@@ -579,8 +577,8 @@ namespace dlib
             F& function_object
         ) 
         { 
-            COMPILE_TIME_ASSERT(is_function<F>::value == false);
-            COMPILE_TIME_ASSERT(is_pointer_type<F>::value == false);
+            COMPILE_TIME_ASSERT(std::is_function<F>::value == false);
+            COMPILE_TIME_ASSERT(std::is_pointer<F>::value == false);
             
             bfp_type temp;
             temp.set(function_object);
@@ -672,8 +670,8 @@ namespace dlib
             future<A1>& arg1
         ) 
         { 
-            COMPILE_TIME_ASSERT(is_function<F>::value == false);
-            COMPILE_TIME_ASSERT(is_pointer_type<F>::value == false);
+            COMPILE_TIME_ASSERT(std::is_function<F>::value == false);
+            COMPILE_TIME_ASSERT(std::is_pointer<F>::value == false);
             
             bfp_type temp;
             temp.set(function_object,arg1.get());
@@ -807,8 +805,8 @@ namespace dlib
             future<A2>& arg2
         ) 
         { 
-            COMPILE_TIME_ASSERT(is_function<F>::value == false);
-            COMPILE_TIME_ASSERT(is_pointer_type<F>::value == false);
+            COMPILE_TIME_ASSERT(std::is_function<F>::value == false);
+            COMPILE_TIME_ASSERT(std::is_pointer<F>::value == false);
             
             bfp_type temp;
             temp.set(function_object, arg1.get(), arg2.get());
@@ -967,8 +965,8 @@ namespace dlib
             future<A3>& arg3
         ) 
         { 
-            COMPILE_TIME_ASSERT(is_function<F>::value == false);
-            COMPILE_TIME_ASSERT(is_pointer_type<F>::value == false);
+            COMPILE_TIME_ASSERT(std::is_function<F>::value == false);
+            COMPILE_TIME_ASSERT(std::is_pointer<F>::value == false);
             
             bfp_type temp;
             temp.set(function_object, arg1.get(), arg2.get(), arg3.get());
@@ -1153,8 +1151,8 @@ namespace dlib
             future<A4>& arg4
         ) 
         { 
-            COMPILE_TIME_ASSERT(is_function<F>::value == false);
-            COMPILE_TIME_ASSERT(is_pointer_type<F>::value == false);
+            COMPILE_TIME_ASSERT(std::is_function<F>::value == false);
+            COMPILE_TIME_ASSERT(std::is_pointer<F>::value == false);
             
             bfp_type temp;
             temp.set(function_object, arg1.get(), arg2.get(), arg3.get(), arg4.get());

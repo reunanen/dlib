@@ -48,6 +48,40 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
+    /*!A remove_complex
+        This is a template that can be used to remove std::complex from the underlying type.
+
+        For example:
+            remove_complex<float>::type == float
+            remove_complex<std::complex<float> >::type == float
+    !*/
+    template <typename T>
+    struct remove_complex {typedef T type;};
+    template <typename T>
+    struct remove_complex<std::complex<T> > {typedef T type;};
+    
+    template<typename T>
+    using remove_complex_t = typename remove_complex<T>::type;
+
+// ----------------------------------------------------------------------------------------
+
+    /*!A add_complex
+        This is a template that can be used to add std::complex to the underlying type if it isn't already complex.
+
+        For example:
+            add_complex<float>::type == std::complex<float>
+            add_complex<std::complex<float> >::type == std::complex<float>
+    !*/
+    template <typename T>
+    struct add_complex {typedef std::complex<T> type;};
+    template <typename T>
+    struct add_complex<std::complex<T> > {typedef std::complex<T> type;};
+    
+    template<typename T>
+    using add_complex_t = typename add_complex<T>::type;
+
+// ----------------------------------------------------------------------------------------
+    
     template <typename EXP>
     inline bool is_row_vector (
         const matrix_exp<EXP>& m
@@ -2925,12 +2959,52 @@ namespace dlib
 
     // ----------------------------------------------------------------------------------------
 
+    template <typename M1, typename M2>
+    struct op_pointwise_pow : basic_op_mm<M1, M2>
+    {
+        op_pointwise_pow(const M1& m1_, const M2& m2_) : basic_op_mm<M1, M2>(m1_, m2_) {}
+
+        typedef typename impl::compatible<typename M1::type, typename M2::type>::type type;
+        typedef const type const_ret_type;
+        const static long cost = M1::cost + M2::cost + 7;
+
+        const_ret_type apply(long r, long c) const
+        { return std::pow(this->m1(r, c), this->m2(r, c)); }
+    };
+
+    template <
+        typename EXP1,
+        typename EXP2
+        >
+    inline const matrix_op<op_pointwise_pow<EXP1, EXP2>> pointwise_pow (
+        const matrix_exp<EXP1>& a,
+        const matrix_exp<EXP2>& b
+    )
+    {
+        COMPILE_TIME_ASSERT((impl::compatible<typename EXP1::type, typename EXP2::type>::value == true));
+        COMPILE_TIME_ASSERT(EXP1::NR == EXP2::NR || EXP1::NR == 0 || EXP2::NR == 0);
+        COMPILE_TIME_ASSERT(EXP1::NC == EXP2::NC || EXP1::NC == 0 || EXP2::NC == 0);
+        DLIB_ASSERT(a.nr() == b.nr() && a.nc() == b.nc(),
+            "\tconst matrix_exp pointwise_pow(const matrix_exp& a, const matrix_exp& b)"
+            << "\n\tYou can only make a do a pointwise power with two equally sized matrices"
+            << "\n\ta.nr(): " << a.nr()
+            << "\n\ta.nc(): " << a.nc()
+            << "\n\tb.nr(): " << b.nr()
+            << "\n\tb.nc(): " << b.nc()
+        );
+        typedef op_pointwise_pow<EXP1, EXP2> op;
+        return matrix_op<op>(op(a.ref(), b.ref()));
+    }
+
+    // ----------------------------------------------------------------------------------------
+
     template <
         typename P,
         int type = static_switch<
             pixel_traits<P>::grayscale,
             pixel_traits<P>::rgb,
             pixel_traits<P>::hsi,
+            pixel_traits<P>::hsv,
             pixel_traits<P>::rgb_alpha,
             pixel_traits<P>::lab
             >::value
@@ -2989,6 +3063,21 @@ namespace dlib
             const P& pixel
         )
         {
+            m(0) = static_cast<typename M::type>(pixel.h);
+            m(1) = static_cast<typename M::type>(pixel.s);
+            m(2) = static_cast<typename M::type>(pixel.v);
+        }
+    };
+
+    template <typename P>
+    struct pixel_to_vector_helper<P,5>
+    {
+        template <typename M>
+        static void assign (
+            M& m,
+            const P& pixel
+        )
+        {
             m(0) = static_cast<typename M::type>(pixel.red);
             m(1) = static_cast<typename M::type>(pixel.green);
             m(2) = static_cast<typename M::type>(pixel.blue);
@@ -2997,7 +3086,7 @@ namespace dlib
     };
 
     template <typename P>
-    struct pixel_to_vector_helper<P,5>
+    struct pixel_to_vector_helper<P,6>
     {
         template <typename M>
         static void assign (
@@ -3034,6 +3123,7 @@ namespace dlib
             pixel_traits<P>::grayscale,
             pixel_traits<P>::rgb,
             pixel_traits<P>::hsi,
+            pixel_traits<P>::hsv,
             pixel_traits<P>::rgb_alpha,
             pixel_traits<P>::lab
             >::value
@@ -3049,7 +3139,7 @@ namespace dlib
             const M& m
         )
         {
-            pixel = static_cast<unsigned char>(m(0));
+            pixel = static_cast<P>(m(0));
         }
     };
 
@@ -3092,6 +3182,21 @@ namespace dlib
             const M& m
         )
         {
+            pixel.h = static_cast<unsigned char>(m(0));
+            pixel.s = static_cast<unsigned char>(m(1));
+            pixel.v = static_cast<unsigned char>(m(2));
+        }
+    };
+
+    template <typename P>
+    struct vector_to_pixel_helper<P,5>
+    {
+        template <typename M>
+        static void assign (
+            P& pixel,
+            const M& m
+        )
+        {
             pixel.red = static_cast<unsigned char>(m(0));
             pixel.green = static_cast<unsigned char>(m(1));
             pixel.blue = static_cast<unsigned char>(m(2));
@@ -3100,7 +3205,7 @@ namespace dlib
     };
 
     template <typename P>
-    struct vector_to_pixel_helper<P,5>
+    struct vector_to_pixel_helper<P,6>
     {
         template <typename M>
         static void assign (

@@ -130,28 +130,63 @@ namespace dlib
                 image_traits<image_type>::pixel_type
     !*/
 
+    /*!A pixel_type_t 
+        An alias for the type of pixel in an image.
+    !*/
     template <typename image_type>
-    struct is_rgb_image { const static bool value = pixel_traits<typename image_traits<image_type>::pixel_type>::rgb; };
+    using pixel_type_t = typename image_traits<image_type>::pixel_type;
 
+    /*!A is_rgb_image
+        A type traits class telling you if a type is an image holding RGB pixels.
+    !*/
+    template <typename image_type>
+    struct is_rgb_image { const static bool value = pixel_traits<pixel_type_t<image_type>>::rgb; };
+
+    /*!A is_color_space_cartesian_image
+        A type traits class telling you if a type is an image holding some type of cartesian pixel type.
+
+        E.g. as contrasted with polar coordinates pixel types.
+    !*/
     template <typename image_type>
     struct is_color_space_cartesian_image { const static bool value = 
-        pixel_traits<typename image_traits<image_type>::pixel_type>::rgb || 
-        pixel_traits<typename image_traits<image_type>::pixel_type>::lab || 
-        pixel_traits<typename image_traits<image_type>::pixel_type>::grayscale; };
-    /*
-        Tells if all color components of image pixels are in cartesian coordinates, compared to e.g. polar coordinates.
-        Polar coordinates that may require more complicated blending.
-    */
+        pixel_traits<pixel_type_t<image_type>>::rgb || 
+        pixel_traits<pixel_type_t<image_type>>::lab || 
+        pixel_traits<pixel_type_t<image_type>>::grayscale; };
 
+    /*!A is_grayscale_image
+        A type traits class telling you if a type is an image holding a single channel (i.e.
+        grayscale) pixel type.
+    !*/
     template <typename image_type>
-    struct is_grayscale_image { const static bool value = pixel_traits<typename image_traits<image_type>::pixel_type>::grayscale; };
+    struct is_grayscale_image { const static bool value = pixel_traits<pixel_type_t<image_type>>::grayscale; };
 
+// ----------------------------------------------------------------------------------------
 
-    // Check if T has image_traits<T> defined for it.
-    template <typename T, typename enabled = size_t>
-    struct is_image_type : public std::false_type{};
-    template <typename T>
-    struct is_image_type<T, decltype(sizeof(image_traits<typename std::decay<T>::type>))> : public std::true_type{};
+    namespace details
+    {
+        template<class Container, class Alwaysvoid = void>
+        struct is_image_type : std::false_type{};
+
+        template<class Container>
+        struct is_image_type<Container, dlib::void_t<is_pixel_check<pixel_type_t<Container>>>> : std::true_type{};
+    }
+
+    /*!A is_image_type 
+
+        A type traits struct telling you if Container satisfies the generic image interface.
+
+        i.e. there exists an image_traits<> specialization and the underlying pixel type has a pixel_trait<> specialiation
+        e.g. array2d<rgb_pixel>, matrix<float>, etc...
+    !*/
+    template<class Container>
+    using is_image_type = details::is_image_type<Container>;
+
+    /*!A is_image_check
+
+        This is a SFINAE tool for restricting a template to only image types.
+    !*/
+    template<class Container>
+    using is_image_check = std::enable_if_t<is_image_type<Container>::value, bool>;
 
 // ----------------------------------------------------------------------------------------
 // ----------------------------------------------------------------------------------------
@@ -191,7 +226,7 @@ namespace dlib
         !*/
 
     public:
-        typedef typename image_traits<image_type>::pixel_type pixel_type;
+        using pixel_type = pixel_type_t<image_type>;
 
         image_view(
             image_type& img
@@ -337,7 +372,7 @@ namespace dlib
         !*/
 
     public:
-        typedef typename image_traits<image_type>::pixel_type pixel_type;
+        using pixel_type = pixel_type_t<image_type>;
 
         const_image_view(
             const image_type& img
@@ -486,15 +521,10 @@ namespace dlib
 // ----------------------------------------------------------------------------------------
 
     template <typename T>
-    struct image_traits<image_view<T>>
-    {
-        typedef typename image_traits<T>::pixel_type pixel_type;
-    };
+    struct image_traits<image_view<T>> { using pixel_type = pixel_type_t<T>; };
+
     template <typename T>
-    struct image_traits<const image_view<T>>
-    {
-        typedef typename image_traits<T>::pixel_type pixel_type;
-    };
+    struct image_traits<const image_view<T>> { using pixel_type = pixel_type_t<T>; };
 
     template <typename T>
     inline long num_rows( const image_view<T>& img) { return img.nr(); }
@@ -530,15 +560,10 @@ namespace dlib
 // ----------------------------------------------------------------------------------------
 
     template <typename T>
-    struct image_traits<const_image_view<T>>
-    {
-        typedef typename image_traits<T>::pixel_type pixel_type;
-    };
+    struct image_traits<const_image_view<T>> {using pixel_type = pixel_type_t<T>; };
+
     template <typename T>
-    struct image_traits<const const_image_view<T>>
-    {
-        typedef typename image_traits<T>::pixel_type pixel_type;
-    };
+    struct image_traits<const const_image_view<T>> {using pixel_type = pixel_type_t<T>; };
 
     template <typename T>
     inline long num_rows( const const_image_view<T>& img) { return img.nr(); }

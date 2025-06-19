@@ -1,4 +1,4 @@
-# dlib C++ library [![Travis Status](https://travis-ci.org/davisking/dlib.svg?branch=master)](https://travis-ci.org/davisking/dlib)
+# dlib C++ library  [![GitHub Actions C++ Status](https://github.com/davisking/dlib/actions/workflows/build_cpp.yml/badge.svg)](https://github.com/davisking/dlib/actions/workflows/build_cpp.yml) [![GitHub Actions Python Status](https://github.com/davisking/dlib/actions/workflows/build_python.yml/badge.svg)](https://github.com/davisking/dlib/actions/workflows/build_python.yml)
 
 Dlib is a modern C++ toolkit containing machine learning algorithms and tools for creating complex software in C++ to solve real world problems. See [http://dlib.net](http://dlib.net) for the main project documentation and API reference.
 
@@ -37,12 +37,22 @@ vcpkg install dlib
 
 ## Compiling dlib Python API
 
-Before you can run the Python example programs you must compile dlib. Type:
-
+Before you can run the Python example programs you must install the build requirement.
 ```bash
-python setup.py install
+python -m venv venv
+pip install build
 ```
 
+Then you must compile dlib and install it in your environment. Type:
+```bash
+python -m build --wheel
+pip install dist/dlib-<version>.whl
+```
+
+Or download dlib using PyPi:
+```bash
+pip install dlib
+```
 
 ## Running the unit test suite
 

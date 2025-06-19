@@ -8,6 +8,7 @@
 
 #include "tensor.h"
 #include "../geometry/rectangle.h"
+#include "../dnn/utilities.h"
 
 namespace dlib
 {
@@ -230,6 +231,52 @@ namespace dlib
 
     // -----------------------------------------------------------------------------------
 
+        void layer_normalize (
+            const double eps,
+            resizable_tensor& dest,
+            resizable_tensor& means,
+            resizable_tensor& invstds,
+            const tensor& src,
+            const tensor& gamma,
+            const tensor& beta
+        );
+
+        void layer_normalize_gradient (
+            const double eps,
+            const tensor& gradient_input,
+            const tensor& means,
+            const tensor& invstds,
+            const tensor& src,
+            const tensor& gamma,
+            tensor& src_grad,
+            tensor& gamma_grad,
+            tensor& beta_grad,
+            resizable_tensor& dmeans,
+            resizable_tensor& dvars
+        );
+
+   // -----------------------------------------------------------------------------------
+
+        void rms_normalize(
+            const double eps,
+            resizable_tensor& dest,
+            resizable_tensor& scale,
+            const tensor& src,
+            const tensor& gamma
+        );
+
+        void rms_normalize_gradient(
+            const tensor& gradient_input,
+            const tensor& scale,
+            const tensor& src,
+            const tensor& gamma,
+            tensor& src_grad,
+            tensor& gamma_grad,
+            resizable_tensor& dscale
+        );
+
+    // -----------------------------------------------------------------------------------
+
         void threshold (
             tensor& data,
             float thresh
@@ -244,15 +291,17 @@ namespace dlib
 
     // -----------------------------------------------------------------------------------
 
-        void softmax (
+        void softmax(
             tensor& dest,
-            const tensor& src
+            const tensor& src,
+            operation_mode mode = operation_mode::CHANNEL_WISE
         );
 
-        void softmax_gradient (
+        void softmax_gradient(
             tensor& grad,
             const tensor& dest,
-            const tensor& gradient_input
+            const tensor& gradient_input,
+            operation_mode mode = operation_mode::CHANNEL_WISE
         );
 
     // ------------------------------------------------------------------------------------
@@ -351,24 +400,95 @@ namespace dlib
             const tensor& gradient_input
         );
 
+    // ------------------------------------------------------------------------------------
+
+        void clipped_relu (
+            tensor& dest,
+            const tensor& src,
+            const float ceiling
+        );
+
+        void clipped_relu_gradient (
+            tensor& grad,
+            const tensor& dest,
+            const tensor& gradient_input,
+            const float ceiling
+        );
+
+    // ------------------------------------------------------------------------------------
+
+        void elu (
+            tensor& dest,
+            const tensor& src,
+            const float alpha
+        );
+
+        void elu_gradient (
+            tensor& grad,
+            const tensor& dest,
+            const tensor& gradient_input,
+            const float alpha
+        );
+
     // ----------------------------------------------------------------------------------------
+
+        void gelu (
+            tensor& dest,
+            const tensor& src
+        );
+
+        void gelu_gradient (
+            tensor& grad,
+            const tensor& dest,
+            const tensor& gradient_input
+        );
+
+    // ----------------------------------------------------------------------------------------
+
+        void smelu (
+            tensor& dest,
+            const tensor& src,
+            const float beta
+        );
+
+        void smelu_gradient (
+            tensor& grad,
+            const tensor& dest,
+            const tensor& gradient_input,
+            const float beta
+        );
+
+    // ----------------------------------------------------------------------------------------
+
+        void silu (
+            tensor& dest,
+            const tensor& src
+        );
+
+        void silu_gradient (
+            tensor& grad,
+            const tensor& dest,
+            const tensor& gradient_input
+        );
+
+    // ------------------------------------------------------------------------------------
 
         void resize_bilinear (
             tensor& dest,
-            long dest_row_stride,
-            long dest_channel_stride,
+            long long dest_row_stride,
+            long long dest_channel_stride,
             const tensor& src,
-            long src_row_stride,
-            long src_channel_stride
+            long long src_row_stride,
+            long long src_channel_stride
         );
 
         void resize_bilinear_gradient (
             tensor& grad,
-            long grad_row_stride,
-            long grad_channel_stride,
+            long long grad_row_stride,
+            long long grad_channel_stride,
             const tensor& gradient_input,
-            long gradient_input_row_stride,
-            long gradient_input_channel_stride
+            long long gradient_input_row_stride,
+            long long gradient_input_channel_stride
         );
 
         inline void resize_bilinear (
@@ -380,6 +500,41 @@ namespace dlib
             tensor& grad,
             const tensor& gradient_input
         ) { resize_bilinear_gradient(grad, grad.nc(), grad.nr()*grad.nc(), gradient_input, gradient_input.nc(), gradient_input.nr()*gradient_input.nc()); }
+
+    // -----------------------------------------------------------------------------------
+
+        void reorg (
+            bool add_to,
+            tensor& dest,
+            const int row_stride,
+            const int col_stride,
+            const tensor& src
+        );
+
+        void reorg_gradient (
+            bool add_to,
+            tensor& grad,
+            const int row_stride,
+            const int col_stride,
+            const tensor& gradient_input
+        );
+
+    // -----------------------------------------------------------------------------------
+
+        void embeddings(
+            resizable_tensor& dest,
+            const tensor& src,
+            const tensor& embs
+        );
+
+        void embeddings_gradient(
+            const tensor& prev,
+            const tensor& gradient_input,
+            tensor& grads,
+            const tensor& freqs,
+            float learning_rate,
+            bool scale
+        );
 
     // -----------------------------------------------------------------------------------
 
@@ -486,6 +641,24 @@ namespace dlib
                 const tensor& filters
             );
 
+            void operator() (
+                const bool add_to_output,
+                resizable_tensor& output,
+                const tensor& data,
+                const tensor& filters,
+                const tensor& biases,
+                bool use_relu
+            );
+
+            void operator() (
+                const bool add_to_output,
+                tensor& output,
+                const tensor& data,
+                const tensor& filters,
+                const tensor& biases,
+                bool use_relu
+            );
+
             void get_gradient_for_data (
                 const bool add_to_output,
                 const tensor& gradient_input, 
@@ -518,6 +691,213 @@ namespace dlib
             size_t src_k_offset,
             size_t count_k
         );
+
+    // -----------------------------------------------------------------------------------
+
+        void copy_tensor(
+            bool add_to,
+            tensor& dest,
+            size_t dk, size_t dnr, size_t dnc,
+            const tensor& src,
+            size_t sk, size_t snr, size_t snc,
+            size_t k, size_t nr, size_t nc
+        );
+
+    // -----------------------------------------------------------------------------------
+
+        void transpose(
+            bool add_to,
+            tensor& dest,
+            const tensor& src
+        );
+
+    // -----------------------------------------------------------------------------------
+
+    class compute_loss_binary_log_per_pixel
+    {
+
+        /*! The point of this class is to compute the loss for loss_binary_log_per_pixel_
+            on the cpu to provide an analogous implementation of the cuda version
+        !*/
+    public:
+        compute_loss_binary_log_per_pixel(
+        )
+        {
+        }
+
+        template <
+            typename const_label_iterator
+            >
+        void operator()(
+            const_label_iterator truth,
+            const tensor& output_tensor,
+            tensor& grad,
+            double& loss
+        ) const
+        {
+            sigmoid(grad, output_tensor);
+            // The loss we output is the average loss over the mini-batch, and also over each element of the matrix output.
+            const double scale = 1.0/(output_tensor.num_samples()*output_tensor.nr()*output_tensor.nc());
+            loss = 0;
+            float* const g = grad.host();
+            const float* const out_data = output_tensor.host();
+            for (long i = 0; i < output_tensor.num_samples(); ++i, ++truth)
+            {
+                for (long r = 0; r < output_tensor.nr(); ++r)
+                {
+                    for (long c = 0; c < output_tensor.nc(); ++c)
+                    {
+                        const float y = truth->operator()(r, c);
+                        const size_t idx = tensor_index(output_tensor, i, 0, r, c);
+
+                        if (y > 0.f)
+                        {
+                            const float temp = log1pexp(-out_data[idx]);
+                            loss += y*scale*temp;
+                            g[idx] = y*scale*(g[idx]-1);
+                        }
+                        else if (y < 0.f)
+                        {
+                            const float temp = -(-out_data[idx]-log1pexp(-out_data[idx]));
+                            loss += -y*scale*temp;
+                            g[idx] = -y*scale*g[idx];
+                        }
+                        else
+                        {
+                            g[idx] = 0.f;
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    // -----------------------------------------------------------------------------------
+
+    class compute_loss_multiclass_log_per_pixel
+    {
+
+        /*! The point of this class is to compute the loss for loss_multiclass_log_per_pixel_
+            on the cpu to provide an analogous implementation of the cuda version
+        !*/
+    public:
+        compute_loss_multiclass_log_per_pixel(
+        )
+        {
+        }
+
+        template <
+            typename const_label_iterator
+            >
+        void operator()(
+            const_label_iterator truth,
+            const tensor& output_tensor,
+            tensor& grad,
+            double& loss
+        ) const
+        {
+            softmax(grad, output_tensor);
+            // The loss we output is the average loss over the mini-batch, and also over each element of the matrix output.
+            const double scale = 1.0 / (output_tensor.num_samples() * output_tensor.nr() * output_tensor.nc());
+            loss = 0;
+            float* const g = grad.host();
+            for (long i = 0; i < output_tensor.num_samples(); ++i, ++truth)
+            {
+                for (long r = 0; r < output_tensor.nr(); ++r)
+                {
+                    for (long c = 0; c < output_tensor.nc(); ++c)
+                    {
+                        const uint16_t y = truth->operator()(r, c);
+                        // The network must produce a number of outputs that is equal to the number
+                        // of labels when using this type of loss.
+                        DLIB_CASSERT(static_cast<long>(y) < output_tensor.k() || y == label_to_ignore,
+                                        "y: " << y << ", output_tensor.k(): " << output_tensor.k());
+                        for (long k = 0; k < output_tensor.k(); ++k)
+                        {
+                            const size_t idx = tensor_index(output_tensor, i, k, r, c);
+                            if (k == y)
+                            {
+                                loss += scale*-safe_log(g[idx]);
+                                g[idx] = scale*(g[idx] - 1);
+                            }
+                            else if (y == label_to_ignore)
+                            {
+                                g[idx] = 0.f;
+                            }
+                            else
+                            {
+                                g[idx] = scale*g[idx];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    private:
+        static const uint16_t label_to_ignore = std::numeric_limits<uint16_t>::max();
+    };
+
+    // -----------------------------------------------------------------------------------
+
+    class compute_loss_multiclass_log_per_pixel_weighted
+    {
+
+        /*! The point of this class is to compute the loss for loss_multiclass_log_per_pixel_weighted_
+            on the cpu to provide an analogous implementation of the cuda version
+        !*/
+    public:
+        compute_loss_multiclass_log_per_pixel_weighted(
+        )
+        {
+        }
+
+        template <
+            typename const_label_iterator
+            >
+        void operator()(
+            const_label_iterator truth,
+            const tensor& output_tensor,
+            tensor& grad,
+            double& loss
+        ) const
+        {
+            softmax(grad, output_tensor);
+            // The loss we output is the weighted average loss over the mini-batch, and also over each element of the matrix output.
+            const double scale = 1.0 / (output_tensor.num_samples() * output_tensor.nr() * output_tensor.nc());
+            loss = 0;
+            float* const g = grad.host();
+            for (long i = 0; i < output_tensor.num_samples(); ++i, ++truth)
+            {
+                for (long r = 0; r < output_tensor.nr(); ++r)
+                {
+                    for (long c = 0; c < output_tensor.nc(); ++c)
+                    {
+                        const weighted_label<uint16_t>& weighted_label = truth->operator()(r, c);
+                        const uint16_t y = weighted_label.label;
+                        const float weight = weighted_label.weight;
+                        // The network must produce a number of outputs that is equal to the number
+                        // of labels when using this type of loss.
+                        DLIB_CASSERT(static_cast<long>(y) < output_tensor.k() || weight == 0.f,
+                                        "y: " << y << ", output_tensor.k(): " << output_tensor.k());
+                        for (long k = 0; k < output_tensor.k(); ++k)
+                        {
+                            const size_t idx = tensor_index(output_tensor, i, k, r, c);
+                            if (k == y)
+                            {
+                                loss += weight*scale*-safe_log(g[idx]);
+                                g[idx] = weight*scale*(g[idx] - 1);
+                            }
+                            else
+                            {
+                                g[idx] = weight*scale*g[idx];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+    };
 
     // -----------------------------------------------------------------------------------
 
@@ -557,7 +937,7 @@ namespace dlib
                         for (long c = 0; c < output_tensor.nc(); ++c)
                         {
                             const float y = (*truth)[k].operator()(r, c);
-                            const size_t idx = ((i * output_tensor.k() + k) * output_tensor.nr() + r) * output_tensor.nc() + c;
+                            const size_t idx = tensor_index(output_tensor, i, k, r, c);
                             const float temp1 = y - out_data[idx];
                             const float temp2 = scale*temp1;
                             loss += temp2*temp1;

@@ -20,7 +20,7 @@
     the discriminator to update the generator.
 
     In this example, we are going to learn how to generate digits from the MNIST dataset, but
-    the same code can be run using the Fashion MNIST datset:
+    the same code can be run using the Fashion MNIST dataset:
     https://github.com/zalandoresearch/fashion-mnist
 */
 
@@ -134,8 +134,8 @@ int main(int argc, char** argv) try
     // setup all leaky_relu_ layers in the discriminator to have alpha = 0.2
     visit_computational_layers(discriminator, [](leaky_relu_& l){ l = leaky_relu_(0.2); });
     // Remove the bias learning from all bn_ inputs in both networks
-    set_all_bn_inputs_no_bias(generator);
-    set_all_bn_inputs_no_bias(discriminator);
+    disable_duplicative_biases(generator);
+    disable_duplicative_biases(discriminator);
     // Forward random noise so that we see the tensor size at each layer
     discriminator(generate_image(generator, make_noise(rnd)));
     cout << "generator (" << count_parameters(generator) << " parameters)" << endl;

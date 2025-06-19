@@ -1398,7 +1398,7 @@ namespace dlib
     {
         std::wstring wstr;
         get_from_clipboard(wstr);
-        str = convert_wstring_to_utf32(wstr);
+        str = convert_to_utf32(wstr);
     }
 
     void get_from_clipboard (
@@ -1614,9 +1614,9 @@ namespace dlib
             char **mlist;
             int mcount;
             char *def_str;
-            char fontset[256];
+            char fontset[256] = {0};
             const long native_font_height = 12;
-            sprintf(fontset, "-*-*-medium-r-normal--%lu-*-*-*-", native_font_height);
+            snprintf(fontset, sizeof(fontset), "-*-*-medium-r-normal--%lu-*-*-*-", native_font_height);
             x11_stuff.fs = XCreateFontSet(x11_stuff.globals->disp, fontset, &mlist, &mcount, &def_str);
             xpoint.x = 0;
             xpoint.y = 0;
@@ -1757,10 +1757,12 @@ namespace dlib
         // it isn't const anymore.
         wchar_t *title = const_cast<wchar_t *>(title_.c_str());
         XTextProperty property;
-        XwcTextListToTextProperty(x11_stuff.globals->disp,&title,1,XStdICCTextStyle, &property);
-        XSetWMName(x11_stuff.globals->disp,x11_stuff.hwnd,&property);
-        XFree(property.value);
-        XFlush(x11_stuff.globals->disp);
+        int rc = XwcTextListToTextProperty(x11_stuff.globals->disp,&title,1,XStdICCTextStyle, &property);
+        if (rc >= 0) {
+            XSetWMName(x11_stuff.globals->disp,x11_stuff.hwnd,&property);
+            XFree(property.value);
+            XFlush(x11_stuff.globals->disp);
+        }
     }
 
 // ----------------------------------------------------------------------------------------

@@ -32,7 +32,7 @@
 #
 
 
-cmake_minimum_required(VERSION 2.8.12)
+cmake_minimum_required(VERSION 3.10.0)
 # Every project needs a name.  We call this the "examples" project.
 project(examples)
 
@@ -49,7 +49,7 @@ add_subdirectory(../dlib dlib_build)
 #  include(FetchContent)
 #  FetchContent_Declare(dlib
 #      GIT_REPOSITORY https://github.com/davisking/dlib.git
-#      GIT_TAG        v19.18
+#      GIT_TAG        v19.24
 #  )
 #  FetchContent_MakeAvailable(dlib)
 
@@ -106,6 +106,12 @@ target_link_libraries(assignment_learning_ex dlib::dlib)
 macro(add_example name)
    add_executable(${name} ${name}.cpp)
    target_link_libraries(${name} dlib::dlib )
+
+   if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.13.0") 
+   # And strip symbols to make your binary smaller if you like.  Certainly not
+   # required though.
+       target_link_options(${name} PRIVATE $<$<CONFIG:RELEASE>:-s>)
+   endif()
 endmacro()
 
 # if an example requires GUI, call this macro to check DLIB_NO_GUI_SUPPORT to include or exclude
@@ -117,66 +123,30 @@ macro(add_gui_example name)
    endif()
 endmacro()
 
-# The deep learning toolkit requires a compiler with essentially complete C++11
-# support.  However, versions of Visual Studio prior to October 2016 didn't
-# provide enough C++11 support to compile the DNN tooling, but were good enough
-# to compile the rest of dlib.  So new versions of Visual Studio 2015 will
-# work.  However, Visual Studio 2017 had some C++11 support regressions, so it
-# wasn't until December 2017 that Visual Studio 2017 had good enough C++11
-# support to compile the DNN examples.  So if you are using Visual Studio, make
-# sure you have an updated version if you want to compile the DNN code.
-#
-# Also note that Visual Studio users should give the -T host=x64 option so that
-# CMake will instruct Visual Studio to use its 64bit toolchain.  If you don't
-# do this then by default Visual Studio uses a 32bit toolchain, WHICH RESTRICTS
-# THE COMPILER TO ONLY 2GB OF RAM, causing it to run out of RAM and crash when
-# compiling some of the DNN examples.  So generate your project with a statement
-# like this:
-#   cmake .. -G "Visual Studio 14 2015 Win64" -T host=x64 
-if (NOT USING_OLD_VISUAL_STUDIO_COMPILER)
-   add_example(dnn_metric_learning_ex)
-   add_gui_example(dnn_face_recognition_ex)
-   add_example(dnn_introduction_ex)
-   add_example(dnn_introduction2_ex)
-   add_example(dnn_introduction3_ex)
-   add_example(dnn_inception_ex)
-   add_gui_example(dnn_mmod_ex)
-   add_gui_example(dnn_mmod_face_detection_ex)
-   add_gui_example(random_cropper_ex)
-   add_gui_example(dnn_mmod_dog_hipsterizer)
-   add_gui_example(dnn_imagenet_ex)
-   add_gui_example(dnn_mmod_find_cars_ex)
-   add_gui_example(dnn_mmod_find_cars2_ex)
-   add_example(dnn_mmod_train_find_cars_ex)
-   add_gui_example(dnn_semantic_segmentation_ex)
-   add_gui_example(dnn_instance_segmentation_ex)
-   add_gui_example(dnn_semantic_segmentation_anno_ex)
-   add_example(dnn_semantic_segmentation_anno_train_ex)
-   add_example(dnn_imagenet_train_ex)
-   add_example(dnn_semantic_segmentation_train_ex)
-   add_example(dnn_instance_segmentation_train_ex)
-   add_example(dnn_metric_learning_on_images_ex)
-   add_gui_example(dnn_dcgan_train_ex)
-endif()
-
-
-if (DLIB_NO_GUI_SUPPORT)
-   message("No GUI support, so we won't build the webcam_face_pose_ex example.")
-else()
-   find_package(OpenCV QUIET)
-   if (OpenCV_FOUND)
-      include_directories(${OpenCV_INCLUDE_DIRS})
-
-      add_executable(webcam_face_pose_ex webcam_face_pose_ex.cpp)
-      target_link_libraries(webcam_face_pose_ex dlib::dlib ${OpenCV_LIBS} )
-   else()
-      message("OpenCV not found, so we won't build the webcam_face_pose_ex example.")
-   endif()
-endif()
-
-
-
-#here we apply our macros 
+add_example(dnn_metric_learning_ex)
+add_gui_example(dnn_face_recognition_ex)
+add_example(dnn_introduction_ex)
+add_example(dnn_introduction2_ex)
+add_example(dnn_introduction3_ex)
+add_example(dnn_inception_ex)
+add_gui_example(dnn_mmod_ex)
+add_gui_example(dnn_mmod_face_detection_ex)
+add_gui_example(random_cropper_ex)
+add_gui_example(dnn_mmod_dog_hipsterizer)
+add_gui_example(dnn_imagenet_ex)
+add_gui_example(dnn_mmod_find_cars_ex)
+add_gui_example(dnn_mmod_find_cars2_ex)
+add_example(dnn_mmod_train_find_cars_ex)
+add_gui_example(dnn_semantic_segmentation_ex)
+add_gui_example(dnn_instance_segmentation_ex)
+add_example(dnn_imagenet_train_ex)
+add_example(dnn_semantic_segmentation_train_ex)
+add_example(dnn_instance_segmentation_train_ex)
+add_example(dnn_metric_learning_on_images_ex)
+add_gui_example(dnn_dcgan_train_ex)
+add_gui_example(dnn_yolo_train_ex)
+add_gui_example(dnn_self_supervised_learning_ex)
+add_example(slm_basic_train_ex)
 add_gui_example(3d_point_cloud_ex)
 add_example(bayes_net_ex)
 add_example(bayes_net_from_disk_ex)
@@ -264,4 +234,31 @@ if (DLIB_LINK_WITH_SQLITE3)
    add_example(sqlite_ex)
 endif()
 
+if (DLIB_USE_FFMPEG AND NOT DLIB_NO_GUI_SUPPORT)
+   add_example(ffmpeg_webcam_face_pose_ex)
+   add_example(ffmpeg_video_demuxing_ex)
+   add_example(ffmpeg_video_demuxing2_ex)
+   add_example(ffmpeg_video_decoding_ex)
+   add_example(ffmpeg_video_decoding2_ex)
+   add_example(ffmpeg_info_ex)
+   add_example(ffmpeg_screen_grab_ex)
+   add_example(ffmpeg_video_encoding_ex)
+   add_example(ffmpeg_video_muxing_ex)
+   add_example(ffmpeg_rtsp_ex)
+   add_example(ffmpeg_microphone_to_file_ex)
+   add_example(ffmpeg_file_to_speaker_ex)
+endif()
 
+if (DLIB_NO_GUI_SUPPORT)
+   message("No GUI support, so we won't build the webcam_face_pose_ex example.")
+else()
+   find_package(OpenCV QUIET)
+   if (OpenCV_FOUND)
+      include_directories(${OpenCV_INCLUDE_DIRS})
+
+      add_executable(webcam_face_pose_ex webcam_face_pose_ex.cpp)
+      target_link_libraries(webcam_face_pose_ex dlib::dlib ${OpenCV_LIBS} )
+   else()
+      message("OpenCV not found, so we won't build the webcam_face_pose_ex example.")
+   endif()
+endif()

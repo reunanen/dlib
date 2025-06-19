@@ -32,6 +32,9 @@ namespace dlib
     class input_rgb_image_sized;
 
     template <typename mem_manager = default_memory_manager>
+    class input_rgb_image_pair;
+
+    template <typename mem_manager = default_memory_manager>
     class input_rgb_image
     {
     public:
@@ -39,9 +42,9 @@ namespace dlib
 
         input_rgb_image (
         ) : 
-            avg_red(122.782), 
-            avg_green(117.001),
-            avg_blue(104.298) 
+            avg_red(122.782f),
+            avg_green(117.001f),
+            avg_blue(104.298f)
         {
         }
 
@@ -55,7 +58,11 @@ namespace dlib
         template <size_t NR, size_t NC>
         inline input_rgb_image (
             const input_rgb_image_sized<NR,NC>& item
-        ); 
+        );
+
+        inline input_rgb_image (
+            const input_rgb_image_pair<mem_manager>& item
+        );
 
         float get_avg_red()   const { return avg_red; }
         float get_avg_green() const { return avg_green; }
@@ -88,7 +95,7 @@ namespace dlib
                 );
             }
 
-            
+
             // initialize data to the right size to contain the stuff in the iterator range.
             data.set_size(std::distance(ibegin,iend), 3, nr, nc);
 
@@ -128,7 +135,7 @@ namespace dlib
         {
             std::string version;
             deserialize(version, in);
-            if (version != "input_rgb_image" && version != "input_rgb_image_sized")
+            if (version != "input_rgb_image" && version != "input_rgb_image_sized" && version != "input_rgb_image_pair")
                 throw serialization_error("Unexpected version found while deserializing dlib::input_rgb_image.");
             deserialize(item.avg_red, in);
             deserialize(item.avg_green, in);
@@ -151,7 +158,7 @@ namespace dlib
 
         friend void to_xml(const input_rgb_image& item, std::ostream& out)
         {
-            out << "<input_rgb_image r='"<<item.avg_red<<"' g='"<<item.avg_green<<"' b='"<<item.avg_blue<<"'/>";
+            out << "<input_rgb_image r='"<<item.avg_red<<"' g='"<<item.avg_green<<"' b='"<<item.avg_blue<<"'/>\n";
         }
 
     private:
@@ -217,7 +224,7 @@ namespace dlib
                 );
             }
 
-            
+
             // initialize data to the right size to contain the stuff in the iterator range.
             data.set_size(std::distance(ibegin,iend), 3, NR, NC);
 
@@ -284,7 +291,7 @@ namespace dlib
 
         friend void to_xml(const input_rgb_image_sized& item, std::ostream& out)
         {
-            out << "<input_rgb_image_sized r='"<<item.avg_red<<"' g='"<<item.avg_green<<"' b='"<<item.avg_blue<<"' nr='"<<NR<<"' nc='"<<NC<<"'/>";
+            out << "<input_rgb_image_sized r='"<<item.avg_red<<"' g='"<<item.avg_green<<"' b='"<<item.avg_blue<<"' nr='"<<NR<<"' nc='"<<NC<<"'/>\n";
         }
 
     private:
@@ -399,6 +406,166 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
+    template <typename mem_manager>
+    class input_rgb_image_pair
+    {
+    public:
+        typedef std::pair<matrix<rgb_pixel>, matrix<rgb_pixel>> input_type;
+
+        input_rgb_image_pair (
+        ) :
+            avg_red(122.782),
+            avg_green(117.001),
+            avg_blue(104.298)
+        {
+        }
+
+        input_rgb_image_pair (
+            float avg_red,
+            float avg_green,
+            float avg_blue
+        ) : avg_red(avg_red), avg_green(avg_green), avg_blue(avg_blue)
+        {}
+
+        inline input_rgb_image_pair (
+            const input_rgb_image& item
+        ) :
+            avg_red(item.get_avg_red()),
+            avg_green(item.get_avg_green()),
+            avg_blue(item.get_avg_blue())
+        {}
+
+        template <size_t NR, size_t NC>
+        inline input_rgb_image_pair (
+            const input_rgb_image_sized<NR, NC>& item
+        ) :
+            avg_red(item.get_avg_red()),
+            avg_green(item.get_avg_green()),
+            avg_blue(item.get_avg_blue())
+        {}
+
+        float get_avg_red()   const { return avg_red; }
+        float get_avg_green() const { return avg_green; }
+        float get_avg_blue()  const { return avg_blue; }
+
+        bool image_contained_point ( const tensor& data, const point& p) const { return get_rect(data).contains(p); }
+        drectangle tensor_space_to_image_space ( const tensor& /*data*/, drectangle r) const { return r; }
+        drectangle image_space_to_tensor_space ( const tensor& /*data*/, double /*scale*/, drectangle r ) const { return r; }
+
+        template <typename forward_iterator>
+        void to_tensor (
+            forward_iterator ibegin,
+            forward_iterator iend,
+            resizable_tensor& data
+        ) const
+        {
+            DLIB_CASSERT(std::distance(ibegin, iend) > 0);
+            const auto nr = ibegin->first.nr();
+            const auto nc = ibegin->first.nc();
+
+            // make sure all the input matrices have the same dimensions
+            for (auto i = ibegin; i != iend; ++i)
+            {
+                DLIB_CASSERT(i->first.nr() == nr && i->first.nc()==nc &&
+                             i->second.nr() == nr && i->second.nc() == nc,
+                    "\t input_rgb_image_pair::to_tensor()"
+                    << "\n\t All matrices given to to_tensor() must have the same dimensions."
+                    << "\n\t nr: " << nr
+                    << "\n\t nc: " << nc
+                    << "\n\t i->first.nr(): " << i->first.nr()
+                    << "\n\t i->first.nc(): " << i->first.nc()
+                    << "\n\t i->second.nr(): " << i->second.nr()
+                    << "\n\t i->second.nc(): " << i->second.nc()
+                );
+            }
+
+            // initialize data to the right size to contain the stuff in the iterator range.
+            data.set_size(2 * std::distance(ibegin, iend), 3, nr, nc);
+
+            const size_t offset = nr * nc;
+            const size_t offset2 = data.size() / 2;
+            auto ptr = data.host();
+            for (auto i = ibegin; i != iend; ++i)
+            {
+                for (long r = 0; r < nr; ++r)
+                {
+                    for (long c = 0; c < nc; ++c)
+                    {
+                        rgb_pixel temp_first = i->first(r, c);
+                        rgb_pixel temp_second = i->second(r, c);
+                        auto p = ptr++;
+                        *p = (temp_first.red - avg_red) / 256.0;
+                        *(p + offset2) = (temp_second.red - avg_red) / 256.0;
+                        p += offset;
+                        *p = (temp_first.green - avg_green) / 256.0;
+                        *(p + offset2) = (temp_second.green - avg_green) / 256.0;
+                        p += offset;
+                        *p = (temp_first.blue - avg_blue) / 256.0;
+                        *(p + offset2) = (temp_second.blue - avg_blue) / 256.0;
+                        p += offset;
+                    }
+                }
+                ptr += offset * (data.k() - 1);
+            }
+        }
+
+        friend void serialize(const input_rgb_image_pair& item, std::ostream& out)
+        {
+            serialize("input_rgb_image_pair", out);
+            serialize(item.avg_red, out);
+            serialize(item.avg_green, out);
+            serialize(item.avg_blue, out);
+        }
+
+        friend void deserialize(input_rgb_image_pair& item, std::istream& in)
+        {
+            std::string version;
+            deserialize(version, in);
+            if (version != "input_rgb_image_pair" && version != "input_rgb_image" && version != "input_rgb_image_sized")
+                throw serialization_error("Unexpected version found while deserializing dlib::input_rgb_image_pair.");
+
+            deserialize(item.avg_red, in);
+            deserialize(item.avg_green, in);
+            deserialize(item.avg_blue, in);
+            // read and discard the sizes if this was really a sized input layer.
+            if (version == "input_rgb_image_sized")
+            {
+                size_t nr, nc;
+                deserialize(nr, in);
+                deserialize(nc, in);
+            }
+        }
+
+        friend std::ostream& operator<<(std::ostream& out, const input_rgb_image_pair& item)
+        {
+            out << "input_rgb_image_pair("<< item.avg_red<<","<<item.avg_green<<","<<item.avg_blue << ")";
+            return out;
+        }
+
+        friend void to_xml(const input_rgb_image_pair& item, std::ostream& out)
+        {
+            out << "<input_rgb_image_pair r='"<<item.avg_red<<"' g='"<<item.avg_green<<"' b='"<<item.avg_blue<<"'/>\n";
+        }
+
+    private:
+        float avg_red;
+        float avg_green;
+        float avg_blue;
+    };
+
+// ----------------------------------------------------------------------------------------
+
+    template <typename mem_manager>
+    input_rgb_image<mem_manager>::
+    input_rgb_image(
+        const input_rgb_image_pair<mem_manager>& item
+    ) : avg_red(item.get_avg_red()),
+        avg_green(item.get_avg_green()),
+        avg_blue(item.get_avg_blue())
+    {}
+
+// ----------------------------------------------------------------------------------------
+
 
     template <typename T, long NR, long NC, typename MM, typename L>
     class input<matrix<T,NR,NC,MM,L>> 
@@ -407,7 +574,6 @@ namespace dlib
         typedef matrix<T,NR,NC,MM,L> input_type;
 
         input() {}
-        input(const input&) {}
 
         template <typename mm>
         input(const input<array2d<T,mm>>&) {}
@@ -491,7 +657,7 @@ namespace dlib
 
         friend void to_xml(const input& /*item*/, std::ostream& out)
         {
-            out << "<input/>";
+            out << "<input/>\n";
         }
     };
 
@@ -584,7 +750,7 @@ namespace dlib
 
         friend void to_xml(const input& /*item*/, std::ostream& out)
         {
-            out << "<input/>";
+            out << "<input/>\n";
         }
     };
 
@@ -659,27 +825,27 @@ namespace dlib
 
         }
 
-        friend void serialize(const input& item, std::ostream& out)
+        friend void serialize(const input&, std::ostream& out)
         {
             serialize("input<array2d>", out);
         }
 
-        friend void deserialize(input& item, std::istream& in)
+        friend void deserialize(input&, std::istream& in)
         {
             std::string version;
             deserialize(version, in);
             if (version != "input<array2d>")
                 throw serialization_error("Unexpected version found while deserializing dlib::input.");
         }
-        friend std::ostream& operator<<(std::ostream& out, const input& item)
+        friend std::ostream& operator<<(std::ostream& out, const input&)
         {
             out << "input<array2d>";
             return out;
         }
 
-        friend void to_xml(const input& item, std::ostream& out)
+        friend void to_xml(const input&, std::ostream& out)
         {
-            out << "<input/>";
+            out << "<input/>\n";
         }
     };
 
@@ -875,7 +1041,7 @@ namespace dlib
             out << "<input_grayscale_image_pyramid"
                 <<"' pyramid_padding='"<<item.pyramid_padding
                 <<"' pyramid_outer_padding='"<<item.pyramid_outer_padding
-                <<"'/>";
+                <<"'/>\n";
         }
     };
 
@@ -1005,13 +1171,100 @@ namespace dlib
                 <<"' b='"<<item.avg_blue
                 <<"' pyramid_padding='"<<item.pyramid_padding
                 <<"' pyramid_outer_padding='"<<item.pyramid_outer_padding
-                <<"'/>";
+                <<"'/>\n";
         }
 
     private:
         float avg_red;
         float avg_green;
         float avg_blue;
+    };
+
+// ----------------------------------------------------------------------------------------
+
+    class input_tensor
+    {
+    public:
+        typedef tensor input_type;
+
+        input_tensor() {}
+        input_tensor(const input_tensor&) {}
+
+        template<typename forward_iterator>
+        void to_tensor(
+            forward_iterator ibegin,
+            forward_iterator iend,
+            resizable_tensor& data
+        ) const
+        {
+            DLIB_CASSERT(std::distance(ibegin, iend) > 0);
+            const auto k = ibegin->k();
+            const auto nr = ibegin->nr();
+            const auto nc = ibegin->nc();
+            // make sure all the input tensors have the same dimensions
+            for (auto i = ibegin; i != iend; ++i)
+            {
+                DLIB_CASSERT(i->k() == k && i->nr() == nr && i->nc() == nc,
+                    "\t input_tensor::to_tensor()"
+                    << "\n\t All tensor objects given to to_tensor() must have the same dimensions."
+                    << "\n\t k: " << k
+                    << "\n\t nr: " << nr
+                    << "\n\t nc: " << nc
+                    << "\n\t i->k(): " << i->k()
+                    << "\n\t i->nr(): " << i->nr()
+                    << "\n\t i->nc(): " << i->nc()
+                );
+            }
+
+            const auto num_samples = count_samples(ibegin, iend);
+            // initialize data to the right size to contain the stuff in the iterator range.
+            data.set_size(num_samples, k, nr, nc);
+
+            const size_t stride = k * nr * nc;
+            size_t offset = 0;
+            for (auto i = ibegin; i != iend; ++i)
+            {
+                alias_tensor slice(i->num_samples(), k, nr, nc);
+                memcpy(slice(data, offset), *i);
+                offset += slice.num_samples() * stride;
+            }
+        }
+
+        friend void serialize(const input_tensor&, std::ostream& out)
+        {
+            serialize("input_tensor", out);
+        }
+
+        friend void deserialize(input_tensor&, std::istream& in)
+        {
+            std::string version;
+            deserialize(version, in);
+            if (version != "input_tensor")
+                throw serialization_error("Unexpected version found while deserializing dlib::input_tensor.");
+        }
+
+        friend std::ostream& operator<<(std::ostream& out, const input_tensor&)
+        {
+            out << "input_tensor";
+            return out;
+        }
+
+        friend void to_xml(const input_tensor&, std::ostream& out)
+        {
+            out << "<input_tensor/>\n";
+        }
+
+    private:
+
+        template<typename forward_iterator>
+        long long count_samples(
+            forward_iterator ibegin,
+            forward_iterator iend
+        ) const
+        {
+            return std::accumulate(ibegin, iend, 0,
+                [](long long a, const auto& b) { return a + b.num_samples(); });
+        }
     };
 
 // ----------------------------------------------------------------------------------------

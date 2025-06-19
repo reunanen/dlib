@@ -166,6 +166,85 @@ namespace
 #endif
     }
 
+    void test_softmaxm()
+    {
+        print_spinner();
+        using net_type = tag1<softmaxm<tag2<input<matrix<float>>>>>;
+        net_type net;
+
+        // Initialization
+        dlib::rand rnd(std::rand());
+        const long nr = 2, nc = 3;
+        const int n_samples = 3, k = 1;
+        std::vector<matrix<float>> x(n_samples);
+        matrix<float> xtmp(nr, nc);
+        for (int ii = 0; ii < n_samples; ++ii) {
+            for (int jj = 0; jj < nr; ++jj)
+                for (int kk = 0; kk < nc; ++kk) {
+                    float r = rnd.get_random_gaussian();
+                    if (r > 1 || r < -1) r = -std::numeric_limits<float>::infinity();
+                    xtmp(jj, kk) = r;
+                }
+            x[ii] = xtmp;
+        }
+
+        // Convert input matrix to tensor
+        resizable_tensor input_tensor;
+        net.to_tensor(&x[0], &x[0] + n_samples, input_tensor);
+        net.forward(input_tensor);
+
+        // Expected output tensor
+        resizable_tensor expected_output;
+        expected_output.copy_size(input_tensor);
+        for (int ii = 0; ii < n_samples; ++ii) {
+            for (int jj = 0; jj < nr; ++jj) {
+                matrix<float> m(1, nc);
+                bool all_neg_inf = true;
+                for (int kk = 0; kk < nc; ++kk) {
+                    m(0, kk) = input_tensor.host()[tensor_index(input_tensor, ii, 0, jj, kk)];
+                    if (m(0, kk) > -std::numeric_limits<float>::infinity()) all_neg_inf = false;
+                }
+
+                matrix<float> r(1, nc);
+                if (all_neg_inf)
+                    for (int kk = 0; kk < nc; ++kk) r(0, kk) = 0.0f;
+                else {
+                    // Stabilize the computation by subtracting the max value
+                    float max_val = max(m);
+                    matrix<float> exp_m = exp(m - max_val);
+                    float sum_exp = sum(exp_m) + std::numeric_limits<float>::epsilon();
+                    r = exp_m / sum_exp;
+                }
+                for (int kk = 0; kk < nc; ++kk)
+                    expected_output.host()[tensor_index(expected_output, ii, 0, jj, kk)] = r(0, kk);
+            }
+        }
+
+        // Compare output tensor with expected output
+        auto& net_output = layer<tag1>(net).get_output();
+        DLIB_TEST(max(abs(mat(net_output) - mat(expected_output))) < 1e-5);
+
+        // Compare CPU and CUDA utility functions
+        resizable_tensor output_tensor, cpu_grad, gradient_input;
+        output_tensor.copy_size(input_tensor);
+        cpu_grad.copy_size(input_tensor);
+        cpu_grad = 0;
+        gradient_input.copy_size(input_tensor);
+        randomize_parameters(gradient_input, nr + nc, rnd);
+        cpu::softmax(output_tensor, input_tensor, operation_mode::PLANE_WISE);
+        cpu::softmax_gradient(cpu_grad, output_tensor, gradient_input, operation_mode::PLANE_WISE);
+        DLIB_TEST(max(abs(mat(output_tensor) - mat(expected_output))) < 1e-5);
+#ifdef DLIB_USE_CUDA
+        resizable_tensor cuda_grad;
+        cuda_grad.copy_size(input_tensor);
+        cuda_grad = 0;
+        cuda::softmax(output_tensor, input_tensor, operation_mode::PLANE_WISE);
+        cpu::softmax_gradient(cuda_grad, output_tensor, gradient_input, operation_mode::PLANE_WISE);
+        DLIB_TEST(max(abs(mat(output_tensor) - mat(expected_output))) < 1e-5);
+        DLIB_TEST(max(abs(mat(cuda_grad) - mat(cpu_grad))) < 1e-5);
+#endif
+    }
+
     void test_softmax_all()
     {
         using namespace dlib::tt;
@@ -223,13 +302,13 @@ namespace
         // make sure that cuda::mish and cpu::mish return the same results
         using namespace dlib::tt;
         print_spinner();
-        const long n = 5;
+        const long n = 4;
         const long k = 5;
         const long nr = 3;
         const long nc = 3;
         resizable_tensor src(n,k,nr,nc);
         tt::tensor_rand rnd;
-        rnd.fill_uniform(src);
+        rnd.fill_gaussian(src);
 
         resizable_tensor dest1, dest2;
         dest1.copy_size(src);
@@ -239,7 +318,7 @@ namespace
         dest2 = 2;
         cuda::mish(dest1, src);
         cpu::mish(dest2, src);
-        DLIB_TEST_MSG(max(abs(mat(dest1) - mat(dest2))) < 1e-7, max(abs(mat(dest1) - mat(dest2))));
+        DLIB_TEST_MSG(max(abs(mat(dest1) - mat(dest2))) < 1e-6, max(abs(mat(dest1) - mat(dest2))));
 #endif // DLIB_USE_CUDA
     }
 
@@ -248,24 +327,178 @@ namespace
 #ifdef DLIB_USE_CUDA
         using namespace dlib::tt;
         print_spinner();
-        const long n = 5;
+        const long n = 4;
         const long k = 5;
         const long nr = 3;
         const long nc = 3;
         const float alpha = 0.01;
         resizable_tensor src(n, k, nr, nc);
         tt::tensor_rand rnd;
-        rnd.fill_uniform(src);
+        rnd.fill_gaussian(src);
+        resizable_tensor dest_cuda, dest_cpu;
+        dest_cuda.copy_size(src);
+        dest_cpu.copy_size(src);
+        // initialize to different values in order to make sure the output is actually changed
+        dest_cuda = 1;
+        dest_cpu = 2;
+        cuda::leaky_relu(dest_cuda, src, alpha);
+        cpu::leaky_relu(dest_cpu, src, alpha);
+
+        DLIB_TEST_MSG(max(abs(mat(dest_cuda) - mat(dest_cpu))) < 1e-7, max(abs(mat(dest_cuda) - mat(dest_cpu))));
+#endif // DLIB_USE_CUDA
+    }
+
+    void test_clipped_relu()
+    {
+#ifdef DLIB_USE_CUDA
+        using namespace dlib::tt;
+        print_spinner();
+        const long n = 4;
+        const long k = 5;
+        const long nr = 3;
+        const long nc = 3;
+        const float ceiling = 6.0f;
+        resizable_tensor src(n, k, nr, nc);
+        tt::tensor_rand rnd;
+        rnd.fill_gaussian(src, 0, 3);
+        resizable_tensor dest_cuda, dest_cpu;
+        dest_cuda.copy_size(src);
+        dest_cpu.copy_size(src);
+        // initialize to different values in order to make sure the output is actually changed
+        dest_cuda = 1;
+        dest_cpu = 2;
+        cuda::clipped_relu(dest_cuda, src, ceiling);
+        cpu::clipped_relu(dest_cpu, src, ceiling);
+        auto error = max(abs(mat(dest_cuda) - mat(dest_cpu)));
+        DLIB_TEST_MSG(error < 1e-7, "error: " << error);
+
+        // test gradients
+        resizable_tensor grad_cuda, grad_cpu, grad_input;
+        grad_cuda.copy_size(src);
+        grad_cpu.copy_size(src);
+        grad_input.copy_size(src);
+        rnd.fill_uniform(grad_input);
+        grad_cuda = 0;
+        grad_cpu = 0;
+        cuda::clipped_relu_gradient(grad_cuda, dest_cuda, grad_input, ceiling);
+        cpu::clipped_relu_gradient(grad_cpu, dest_cpu, grad_input, ceiling);
+        error = max(abs(mat(grad_cuda) - mat(grad_cpu)));
+        DLIB_TEST_MSG(error < 1e-7, "error: " << error);
+#endif // DLIB_USE_CUDA
+    }
+
+    void test_elu()
+    {
+#ifdef DLIB_USE_CUDA
+        using namespace dlib::tt;
+        print_spinner();
+        const long n = 4;
+        const long k = 5;
+        const long nr = 3;
+        const long nc = 3;
+        const float alpha = 1.0f;
+        resizable_tensor src(n, k, nr, nc);
+        tt::tensor_rand rnd;
+        rnd.fill_gaussian(src);
+        resizable_tensor dest_cuda, dest_cpu;
+        dest_cuda.copy_size(src);
+        dest_cpu.copy_size(src);
+        // initialize to different values in order to make sure the output is actually changed
+        dest_cuda = 1;
+        dest_cpu = 2;
+        cuda::elu(dest_cuda, src, alpha);
+        cpu::elu(dest_cpu, src, alpha);
+        auto error = max(abs(mat(dest_cuda) - mat(dest_cpu)));
+        DLIB_TEST_MSG(error < 1e-7, "error: " << error);
+        // test gradients
+        resizable_tensor grad_cuda, grad_cpu, grad_input;
+        grad_cuda.copy_size(src);
+        grad_cpu.copy_size(src);
+        grad_input.copy_size(src);
+        rnd.fill_gaussian(grad_input);
+        grad_cuda = 0;
+        grad_cpu = 0;
+        cuda::elu_gradient(grad_cuda, dest_cuda, grad_input, alpha);
+        cpu::elu_gradient(grad_cpu, dest_cpu, grad_input, alpha);
+        error = max(abs(mat(grad_cuda) - mat(grad_cpu)));
+        DLIB_TEST_MSG(error < 1e-6, "error: " << error);
+#endif // DLIB_USE_CUDA
+    }
+
+    void test_gelu()
+    {
+#ifdef DLIB_USE_CUDA
+        // make sure that cuda::gelu and cpu::gelu return the same results
+        using namespace dlib::tt;
+        print_spinner();
+        const long n = 4;
+        const long k = 5;
+        const long nr = 3;
+        const long nc = 3;
+        resizable_tensor src(n,k,nr,nc);
+        tt::tensor_rand rnd;
+        rnd.fill_gaussian(src);
+
         resizable_tensor dest1, dest2;
         dest1.copy_size(src);
         dest2.copy_size(src);
         // initialize to different values in order to make sure the output is actually changed
         dest1 = 1;
         dest2 = 2;
-        cuda::leaky_relu(dest1, src, alpha);
-        cpu::leaky_relu(dest2, src, alpha);
+        cuda::gelu(dest1, src);
+        cpu::gelu(dest2, src);
+        DLIB_TEST_MSG(max(abs(mat(dest1) - mat(dest2))) < 1e-6, max(abs(mat(dest1) - mat(dest2))));
+#endif // DLIB_USE_CUDA
+    }
 
-        DLIB_TEST_MSG(max(abs(mat(dest1) - mat(dest2))) < 1e-7, max(abs(mat(dest1) - mat(dest2))));
+    void test_smelu()
+    {
+#ifdef DLIB_USE_CUDA
+        using namespace dlib::tt;
+        print_spinner();
+        const long n = 4;
+        const long k = 5;
+        const long nr = 3;
+        const long nc = 3;
+        const float beta = 1;
+        resizable_tensor src(n, k, nr, nc);
+        tt::tensor_rand rnd;
+        rnd.fill_gaussian(src);
+        resizable_tensor dest_cuda, dest_cpu;
+        dest_cuda.copy_size(src);
+        dest_cpu.copy_size(src);
+        // initialize to different values in order to make sure the output is actually changed
+        dest_cuda = 1;
+        dest_cpu = 2;
+        cuda::smelu(dest_cuda, src, beta);
+        cpu::smelu(dest_cpu, src, beta);
+
+        DLIB_TEST_MSG(max(abs(mat(dest_cuda) - mat(dest_cpu))) < 1e-7, max(abs(mat(dest_cuda) - mat(dest_cpu))));
+#endif // DLIB_USE_CUDA
+    }
+
+    void test_silu()
+    {
+#ifdef DLIB_USE_CUDA
+        using namespace dlib::tt;
+        print_spinner();
+        const long n = 4;
+        const long k = 5;
+        const long nr = 3;
+        const long nc = 3;
+        resizable_tensor src(n, k, nr, nc);
+        tt::tensor_rand rnd;
+        rnd.fill_gaussian(src);
+        resizable_tensor dest_cuda, dest_cpu;
+        dest_cuda.copy_size(src);
+        dest_cpu.copy_size(src);
+        // initialize to different values in order to make sure the output is actually changed
+        dest_cuda = 1;
+        dest_cpu = 2;
+        cuda::silu(dest_cuda, src);
+        cpu::silu(dest_cpu, src);
+
+        DLIB_TEST_MSG(max(abs(mat(dest_cuda) - mat(dest_cpu))) < 1e-6, max(abs(mat(dest_cuda) - mat(dest_cpu))));
 #endif // DLIB_USE_CUDA
     }
 
@@ -443,6 +676,270 @@ namespace
         DLIB_TEST(grad_error < 0.001);
 
     }
+
+// ----------------------------------------------------------------------------------------
+
+    void test_layer_normalize()
+    {
+        resizable_tensor x(2, 3, 4, 5);
+        resizable_tensor y_cpu(x);
+        tt::tensor_rand rnd(0);
+        rnd.fill_uniform(x);
+        resizable_tensor means_cpu(x.num_samples()), invstds_cpu(x.num_samples());
+        resizable_tensor gamma(1, x.k(), 1, 1), beta(1, x.k(), 1, 1);
+        gamma = 1;
+        beta = 0;
+        const float eps = 1e-5;
+        cpu::layer_normalize(eps, y_cpu, means_cpu, invstds_cpu, x, gamma, beta);
+        // check that the mean and var per sample are 0 and 1
+        const float* p = y_cpu.host();
+        for (long n = 0; n < y_cpu.num_samples(); ++n)
+        {
+            running_stats<float> rs;
+            for (long k = 0; k < y_cpu.k(); ++k)
+            {
+                for (long r = 0; r < y_cpu.nr(); ++r)
+                {
+                    for (long c = 0; c < y_cpu.nc(); ++c)
+                    {
+                        rs.add(p[tensor_index(y_cpu, n, k, r, c)]);
+                    }
+                }
+            }
+            DLIB_TEST(::std::abs(rs.mean()) < 1e-6);
+            DLIB_TEST(::std::abs(rs.stddev() - 1.0f) < 0.01);
+        }
+        // check that the CPU and the CUDA implementation are equivalent
+#ifdef DLIB_USE_CUDA
+        resizable_tensor y_cuda(x);
+        resizable_tensor means_cuda(x.num_samples()), invstds_cuda(x.num_samples());
+        cuda::layer_normalize(eps, y_cuda, means_cuda, invstds_cuda, x, gamma, beta);
+        DLIB_TEST(max(abs(mat(y_cpu) - mat(y_cuda))) < 1e-5);
+        DLIB_TEST(max(abs(mat(means_cpu) - mat(means_cuda))) < 1e-5);
+        DLIB_TEST(max(abs(mat(invstds_cpu) - mat(invstds_cuda))) < 1e-5);
+        resizable_tensor gradient_input(x);
+        resizable_tensor src_grad_cpu(x), gamma_grad_cpu(1, x.k(), 1, 1), beta_grad_cpu(1, x.k(), 1, 1);
+        resizable_tensor src_grad_cuda(x), gamma_grad_cuda(1, x.k(), 1, 1), beta_grad_cuda(1, x.k(), 1, 1);
+        resizable_tensor dmeans_cpu, dvars_cpu, dmeans_cuda, dvars_cuda;
+        rnd.fill_gaussian(gradient_input);
+        src_grad_cpu = 0;
+        src_grad_cuda = 0;
+        cpu::layer_normalize_gradient(eps, gradient_input, means_cpu, invstds_cpu, x, gamma, src_grad_cpu, gamma_grad_cpu, beta_grad_cpu, dmeans_cpu, dvars_cpu);
+        cuda::layer_normalize_gradient(eps, gradient_input, means_cuda, invstds_cuda, x, gamma, src_grad_cuda, gamma_grad_cuda, beta_grad_cuda, dmeans_cuda, dvars_cuda);
+        DLIB_TEST(max(abs(mat(src_grad_cpu) - mat(src_grad_cuda))) < 1e-5);
+        DLIB_TEST(max(abs(mat(gamma_grad_cpu) - mat(gamma_grad_cuda))) < 1e-5);
+        DLIB_TEST(max(abs(mat(beta_grad_cpu) - mat(beta_grad_cuda))) < 1e-5);
+        DLIB_TEST(max(abs(mat(dmeans_cpu) - mat(dmeans_cuda))) < 1e-4);
+        DLIB_TEST(max(abs(mat(dvars_cpu) - mat(dvars_cuda))) < 1e-4);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    void test_rms_normalize()
+    {
+        resizable_tensor x(2, 3, 4, 5);
+        resizable_tensor y_cpu(x);
+        tt::tensor_rand rnd(0);
+        rnd.fill_uniform(x);
+        resizable_tensor scale_cpu;
+        resizable_tensor gamma(1, x.k());
+        gamma = 1;
+        const float eps = 1e-5;
+        cpu::rms_normalize(eps, y_cpu, scale_cpu, x, gamma);
+
+        // check that the output is correctly normalized
+        const float* p_x = x.host();
+        const float* p_y = y_cpu.host();
+        const float* p_scale = scale_cpu.host();
+        bool error_found = false;
+        for (long n = 0; n < x.num_samples(); ++n)
+        {
+            for (long k = 0; k < x.k(); ++k)
+            {
+                for (long r = 0; r < x.nr(); ++r)
+                {
+                    for (long c = 0; c < x.nc(); ++c)
+                    {
+                        float x_val = p_x[tensor_index(x, n, k, r, c)];
+                        float y_val = p_y[tensor_index(y_cpu, n, k, r, c)];
+                        float rms_val = p_scale[n];
+                        if (std::abs(y_val - x_val * rms_val) >= 1e-5) error_found = true;
+                    }
+                }
+            }
+        }
+        DLIB_TEST(!error_found);
+
+        // check the backward pass
+        resizable_tensor gradient_input(x);
+        resizable_tensor src_grad_cpu(x), gamma_grad_cpu(1, x.k());
+        resizable_tensor dscale_cpu(x.num_samples());
+        rnd.fill_gaussian(gradient_input);
+        src_grad_cpu = 0;
+        cpu::rms_normalize_gradient(gradient_input, scale_cpu, x, gamma, src_grad_cpu, gamma_grad_cpu, dscale_cpu);
+
+        const float* p_gradient_input = gradient_input.host();
+        const float* p_src = x.host();
+        const float* p_src_grad_cpu = src_grad_cpu.host();
+        const float* p_gamma = gamma.host();
+        const float* p_scale_cpu = scale_cpu.host();
+        const float* p_dscale_cpu = dscale_cpu.host();
+
+        bool backward_error_found = false;
+        for (long n = 0; n < x.num_samples(); ++n)
+        {
+            const float scale_pow = -0.5 * std::pow(p_scale_cpu[n], 3.0f);
+            for (long k = 0; k < x.k(); ++k)
+            {
+                for (long r = 0; r < x.nr(); ++r)
+                {
+                    for (long c = 0; c < x.nc(); ++c)
+                    {
+                        float gradient_input_val = p_gradient_input[tensor_index(gradient_input, n, k, r, c)];
+                        float src_val = p_src[tensor_index(x, n, k, r, c)];
+                        float rms_val = p_scale_cpu[n];
+                        float expected_src_grad = gradient_input_val * p_gamma[k] * rms_val + p_dscale_cpu[n] * 2 * src_val * 1.0f / (x.k() * x.nr() * x.nc());
+                        float src_grad_val = p_src_grad_cpu[tensor_index(src_grad_cpu, n, k, r, c)];
+                        if (std::abs(src_grad_val - expected_src_grad) >= 1e-4)
+                            backward_error_found = true;
+                    }
+                }
+            }
+        }
+        DLIB_TEST(!backward_error_found);        
+
+        // check that the CPU and the CUDA implementation are equivalent 
+#ifdef DLIB_USE_CUDA 
+        resizable_tensor y_cuda(x);
+        resizable_tensor scale_cuda;
+        cuda::rms_normalize(eps, y_cuda, scale_cuda, x, gamma);
+        DLIB_TEST(max(abs(mat(y_cpu) - mat(y_cuda))) < 1e-5);
+        DLIB_TEST(max(abs(mat(scale_cpu) - mat(scale_cuda))) < 1e-5);
+
+        resizable_tensor src_grad_cuda(x), gamma_grad_cuda(1, x.k());
+        resizable_tensor dscale_cuda(x.num_samples());
+        src_grad_cuda = 0;
+        cuda::rms_normalize_gradient(gradient_input, scale_cuda, x, gamma, src_grad_cuda, gamma_grad_cuda, dscale_cuda);
+        DLIB_TEST(max(abs(mat(src_grad_cpu) - mat(src_grad_cuda))) < 1e-5);
+        DLIB_TEST(max(abs(mat(gamma_grad_cpu) - mat(gamma_grad_cuda))) < 1e-5);
+        DLIB_TEST(max(abs(mat(dscale_cpu) - mat(dscale_cuda))) < 1e-5);
+#endif        
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    void test_transpose()
+    {
+        const long num_samples = 2;
+        const long k = 3;
+        const long nr = 4;
+        const long nc = 5;
+
+        resizable_tensor input(num_samples, k, nr, nc);
+        resizable_tensor output_cpu_a(num_samples, k, nc, nr);    
+        tt::tensor_rand rnd(0);
+        rnd.fill_uniform(input);
+        resizable_tensor output_cpu_b(input);
+
+        cpu::transpose(false, output_cpu_a, input);
+        cpu::transpose(true, output_cpu_b, output_cpu_a);
+        input *= 2;
+        DLIB_TEST(max(abs(mat(output_cpu_b) - mat(input))) < 1e-5);
+
+#ifdef DLIB_USE_CUDA
+        input /= 2;
+        resizable_tensor output_cuda_a, output_cuda_b(input);    
+        output_cuda_a.copy_size(output_cpu_a);
+        cuda::transpose(false, output_cuda_a, input);
+        cuda::transpose(true, output_cuda_b, output_cuda_a);
+        DLIB_TEST(max(abs(mat(output_cpu_a) - mat(output_cuda_a))) < 1e-5);
+        DLIB_TEST(max(abs(mat(output_cpu_b) - mat(output_cuda_b))) < 1e-5);
+#endif
+    }
+
+// ----------------------------------------------------------------------------------------
+
+void test_positional_encodings()
+{
+    print_spinner();
+    using net_type = tag1<positional_encodings<input<matrix<float>>>>;
+    net_type net;
+
+    const unsigned long sequence_dim = 4;
+    const unsigned long embedding_dim = 6;
+    const unsigned long n_samples = 1, n_channels = 1;
+    matrix<float> input_data(sequence_dim, embedding_dim);
+    input_data = 0.0f;
+    
+    resizable_tensor input_tensor(n_samples, n_channels, sequence_dim, embedding_dim);
+    std::vector<matrix<float>> x(n_samples);
+    x[0] = input_data;
+    net.to_tensor(&x[0], &x[0] + n_samples, input_tensor);
+    net.forward(input_tensor);
+
+    matrix<float> expected_output(sequence_dim, embedding_dim);
+    const float n = 10000.0f;
+    for (long r = 0; r < sequence_dim; ++r) {
+        for (long c = 0; c < embedding_dim; ++c) {
+            float theta = static_cast<float>(r) / std::pow(n, static_cast<float>(c) / embedding_dim);
+            expected_output(r, c) = (c % 2 == 0) ? std::sin(theta) : std::cos(theta);
+        }
+    }    
+
+    auto& net_output = layer<tag1>(net).get_output();
+    DLIB_TEST(max(abs(mat(net_output) - expected_output)) < 1e-5);
+}
+
+// ----------------------------------------------------------------------------------------
+
+void test_embeddings()
+{
+    print_spinner();
+    const size_t num_sequences = 100, sequence_length = 7, num_classes = 3, num_tokens = 50, embedding_length = 5;
+    using net_type = loss_multiclass_log<fc<num_classes,
+        relu<fc<32,relu<fc<64,
+        embeddings<num_tokens, embedding_length,
+        input<matrix<unsigned long, 0, 1>>>>>>>>>;
+    net_type net;
+    dnn_trainer<net_type> trainer(net, sgd(0, 0.9));
+    trainer.set_learning_rate(1e-1);
+    trainer.set_min_learning_rate(1e-4);
+    trainer.set_mini_batch_size(16);
+    trainer.set_max_num_epochs(500);
+
+    dlib::rand rnd(std::rand());
+    auto generate_sequences = [&](size_t num_sequences, size_t sequence_length, size_t num_tokens) {
+        std::vector<matrix<unsigned long, 0, 1>> sequences;
+        for (size_t i = 0; i < num_sequences; ++i)
+        {
+            matrix<unsigned long, 0, 1> seq(sequence_length, 1);
+            for (size_t j = 0; j < sequence_length; ++j)
+                seq(j, 0) = rnd.get_random_32bit_number() % num_tokens;
+            sequences.push_back(seq);
+        }
+        return sequences;
+    };
+
+    auto generate_labels = [&](size_t num_sequences, size_t num_classes) {
+        std::vector<unsigned long> labels;
+        for (size_t i = 0; i < num_sequences; ++i)
+            labels.push_back(rnd.get_random_32bit_number() % num_classes);
+        return labels;
+    };
+
+    auto sequences = generate_sequences(num_sequences, sequence_length, num_tokens);
+    auto labels = generate_labels(num_sequences, num_classes);
+
+    trainer.train(sequences, labels);
+    std::vector<unsigned long> predicted_labels = net(sequences);
+    size_t num_correct = 0;
+    for (size_t i = 0; i < labels.size(); ++i)
+        if (predicted_labels[i] == labels[i]) ++num_correct;
+
+    double acc = static_cast<double>(num_correct) / labels.size();
+    DLIB_TEST(acc > 0.9);
+}
 
 // ----------------------------------------------------------------------------------------
 
@@ -1684,6 +2181,18 @@ namespace
     {
         {
             print_spinner();
+            reorg_<2,2> l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {
+            print_spinner();
+            tril_<-5, void, 1, 2> l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }        
+        {
+            print_spinner();
             extract_<0,2,2,2> l;
             auto res = test_layer(l);
             DLIB_TEST_MSG(res, res);
@@ -1697,6 +2206,24 @@ namespace
         {
             print_spinner();
             extract_<0,2,1,2> l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {
+            print_spinner();
+            slice_<0,0,0,2,2,2> l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {
+            print_spinner();
+            slice_<1,1,1,1,1,1> l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {
+            print_spinner();
+            slice_<0,0,0,1,1,1> l;
             auto res = test_layer(l);
             DLIB_TEST_MSG(res, res);
         }
@@ -1792,6 +2319,18 @@ namespace
         }
         {
             print_spinner();
+            layer_norm_ l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {  
+            print_spinner();  
+            rms_norm_ l;  
+            auto res = test_layer(l);  
+            DLIB_TEST_MSG(res, res);  
+        }         
+        {
+            print_spinner();
             cont_<3,3,3,2,2,0,0> l;
             auto res = test_layer(l);
             DLIB_TEST_MSG(res, res);
@@ -1882,6 +2421,24 @@ namespace
         }
         {
             print_spinner();
+            linear_<1, LINEAR_NO_BIAS> l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {
+            print_spinner();
+            linear_<5, LINEAR_NO_BIAS> l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {
+            print_spinner();
+            linear_<4, LINEAR_NO_BIAS> l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {
+            print_spinner();
             relu_ l;
             auto res = test_layer(l);
             DLIB_TEST_MSG(res, res);
@@ -1918,13 +2475,79 @@ namespace
         }
         {
             print_spinner();
-            softmax_ l;
+            clipped_relu_ l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {
+            print_spinner();
+            elu_ l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {
+            print_spinner();
+            gelu_ l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {
+            print_spinner();
+            smelu_ l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {
+            print_spinner();
+            silu_ l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {
+            print_spinner();
+            softmax_<operation_mode::CHANNEL_WISE> l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {
+            print_spinner();
+            softmax_<operation_mode::PLANE_WISE> l;
             auto res = test_layer(l);
             DLIB_TEST_MSG(res, res);
         }
         {
             print_spinner();
             softmax_all_ l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {
+            print_spinner();
+            transpose_ l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {
+            print_spinner();
+            positional_encodings_ l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {
+            print_spinner();
+            embeddings_<7, 12> l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {
+            print_spinner();
+            reshape_to_<-1, -1, -1> l;
+            auto res = test_layer(l);
+            DLIB_TEST_MSG(res, res);
+        }
+        {
+            print_spinner();
+            reshape_to_<-1, 3, 5> l;
             auto res = test_layer(l);
             DLIB_TEST_MSG(res, res);
         }
@@ -2176,6 +2799,140 @@ namespace
             }
         }
     }
+    void test_copy_tensor_slice_cpu()
+    {
+        using namespace dlib::tt;
+        print_spinner();
+        resizable_tensor dest(10, 9, 7, 15);
+        resizable_tensor src1(10, 3, 7, 15);
+        resizable_tensor src2(10, 3, 6, 12);
+        resizable_tensor src3(10, 9, 7, 15);
+        tt::tensor_rand rnd;
+        rnd.fill_gaussian(dest);
+        rnd.fill_gaussian(src1);
+        rnd.fill_gaussian(src2);
+        rnd.fill_gaussian(src3);
+
+        const resizable_tensor old_dest = dest;
+
+        cpu::copy_tensor(false, dest, 0, 0, 0, src1, 0, 0, 0, src1.k(), src1.nr(), src1.nc()); //full copy src1->dest
+        cpu::copy_tensor(false, dest, src1.k(), 0, 0, src2, 0, 0, 0, src2.k(), src2.nr(), src2.nc()); //full copy src2->dest with offset of src1
+        cpu::copy_tensor(false, dest, src1.k() + src2.k(), 1, 1, src3, 3, 1, 1, 3, src3.nr()-2, src3.nc()-2); //partial copy src3 into the rest place of dest
+
+
+        for (long i = 0; i < dest.num_samples(); ++i)
+        {
+            for (long k = 0; k < dest.k(); ++k)
+            {
+                for (long r = 0; r < dest.nr(); ++r)
+                {
+                    for (long c = 0; c < dest.nc(); ++c)
+                    {
+                        float old_dest_value = tensor_read_cpu(old_dest, i, k, r, c);
+                        float dest_value = tensor_read_cpu(dest, i, k, r, c);
+                        // first part is from src1
+                        if (k < src1.k())
+                        {
+                            float src_value = tensor_read_cpu(src1, i, k, r, c);
+                            DLIB_TEST(src_value == dest_value);
+                        }
+                        // second part is from src2
+                        else if (k < src1.k() + src2.k())
+                        {
+                            if (r < src2.nr() && c < src2.nc())
+                            {
+                                float src_value = tensor_read_cpu(src2, i, k - src1.k(), r, c);
+                                DLIB_TEST(src_value == dest_value);
+                            }
+                            else
+                            {
+                                DLIB_TEST(old_dest_value == dest_value);
+                            }
+                        }
+                        // third part is from src3
+                        else
+                        {
+                            if (r > 0 && c > 0 && r + 1 < src3.nr() && c + 1 < src3.nc())
+                            {
+                                float src_value = tensor_read_cpu(src3, i, k - src1.k() - src2.k() + 3, r, c);
+                                DLIB_TEST(src_value == dest_value);
+                            }
+                            else {
+                                DLIB_TEST(old_dest_value == dest_value);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    void test_copy_tensor_slice_add_to_cpu()
+    {
+        using namespace dlib::tt;
+        print_spinner();
+        resizable_tensor dest(10, 9, 7, 15);
+        resizable_tensor src1(10, 3, 7, 15);
+        resizable_tensor src2(10, 3, 6, 12);
+        resizable_tensor src3(10, 9, 7, 15);
+        tt::tensor_rand rnd;
+        rnd.fill_gaussian(dest);
+        rnd.fill_gaussian(src1);
+        rnd.fill_gaussian(src2);
+        rnd.fill_gaussian(src3);
+
+        const resizable_tensor old_dest = dest;
+
+        cpu::copy_tensor(true, dest, 0, 0, 0, src1, 0, 0, 0, src1.k(), src1.nr(), src1.nc()); //full copy src1->dest
+        cpu::copy_tensor(true, dest, src1.k(), 0, 0, src2, 0, 0, 0, src2.k(), src2.nr(), src2.nc()); //full copy src2->dest with offset of src1
+        cpu::copy_tensor(true, dest, src1.k() + src2.k(), 1, 1, src3, 3, 1, 1, 3, src3.nr()-2, src3.nc()-2); //partial copy src3 into the rest place of dest
+
+        for (long i = 0; i < dest.num_samples(); ++i)
+        {
+            for (long k = 0; k < dest.k(); ++k)
+            {
+                for (long r = 0; r < dest.nr(); ++r)
+                {
+                    for (long c = 0; c < dest.nc(); ++c)
+                    {
+                        float old_dest_value = tensor_read_cpu(old_dest, i, k, r, c);
+                        float dest_value = tensor_read_cpu(dest, i, k, r, c);
+                        // first part is from src1
+                        if (k < src1.k())
+                        {
+                            float src_value = tensor_read_cpu(src1, i, k, r, c)+old_dest_value;
+                            DLIB_TEST(std::abs(src_value - dest_value) < 1e-6);
+                        }
+                        // second part is from src2
+                        else if (k < src1.k() + src2.k())
+                        {
+                            if (r < src2.nr() && c < src2.nc())
+                            {
+                                float src_value = tensor_read_cpu(src2, i, k - src1.k(), r, c)+old_dest_value;
+                                DLIB_TEST(std::abs(src_value - dest_value) < 1e-6);
+                            }
+                            else
+                            {
+                                DLIB_TEST(old_dest_value == dest_value);
+                            }
+                        }
+                        // third part is from src3
+                        else
+                        {
+                            if (r > 0 && c > 0 && r + 1 < src3.nr() && c + 1 < src3.nc())
+                            {
+                                float src_value = tensor_read_cpu(src3, i, k - src1.k() - src2.k() + 3, r, c)+old_dest_value;
+                                DLIB_TEST(std::abs(src_value - dest_value) < 1e-6);
+                            }
+                            else
+                            {
+                                DLIB_TEST(old_dest_value == dest_value);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 #ifdef DLIB_USE_CUDA
     void test_copy_tensor_gpu()
     {
@@ -2275,6 +3032,140 @@ namespace
                         {
                             float src_value = tensor_read_cpu(src3, i, k - src1.k() - src2.k() + 3, r, c)+old_dest_value;
                             DLIB_TEST(std::abs(src_value - dest_value) < 1e-6);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    void test_copy_tensor_slice_gpu()
+    {
+        using namespace dlib::tt;
+        print_spinner();
+        resizable_tensor dest(10, 9, 7, 15);
+        resizable_tensor src1(10, 3, 7, 15);
+        resizable_tensor src2(10, 3, 6, 12);
+        resizable_tensor src3(10, 9, 7, 15);
+        tt::tensor_rand rnd;
+        rnd.fill_gaussian(dest);
+        rnd.fill_gaussian(src1);
+        rnd.fill_gaussian(src2);
+        rnd.fill_gaussian(src3);
+
+        const resizable_tensor old_dest = dest;
+
+        cuda::copy_tensor(false, dest, 0, 0, 0, src1, 0, 0, 0, src1.k(), src1.nr(), src1.nc()); //full copy src1->dest
+        cuda::copy_tensor(false, dest, src1.k(), 0, 0, src2, 0, 0, 0, src2.k(), src2.nr(), src2.nc()); //full copy src2->dest with offset of src1
+        cuda::copy_tensor(false, dest, src1.k() + src2.k(), 1, 1, src3, 3, 1, 1, 3, src3.nr()-2, src3.nc()-2); //partial copy src3 into the rest place of dest
+
+
+        for (long i = 0; i < dest.num_samples(); ++i)
+        {
+            for (long k = 0; k < dest.k(); ++k)
+            {
+                for (long r = 0; r < dest.nr(); ++r)
+                {
+                    for (long c = 0; c < dest.nc(); ++c)
+                    {
+                        float old_dest_value = tensor_read_cpu(old_dest, i, k, r, c);
+                        float dest_value = tensor_read_cpu(dest, i, k, r, c);
+                        // first part is from src1
+                        if (k < src1.k())
+                        {
+                            float src_value = tensor_read_cpu(src1, i, k, r, c);
+                            DLIB_TEST(src_value == dest_value);
+                        }
+                        // second part is from src2
+                        else if (k < src1.k() + src2.k())
+                        {
+                            if (r < src2.nr() && c < src2.nc())
+                            {
+                                float src_value = tensor_read_cpu(src2, i, k - src1.k(), r, c);
+                                DLIB_TEST(src_value == dest_value);
+                            }
+                            else
+                            {
+                                DLIB_TEST(old_dest_value == dest_value);
+                            }
+                        }
+                        // third part is from src3
+                        else
+                        {
+                            if (r > 0 && c > 0 && r + 1 < src3.nr() && c + 1 < src3.nc())
+                            {
+                                float src_value = tensor_read_cpu(src3, i, k - src1.k() - src2.k() + 3, r, c);
+                                DLIB_TEST(src_value == dest_value);
+                            }
+                            else {
+                                DLIB_TEST(old_dest_value == dest_value);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    void test_copy_tensor_slice_add_to_gpu()
+    {
+        using namespace dlib::tt;
+        print_spinner();
+        resizable_tensor dest(10, 9, 7, 15);
+        resizable_tensor src1(10, 3, 7, 15);
+        resizable_tensor src2(10, 3, 6, 12);
+        resizable_tensor src3(10, 9, 7, 15);
+        tt::tensor_rand rnd;
+        rnd.fill_gaussian(dest);
+        rnd.fill_gaussian(src1);
+        rnd.fill_gaussian(src2);
+        rnd.fill_gaussian(src3);
+
+        const resizable_tensor old_dest = dest;
+
+        cuda::copy_tensor(true, dest, 0, 0, 0, src1, 0, 0, 0, src1.k(), src1.nr(), src1.nc()); //full copy src1->dest
+        cuda::copy_tensor(true, dest, src1.k(), 0, 0, src2, 0, 0, 0, src2.k(), src2.nr(), src2.nc()); //full copy src2->dest with offset of src1
+        cuda::copy_tensor(true, dest, src1.k() + src2.k(), 1, 1, src3, 3, 1, 1, 3, src3.nr()-2, src3.nc()-2); //partial copy src3 into the rest place of dest
+
+        for (long i = 0; i < dest.num_samples(); ++i)
+        {
+            for (long k = 0; k < dest.k(); ++k)
+            {
+                for (long r = 0; r < dest.nr(); ++r)
+                {
+                    for (long c = 0; c < dest.nc(); ++c)
+                    {
+                        float old_dest_value = tensor_read_cpu(old_dest, i, k, r, c);
+                        float dest_value = tensor_read_cpu(dest, i, k, r, c);
+                        // first part is from src1
+                        if (k < src1.k())
+                        {
+                            float src_value = tensor_read_cpu(src1, i, k, r, c)+old_dest_value;
+                            DLIB_TEST(std::abs(src_value - dest_value) < 1e-6);
+                        }
+                        // second part is from src2
+                        else if (k < src1.k() + src2.k())
+                        {
+                            if (r < src2.nr() && c < src2.nc())
+                            {
+                                float src_value = tensor_read_cpu(src2, i, k - src1.k(), r, c)+old_dest_value;
+                                DLIB_TEST(std::abs(src_value - dest_value) < 1e-6);
+                            }
+                            else
+                            {
+                                DLIB_TEST(old_dest_value == dest_value);
+                            }
+                        }
+                        // third part is from src3
+                        else
+                        {
+                            if (r > 0 && c > 0 && r + 1 < src3.nr() && c + 1 < src3.nc())
+                            {
+                                float src_value = tensor_read_cpu(src3, i, k - src1.k() - src2.k() + 3, r, c)+old_dest_value;
+                                DLIB_TEST(std::abs(src_value - dest_value) < 1e-6);
+                            }
+                            else
+                            {
+                                DLIB_TEST(old_dest_value == dest_value);
+                            }
                         }
                     }
                 }
@@ -2482,6 +3373,53 @@ namespace
 
 // ----------------------------------------------------------------------------------------
 
+void test_multm_prev()
+{
+    print_spinner();
+    using net_type = tag1<multm_prev6<skip5<tag6<transpose<tag5<input<matrix<float>>>>>>>>;
+    net_type net;
+
+    dlib::rand rnd;
+    const int nr = 3, nc = 4;
+    const int n_samples = 3, k = 1;
+    std::vector<matrix<float>> x(n_samples);
+    matrix<float> xtmp(nr, nc);
+    for (int ii = 0; ii < n_samples; ++ii) {
+        for (int jj = 0; jj < nr; ++jj)
+            for (int kk = 0; kk < nc; ++kk)
+                xtmp(jj, kk) = rnd.get_random_gaussian();
+        x[ii] = xtmp;
+    }
+
+    resizable_tensor input_tensor;
+    net.to_tensor(&x[0], &x[0] + n_samples, input_tensor);
+    net.forward(input_tensor);
+
+    resizable_tensor expected_output(n_samples, k, nr, nr);
+    matrix<float> input_mat(nr, nc);
+    matrix<float> output_mat(nr, nr);
+
+    for (long s = 0; s < n_samples; ++s) {
+        for (long r = 0; r < nr; ++r) {
+            for (long c = 0; c < nc; ++c) {
+                input_mat(r, c) = input_tensor.host()[tensor_index(input_tensor, s, 0, r, c)];
+            }
+        }
+        output_mat = input_mat * trans(input_mat);
+
+        for (long r = 0; r < nr; ++r) {
+            for (long c = 0; c < nr; ++c) {
+                expected_output.host()[tensor_index(expected_output, s, 0, r, c)] = output_mat(r, c);
+            }
+        }
+    }
+
+    auto& net_output = layer<tag1>(net).get_output();
+    DLIB_TEST(max(abs(mat(net_output) - mat(expected_output))) < 1e-5);
+}
+
+// ----------------------------------------------------------------------------------------
+
     void test_multioutput_linear_regression()
     {
         const int num_outputs = 2;
@@ -2620,6 +3558,61 @@ namespace
     }
 
 // ----------------------------------------------------------------------------------------
+    void test_linear()
+    {
+        print_spinner();
+
+        // Define the network
+        using net_type = tag2<linear_no_bias<6, tag1<input<matrix<float>>>>>;
+        net_type net;
+
+        // Input tensor
+        const int n_samples = 3, k = 1;
+        std::vector<matrix<float>> x(n_samples);
+        matrix<float> xtmp(2, 4);
+        xtmp = 1.0f, 2.0f, 3.0f, 4.0f,
+            5.0f, 6.0f, 7.0f, 8.0f;
+        x[0] = xtmp;
+        xtmp = 9.0f, 10.0f, 11.0f, 12.0f,
+            13.0f, 14.0f, 15.0f, 16.0f;
+        x[1] = xtmp;
+        xtmp = 17.0f, 18.0f, 19.0f, 20.0f,
+            21.0f, 22.0f, 23.0f, 24.0f;
+        x[2] = xtmp;
+
+        // Convert input matrix to tensor
+        resizable_tensor input_tensor;
+        net.to_tensor(&x[0], &x[0] + n_samples, input_tensor);
+        net.forward(input_tensor);
+
+        // Get the internal linear weights
+        matrix<float> w = mat(layer<tag2>(net).subnet().layer_details().get_weights());
+
+        // Theoretical calculation of the output
+        std::vector<matrix<float>> expected_outputs(n_samples);
+        for (int i = 0; i < n_samples; ++i) {
+            matrix<float> input_matrix = x[i];
+            expected_outputs[i] = input_matrix * w;
+        }
+
+        // Compare output tensor with expected output
+        auto& net_output = layer<tag2>(net).get_output();
+
+        // Display results
+        for (int i = 0; i < n_samples; ++i) {
+            matrix<float> output_sample;
+            output_sample.set_size(2, 6);
+            for (long r = 0; r < output_sample.nr(); ++r) {
+                for (long c = 0; c < output_sample.nc(); ++c) {
+                    output_sample(r, c) = net_output.host()[tensor_index(net_output, i, 0, r, c)];
+                }
+            }
+            DLIB_TEST_MSG(max(abs(output_sample - expected_outputs[i])) < 1e-5,
+                "linear layer - sample " + std::to_string(i));
+        }
+    }
+
+// ----------------------------------------------------------------------------------------
 
     void test_loss_mean_squared_per_channel_and_pixel()
     {
@@ -2683,9 +3676,14 @@ namespace
         cpu::compute_loss_mean_squared_per_channel_and_pixel cpu_compute;
         double cuda_loss, cpu_loss;
         const tensor& output_tensor = net.subnet().get_output();
-        tensor& grad = net.subnet().get_gradient_input();
-        cuda_compute(labels.begin(), output_tensor, grad, cuda_loss);
-        cpu_compute(labels.begin(), output_tensor, grad, cpu_loss);
+        resizable_tensor cuda_grad(output_tensor), cpu_grad(output_tensor);
+        cuda_compute(labels.begin(), output_tensor, cuda_grad, cuda_loss);
+        cpu_compute(labels.begin(), output_tensor, cpu_grad, cpu_loss);
+        DLIB_TEST(cuda_grad.size() == cpu_grad.size());
+        for (size_t i = 0; i < cuda_grad.size(); ++i)
+        {
+            DLIB_TEST(::std::abs(*(cuda_grad.begin() + i) - *(cpu_grad.begin() + i)) < 1e-8);
+        }
         const auto err = abs(cuda_loss - cpu_loss) / cpu_loss;
         DLIB_TEST_MSG(err < 1e-6, "multi channel cuda and cpu losses differ");
 #endif
@@ -2883,6 +3881,23 @@ namespace
         const int num_correct_required = static_cast<int>(::std::ceil(0.9 * num_correct_max));
         DLIB_TEST_MSG(num_correct >= num_correct_required,
                       "Number of correctly classified elements = " << num_correct << ", required = " << num_correct_required);
+
+#if DLIB_USE_CUDA
+        cuda::compute_loss_binary_log_per_pixel cuda_compute;
+        cpu::compute_loss_binary_log_per_pixel cpu_compute;
+        double cuda_loss, cpu_loss;
+        const tensor& output_tensor = net.subnet().get_output();
+        resizable_tensor cuda_grad(output_tensor), cpu_grad(output_tensor);
+        cuda_compute(y.begin(), output_tensor, cuda_grad, cuda_loss);
+        cpu_compute(y.begin(), output_tensor, cpu_grad, cpu_loss);
+        DLIB_TEST(cuda_grad.size() == cpu_grad.size());
+        for (size_t i = 0; i < cuda_grad.size(); ++i)
+        {
+            DLIB_TEST(::std::abs(*(cuda_grad.begin() + i) - *(cpu_grad.begin() + i)) < 1e-8);
+        }
+        const auto err = abs(cuda_loss - cpu_loss) / cpu_loss;
+        DLIB_TEST_MSG(err < 1e-6, "binary log per pixel cuda and cpu losses differ");
+#endif
     }
 
 // ----------------------------------------------------------------------------------------
@@ -3217,6 +4232,23 @@ namespace
         const int num_correct_required = static_cast<int>(::std::ceil(0.9 * num_correct_max));
         DLIB_TEST_MSG(num_correct >= num_correct_required,
                       "Number of correctly classified elements = " << num_correct << ", required = " << num_correct_required);
+
+#if DLIB_USE_CUDA
+        cuda::compute_loss_multiclass_log_per_pixel cuda_compute;
+        cpu::compute_loss_multiclass_log_per_pixel cpu_compute;
+        double cuda_loss, cpu_loss;
+        const tensor& output_tensor = net.subnet().get_output();
+        resizable_tensor cuda_grad(output_tensor), cpu_grad(output_tensor);
+        cuda_compute(y.begin(), output_tensor, cuda_grad, cuda_loss);
+        cpu_compute(y.begin(), output_tensor, cpu_grad, cpu_loss);
+        DLIB_TEST(cuda_grad.size() == cpu_grad.size());
+        for (size_t i = 0; i < cuda_grad.size(); ++i)
+        {
+            DLIB_TEST(::std::abs(*(cuda_grad.begin() + i) - *(cpu_grad.begin() + i)) < 1e-8);
+        }
+        const auto err = abs(cuda_loss - cpu_loss) / cpu_loss;
+        DLIB_TEST_MSG(err < 1e-6, "multiclass log per pixel cuda and cpu losses differ");
+#endif
     }
 
 // ----------------------------------------------------------------------------------------
@@ -3311,6 +4343,23 @@ namespace
             DLIB_TEST_MSG(num_weighted_class > num_not_weighted_class,
                           "The weighted class (" << weighted_class << ") does not dominate: "
                           << num_weighted_class << " <= " << num_not_weighted_class);
+
+#if DLIB_USE_CUDA
+            cuda::compute_loss_multiclass_log_per_pixel_weighted cuda_compute;
+            cpu::compute_loss_multiclass_log_per_pixel_weighted cpu_compute;
+            double cuda_loss, cpu_loss;
+            const tensor& output_tensor = net.subnet().get_output();
+            resizable_tensor cuda_grad(output_tensor), cpu_grad(output_tensor);
+            cuda_compute(y_weighted.begin(), output_tensor, cuda_grad, cuda_loss);
+            cpu_compute(y_weighted.begin(), output_tensor, cpu_grad, cpu_loss);
+            DLIB_TEST(cuda_grad.size() == cpu_grad.size());
+            for (size_t i = 0; i < cuda_grad.size(); ++i)
+            {
+                DLIB_TEST(::std::abs(*(cuda_grad.begin() + i) - *(cpu_grad.begin() + i)) < 1e-8);
+            }
+            const auto err = abs(cuda_loss - cpu_loss) / cpu_loss;
+            DLIB_TEST_MSG(err < 1e-5, "multi class log per pixel weighted cuda and cpu losses differ: " << err);
+#endif
         }
     }
 
@@ -3605,6 +4654,11 @@ namespace
         const std::string serialized = out.str();
         std::istringstream in(serialized);
         dlib::deserialize(net2, in);
+        
+        std::vector<char> buf1;
+        dlib::serialize(buf1) << net;
+        std::vector<uint8_t> buf2(buf1.begin(), buf1.end());
+        dlib::deserialize(buf2) >> net2;
     }
 
 // ----------------------------------------------------------------------------------------
@@ -3758,8 +4812,114 @@ namespace
         }
     }
 
+    void test_resize_to() {
+        print_spinner();
+        const long nr = 8, nc = 12;
+        const long n_samples = 5, k = 1, h = 4;
+
+        using net_type = tag1<reshape_to<k, nr, nc,
+            flatten<h, nr, nc / h, reshape_to<h, nr, nc / h,
+            input<matrix<float>>>>>>;
+        net_type net;
+
+        dlib::rand rnd;
+        std::vector<matrix<float>> x(n_samples);
+        matrix<float> xtmp(nr, nc);
+        for (int ii = 0; ii < n_samples; ++ii) {
+            for (int jj = 0; jj < nr; ++jj)
+                for (int kk = 0; kk < nc; ++kk)
+                    xtmp(jj, kk) = rnd.get_random_gaussian();
+            x[ii] = xtmp;
+        }
+
+        resizable_tensor input_tensor;
+        net.to_tensor(&x[0], &x[0] + n_samples, input_tensor);
+        net.forward(input_tensor);
+
+        auto& output_tensor = layer<tag1>(net).get_output();
+
+        DLIB_TEST(output_tensor.num_samples() == input_tensor.num_samples());
+        DLIB_TEST(output_tensor.k() == input_tensor.k());
+        DLIB_TEST(output_tensor.nr() == input_tensor.nr());
+        DLIB_TEST(output_tensor.nc() == input_tensor.nc());
+        DLIB_TEST(max(abs(mat(output_tensor) - mat(input_tensor))) < 1e-5);
+    }
+
 // ----------------------------------------------------------------------------------------
-    
+
+    template <long num_filters, long ks, int s, typename SUBNET>
+    using conp = add_layer<con_<num_filters, ks, ks, s, s, ks/2, ks/2>, SUBNET>;
+    template <typename INPUT>
+    using stem = add_layer<max_pool_<3, 3, 2, 2, 1, 1>, relu<bn_con<conp<16, 7, 2, INPUT>>>>;
+    template <long num_filters, long growth_rate, typename SUBNET>
+    using dense_layer = concat2<tag1, tag2,
+                        tag2<conp<growth_rate, 3, 1,
+                        relu<bn_con<conp<4 * growth_rate, 1, 1,
+                        relu<bn_con<tag1<SUBNET>>>>>>>>>;
+    template <typename SUBNET> using dense_layer_32 = dense_layer<32, 8, SUBNET>;
+    void test_disable_duplicative_biases()
+    {
+        print_spinner();
+        using net_type = fc<10, relu<layer_norm<fc<15, relu<bn_fc<fc<20,
+                         relu<layer_norm<conp<32, 3, 1,
+                         repeat<2, dense_layer_32,
+                         stem<input_rgb_image>>>>>>>>>>>>;
+        net_type net;
+        DLIB_TEST(layer<0>(net).layer_details().bias_is_disabled() == false);
+        DLIB_TEST(layer<3>(net).layer_details().bias_is_disabled() == false);
+        DLIB_TEST(layer<6>(net).layer_details().bias_is_disabled() == false);
+        DLIB_TEST(layer<9>(net).layer_details().bias_is_disabled() == false);
+        DLIB_TEST(layer<12>(net).layer_details().bias_is_disabled() == false);
+        DLIB_TEST(layer<15>(net).layer_details().bias_is_disabled() == false);
+        DLIB_TEST(layer<21>(net).layer_details().bias_is_disabled() == false);
+        DLIB_TEST(layer<24>(net).layer_details().bias_is_disabled() == false);
+        DLIB_TEST(layer<31>(net).layer_details().bias_is_disabled() == false);
+        disable_duplicative_biases(net);
+        DLIB_TEST(layer<0>(net).layer_details().bias_is_disabled() == false);
+        DLIB_TEST(layer<3>(net).layer_details().bias_is_disabled() == true);
+        DLIB_TEST(layer<6>(net).layer_details().bias_is_disabled() == true);
+        DLIB_TEST(layer<9>(net).layer_details().bias_is_disabled() == true);
+        DLIB_TEST(layer<12>(net).layer_details().bias_is_disabled() == false);
+        DLIB_TEST(layer<15>(net).layer_details().bias_is_disabled() == true);
+        DLIB_TEST(layer<21>(net).layer_details().bias_is_disabled() == false);
+        DLIB_TEST(layer<24>(net).layer_details().bias_is_disabled() == true);
+        DLIB_TEST(layer<31>(net).layer_details().bias_is_disabled() == true);
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    void test_set_learning_rate_multipliers()
+    {
+        print_spinner();
+        using net_type = loss_binary_log<fc<2, relu<bn_con<con<16, 5, 5, 2, 2, input<matrix<float>>>>>>>;
+        net_type net;
+        set_all_learning_rate_multipliers(net, 0.5);
+        DLIB_TEST(layer<1>(net).layer_details().get_learning_rate_multiplier() == 0.5);
+        DLIB_TEST(layer<3>(net).layer_details().get_learning_rate_multiplier() == 0.5);
+        DLIB_TEST(layer<4>(net).layer_details().get_learning_rate_multiplier() == 0.5);
+        set_learning_rate_multipliers_range<2, 4>(net, 0.1);
+        set_learning_rate_multipliers_range<4, 6>(net, 0.01);
+        DLIB_TEST(layer<1>(net).layer_details().get_learning_rate_multiplier() == 0.5);
+        DLIB_TEST(layer<3>(net).layer_details().get_learning_rate_multiplier() == 0.1);
+        DLIB_TEST(layer<4>(net).layer_details().get_learning_rate_multiplier() == 0.01);
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    template <typename SUBNET>
+    using conblock = relu<bn_con<add_layer<con_<16, 3, 3, 2, 2, 1, 1>, SUBNET>>>;
+
+    void test_input_ouput_mappers()
+    {
+        using net_type = loss_binary_log_per_pixel<con<1, 1, 1, 1, 1,repeat<3, conblock, tag1<input_rgb_image>>>>;
+        net_type net;
+        point p(32, 32);
+        DLIB_TEST(input_tensor_to_output_tensor(net, p) == p / 8);
+        DLIB_TEST(output_tensor_to_input_tensor(net, p) == p * 8);
+    }
+
+// ----------------------------------------------------------------------------------------
+
     // This test really just checks if the mmod loss goes negative when a whole lot of overlapping
     // truth rectangles are given.  
     void test_loss_mmod()
@@ -3818,6 +4978,7 @@ namespace
         const std::vector<mmod_rect> labels = generate_labels();
 
         mmod_options options(use_image_pyramid::no, { labels });
+        options.be_quiet = true;
 
         // Define a simple network.
         using net_type = loss_mmod<con<1,5,5,1,1,con<1,5,5,2,2,input<input_image_type>>>>;
@@ -3839,6 +5000,129 @@ namespace
         const auto approximate_desired_det_count = (nr - 2 * margin) * (nc - 2 * margin) / 2.0;
         DLIB_TEST(dets.size() > approximate_desired_det_count * 0.45);
         DLIB_TEST(dets.size() < approximate_desired_det_count * 1.05);
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    void test_fuse_layers()
+    {
+        print_spinner();
+        using net_type = fc<10, avg_pool_everything<relu<bn_con<con<16, 3, 3, 1, 1, input_rgb_image>>>>>;
+        using net_type_fused = fc<10, avg_pool_everything<relu<affine<con<16, 3, 3, 1, 1, input_rgb_image>>>>>;
+        net_type net_bias, net_nobias;
+        disable_duplicative_biases(net_nobias);
+        resizable_tensor x;
+        matrix<rgb_pixel> image(8, 8);
+        net_bias.to_tensor(&image, &image+1, x);
+        net_nobias.to_tensor(&image, &image+1, x);
+        net_bias.forward(x);
+        net_nobias.forward(x);
+        net_type_fused net_fused_bias(net_bias);
+        net_type_fused net_fused_nobias(net_nobias);
+        const resizable_tensor out_bias = net_bias.get_output();
+        const resizable_tensor out_nobias = net_nobias.get_output();
+        fuse_layers(net_fused_bias);
+        fuse_layers(net_fused_nobias);
+        net_fused_bias.forward(x);
+        net_fused_nobias.forward(x);
+        const resizable_tensor out_bias_fused = net_fused_bias.get_output();
+        const resizable_tensor out_nobias_fused = net_fused_nobias.get_output();
+
+        DLIB_TEST(max(squared(mat(out_bias) - mat(out_bias_fused))) < 1e-10);
+        DLIB_TEST(max(squared(mat(out_nobias) - mat(out_nobias_fused))) < 1e-10);
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    void test_reorg()
+    {
+#ifdef DLIB_USE_CUDA
+        print_spinner();
+        resizable_tensor x(2, 4, 8, 16);
+        resizable_tensor out_cpu(2, 16, 4, 8), out_cuda(2, 16, 4, 8);
+        resizable_tensor grad_cpu(x), grad_cuda(x);
+        tt::tensor_rand rnd;
+        rnd.fill_gaussian(x);
+        cpu::reorg(false, out_cpu, 2, 2, x);
+        cuda::reorg(false, out_cuda, 2, 2, x);
+        DLIB_TEST(max(squared(mat(out_cuda) - mat(out_cpu))) == 0);
+        cpu::reorg_gradient(false, grad_cpu, 2, 2, out_cpu);
+        cuda::reorg_gradient(false, grad_cuda, 2, 2, out_cuda);
+        DLIB_TEST(max(squared(mat(out_cuda) - mat(out_cpu))) == 0);
+#endif
+    }
+
+    void test_input_tensor()
+    {
+        using namespace dlib::tt;
+        print_spinner();
+        tt::tensor_rand rnd;
+        std::vector<resizable_tensor> tensors(3);
+
+        for (auto& t : tensors) {
+            t.set_size(1, 3, 224, 224);
+            rnd.fill_gaussian(t);
+        }
+
+        resizable_tensor out;
+        input_tensor input_layer;
+
+        input_layer.to_tensor(tensors.begin(), tensors.end(), out);
+
+        DLIB_TEST(out.num_samples() == 3);
+        DLIB_TEST(out.k() == 3);
+        DLIB_TEST(out.nr() == 224);
+        DLIB_TEST(out.nc() == 224);
+        size_t stride = out.k() * out.nr() * out.nc();
+        size_t offset = 0;
+        int error = 0;
+
+        for (auto& t : tensors) {
+            error = memcmp(out.host() + offset, t.host(), sizeof(float) * t.size());
+            DLIB_TEST(error == 0);
+            offset += stride;
+        }
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    void test_tril()
+    {
+        print_spinner();        
+        using net_type = tag1<tril_mask<tag2<input<matrix<float>>>>>;
+        net_type net;
+
+        // Input tensor
+        dlib::rand rnd;
+        const int nr = 2, nc = 3;
+        constexpr int n_samples = 3, k = 1;
+        std::vector<matrix<float>> x(n_samples);
+        matrix<float> xtmp(nr, nc);
+        for (int ii = 0; ii < n_samples; ++ii) {
+            for (int jj = 0; jj < nr; ++jj)
+                for (int kk = 0; kk < nc; ++kk)
+                    xtmp(jj, kk) = rnd.get_random_gaussian();
+            x[ii] = xtmp;
+        }
+
+        // Convert input matrix to tensor
+        resizable_tensor input_tensor;
+        net.to_tensor(&x[0], &x[0] + n_samples, input_tensor);
+        net.forward(input_tensor);
+
+        // Expected output tensor (manually set for comparison)
+        resizable_tensor expected_output;
+        expected_output.copy_size(input_tensor);
+        tt::copy_tensor(false, expected_output, 0, input_tensor, 0, input_tensor.k());
+        for (int ii = 0; ii < n_samples; ++ii) {
+            expected_output.host()[tensor_index(expected_output, ii, 0, 0, 1)] = -std::numeric_limits<float>::infinity();
+            expected_output.host()[tensor_index(expected_output, ii, 0, 0, 2)] = -std::numeric_limits<float>::infinity();
+            expected_output.host()[tensor_index(expected_output, ii, 0, 1, 2)] = -std::numeric_limits<float>::infinity();
+        }
+
+        // Compare output tensor with expected output
+        auto& net_output = layer<tag1>(net).get_output();
+        DLIB_TEST(max(abs(mat(net_output) - mat(expected_output))) < 1e-5);
     }
 
 // ----------------------------------------------------------------------------------------
@@ -3876,6 +5160,8 @@ namespace
             compare_adam();
             test_copy_tensor_gpu();
             test_copy_tensor_add_to_gpu();
+            test_copy_tensor_gpu();
+            test_copy_tensor_add_to_gpu();
             test_scale_channels();
 #endif
             test_tensor_resize_bilinear(2, 3, 6,6, 11, 11);
@@ -3907,23 +5193,40 @@ namespace
             test_avg_pool(4,5,40,50,0,1);
             test_tanh();
             test_softmax();
+            test_softmaxm();
             test_softmax_all();
             test_sigmoid();
             test_mish();
             test_leaky_relu();
+            test_clipped_relu();
+            test_elu();
+            test_gelu();
+            test_smelu();
+            test_silu();
             test_batch_normalize();
             test_batch_normalize_conv();
+            test_layer_normalize();
+            test_rms_normalize();
+            test_transpose();
+            test_positional_encodings();
+            test_embeddings();
+            test_tril();
             test_basic_tensor_ops();
+            test_resize_to();
             test_layers();
             test_visit_functions();
             test_copy_tensor_cpu();
             test_copy_tensor_add_to_cpu();
+            test_copy_tensor_slice_cpu();
+            test_copy_tensor_slice_add_to_cpu();
             test_concat();
+            test_multm_prev();
             test_simple_linear_regression();
             test_simple_linear_regression_eil();
             test_simple_linear_regression_with_mult_prev();
             test_multioutput_linear_regression();
             test_simple_autoencoder();
+            test_linear();
             test_loss_mean_squared_per_channel_and_pixel();
             test_loss_binary_log_per_pixel_learned_params_on_trivial_two_pixel_task();
             test_loss_binary_log_per_pixel_outputs_on_trivial_task();
@@ -3940,6 +5243,12 @@ namespace
             test_loss_multimulticlass_log();
             test_loss_mmod();
             test_layers_scale_and_scale_prev();
+            test_disable_duplicative_biases();
+            test_set_learning_rate_multipliers();
+            test_input_ouput_mappers();
+            test_fuse_layers();
+            test_reorg();
+            test_input_tensor();
         }
 
         void perform_test()

@@ -188,6 +188,40 @@ namespace dlib
                     - returns a random complex number sampled from a Gaussian distribution 
                       with mean 0 and standard deviation 1. 
             !*/
+            
+            double get_random_exponential (
+                double lambda
+            );
+            /*!
+                ensures
+                    - returns a random number sampled from an exponential distribution
+                      with rate parameter lambda
+            !*/
+
+            double get_random_weibull (
+                double lambda,
+                double k,
+                double gamma
+            );
+            /*!
+                ensures
+                    - returns a random number sampled from a Weibull distribution
+                      with shape parameter k, scale parameter lambda and 
+                      threshold parameter gamma.
+            !*/
+
+            double get_random_beta (
+                double alpha,
+                double beta,
+            )
+            /*!
+                requires
+                    - alpha > 0
+                    - beta > 0
+                ensures
+                    - returns a random number sampled from a Beta distribution
+                      with shape parameters alpha and beta.
+            !*/
 
             void swap (
                 rand& item

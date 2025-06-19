@@ -21,7 +21,7 @@
 #include <dlib/dir_nav.h>
 
 
-const char* VERSION = "1.17";
+const char* VERSION = "1.21";
 
 
 
@@ -60,9 +60,9 @@ void create_new_dataset (
         {
             // then parser[i] should be a directory
 
-            std::vector<file> files = get_files_in_directory_tree(parser[i], 
-                                                                  match_endings(".png .PNG .jpeg .JPEG .jpg .JPG .bmp .BMP .dng .DNG .gif .GIF"),
-                                                                  depth);
+            std::vector<file> files = get_files_in_directory_tree(parser[i],
+                match_endings(".png .PNG .jpeg .JPEG .jpg .JPG .bmp .BMP .dng .DNG .gif .GIF .jxl .JXL .webp .WEBP"),
+                depth);
             sort(files.begin(), files.end());
 
             for (unsigned long j = 0; j < files.size(); ++j)
@@ -332,11 +332,29 @@ void rotate_dataset(const command_line_parser& parser)
 
         load_image(img, metadata.images[i].filename);
         const point_transform_affine tran = rotate_image(img, temp, angle*pi/180);
+        metadata.images[i].width = temp.nc();
+        metadata.images[i].height = temp.nr();
         if (parser.option("jpg"))
         {
             filename = to_jpg_name(filename);
             save_jpeg(temp, filename,JPEG_QUALITY);
         }
+#ifdef DLIB_JXL_SUPPORT
+        else if (parser.option("jxl"))
+        {
+            filename = to_jxl_name(filename);
+            const float jxl_quality = std::stof(parser.option("jxl").argument());
+            save_jxl(temp, filename, jxl_quality);
+        }
+#endif
+#ifdef DLIB_WEBP_SUPPORT
+        else if (parser.option("webp"))
+        {
+            filename = to_webp_name(filename);
+            const float webp_quality = std::stof(parser.option("webp").argument());
+            save_webp(temp, filename, webp_quality);
+        }
+#endif
         else
         {
             save_png(temp, filename);
@@ -355,6 +373,32 @@ void rotate_dataset(const command_line_parser& parser)
     }
 
     save_image_dataset_metadata(metadata, metadata_filename);
+}
+
+// ----------------------------------------------------------------------------------------
+
+void add_width_and_height_metadata(const command_line_parser& parser)
+{
+    for (unsigned long i = 0; i < parser.number_of_arguments(); ++i) {
+        image_dataset_metadata::dataset metadata;
+        const string datasource = parser[i];
+        load_image_dataset_metadata(metadata,datasource);
+
+        // Set the current directory to be the one that contains the
+        // metadata file. We do this because the file might contain
+        // file paths which are relative to this folder.
+        set_current_dir(get_parent_directory(file(datasource)));
+
+        parallel_for(0, metadata.images.size(), [&](long i) 
+        {
+            array2d<rgb_pixel> img;
+            load_image(img, metadata.images[i].filename);
+            metadata.images[i].width = img.nc();
+            metadata.images[i].height = img.nr();
+        });
+
+        save_image_dataset_metadata(metadata, datasource);
+    }
 }
 
 // ----------------------------------------------------------------------------------------
@@ -447,12 +491,30 @@ int resample_dataset(const command_line_parser& parser)
             std::ostringstream sout;
             sout << hex << murmur_hash3_128bit(&chip[0][0], chip.size()*sizeof(chip[0][0])).second;
             dimg.filename = data.images[i].filename + "_RESAMPLED_"+sout.str()+".png";
+            dimg.width = chip.nc();
+            dimg.height = chip.nr();
 
             if (parser.option("jpg"))
             {
                 dimg.filename = to_jpg_name(dimg.filename);
                 save_jpeg(chip,dimg.filename, JPEG_QUALITY);
             }
+#ifdef DLIB_JXL_SUPPORT
+            else if (parser.option("jxl"))
+            {
+                dimg.filename = to_jxl_name(dimg.filename);
+                const float jxl_quality = std::stof(parser.option("jxl").argument());
+                save_jxl(chip, dimg.filename, jxl_quality);
+            }
+#endif
+#ifdef DLIB_WEBP_SUPPORT
+            else if (parser.option("webp"))
+            {
+                dimg.filename = to_webp_name(dimg.filename);
+                const float webp_quality = std::stof(parser.option("webp").argument());
+                save_webp(chip, dimg.filename, webp_quality);
+            }
+#endif
             else
             {
                 save_png(chip,dimg.filename);
@@ -478,9 +540,23 @@ int tile_dataset(const command_line_parser& parser)
 
     string out_image = parser.option("tile").argument();
     string ext = right_substr(out_image,".");
-    if (ext != "png" && ext != "jpg")
+    if (ext != "png" && ext != "jpg"
+#if DLIB_JXL_SUPPORT
+        && ext != "jxl"
+#endif
+#if DLIB_WEBP_SUPPORT
+        && ext != "webp" 
+#endif
+    )
     {
-        cerr << "The output image file must have either .png or .jpg extension." << endl;
+        cerr << "The output image file must have one of these extensions: .png, .jpg" << endl;
+#if DLIB_JXL_SUPPORT
+        cerr << ", .jxl";
+#endif
+#if DLIB_WEBP_SUPPORT
+        cerr << ", .webp";
+#endif
+        cerr << ".";
         return EXIT_FAILURE;
     }
 
@@ -522,9 +598,29 @@ int tile_dataset(const command_line_parser& parser)
     chdir.revert();
 
     if (ext == "png")
+    {
         save_png(tile_images(images), out_image);
+    }
+#ifdef DLIB_JXL_SUPPORT
+    else if (ext == "jxl")
+    {
+        // Lossless by default
+        const float jxl_quality = get_option(parser, "jxl", 100.f);
+        save_jxl(tile_images(images), out_image, jxl_quality);
+    }
+#endif
+#ifdef DLIB_WEBP_SUPPORT
+    else if (ext == "webp")
+    {
+        // Lossless by default
+        const float webp_quality = get_option(parser, "webp", 101.f);
+        save_webp(tile_images(images), out_image, webp_quality);
+    }
+#endif
     else
-        save_jpeg(tile_images(images), out_image);
+    {
+        save_jpeg(tile_images(images), out_image, JPEG_QUALITY);
+    }
 
     return EXIT_SUCCESS;
 }
@@ -541,6 +637,7 @@ int main(int argc, char** argv)
 
         parser.add_option("h","Displays this information.");
         parser.add_option("v","Display version.");
+        parser.add_option("font", "Set the label font in the GUI.", 1);
 
         parser.set_group_name("Creating XML files");
         parser.add_option("c","Create an XML file named <arg> listing a set of images.",1);
@@ -588,6 +685,8 @@ int main(int argc, char** argv)
                                         "The parts are instead simply mirrored to the flipped dataset.", 1);
         parser.add_option("rotate", "Read an XML image dataset and output a copy that is rotated counter clockwise by <arg> degrees. "
                                   "The output is saved to an XML file prefixed with rotated_<arg>.",1);
+        parser.add_option("add-width-height-metadata", "Open the given xml files and set the width and height image metadata fields "
+                            "for every image. This involves loading each image to find these values.");
         parser.add_option("cluster", "Cluster all the objects in an XML file into <arg> different clusters (pass 0 to find automatically) and save "
                                      "the results as cluster_###.xml and cluster_###.jpg files.",1);
         parser.add_option("ignore", "Mark boxes labeled as <arg> as ignored.  The resulting XML file is output as a separate file and the original is not modified.",1);
@@ -596,6 +695,12 @@ int main(int argc, char** argv)
         parser.add_option("rmignore","Remove all boxes marked ignore and save the results to a new XML file.");
         parser.add_option("rm-if-overlaps","Remove all boxes labeled <arg> if they overlap any box not labeled <arg> and save the results to a new XML file.",1);
         parser.add_option("jpg", "When saving images to disk, write them as jpg files instead of png.");
+#ifdef DLIB_JXL_SUPPORT
+        parser.add_option("jxl", "When saving images to disk, write them as jxl files instead of png, using <arg> as the quality factor.", 1);
+#endif
+#ifdef DLIB_WEBP_SUPPORT
+        parser.add_option("webp", "When saving images to disk, write them as webp files instead of png, using <arg> as the quality factor.", 1);
+#endif
 
         parser.set_group_name("Cropping sub images");
         parser.add_option("resample", "Crop out images that are centered on each object in the dataset. "
@@ -609,10 +714,12 @@ int main(int argc, char** argv)
 
         parser.parse(argc, argv);
 
+        const std::string font_path = get_option(parser, "font", "");
+
         const char* singles[] = {"h","c","r","l","files","convert","parts","rmdiff", "rmtrunc", "rmdupes", "seed", "shuffle", "split", "add", 
                                  "flip-basic", "flip", "rotate", "tile", "size", "cluster", "resample", "min-object-size", "rmempty",
                                  "crop-size", "cropped-object-size", "rmlabel", "rm-other-labels", "rm-if-overlaps", "sort-num-objects", 
-                                 "one-object-per-image", "jpg", "rmignore", "sort", "split-train-test", "box-images"};
+                                 "one-object-per-image", "jpg", "rmignore", "sort", "split-train-test", "box-images", "add-width-height-metadata"};
         parser.check_one_time_options(singles);
         const char* c_sub_ops[] = {"r", "convert"};
         parser.check_sub_options("c", c_sub_ops);
@@ -637,6 +744,7 @@ int main(int argc, char** argv)
         parser.check_incompatible_options("c", "flip-basic");
         parser.check_incompatible_options("flip", "flip-basic");
         parser.check_incompatible_options("c", "rotate");
+        parser.check_incompatible_options("c", "add-width-height-metadata");
         parser.check_incompatible_options("c", "rename");
         parser.check_incompatible_options("c", "ignore");
         parser.check_incompatible_options("c", "parts");
@@ -650,6 +758,7 @@ int main(int argc, char** argv)
         parser.check_incompatible_options("l", "flip");
         parser.check_incompatible_options("l", "flip-basic");
         parser.check_incompatible_options("l", "rotate");
+        parser.check_incompatible_options("l", "add-width-height-metadata");
         parser.check_incompatible_options("files", "rename");
         parser.check_incompatible_options("files", "ignore");
         parser.check_incompatible_options("files", "add");
@@ -657,22 +766,27 @@ int main(int argc, char** argv)
         parser.check_incompatible_options("files", "flip");
         parser.check_incompatible_options("files", "flip-basic");
         parser.check_incompatible_options("files", "rotate");
+        parser.check_incompatible_options("files", "add-width-height-metadata");
         parser.check_incompatible_options("add", "flip");
         parser.check_incompatible_options("add", "flip-basic");
         parser.check_incompatible_options("add", "rotate");
+        parser.check_incompatible_options("add", "add-width-height-metadata");
         parser.check_incompatible_options("add", "tile");
         parser.check_incompatible_options("flip", "tile");
         parser.check_incompatible_options("flip-basic", "tile");
         parser.check_incompatible_options("rotate", "tile");
+        parser.check_incompatible_options("add-width-height-metadata", "tile");
         parser.check_incompatible_options("cluster", "tile");
         parser.check_incompatible_options("resample", "tile");
         parser.check_incompatible_options("flip", "cluster");
         parser.check_incompatible_options("flip-basic", "cluster");
         parser.check_incompatible_options("rotate", "cluster");
+        parser.check_incompatible_options("add-width-height-metadata", "cluster");
         parser.check_incompatible_options("add", "cluster");
         parser.check_incompatible_options("flip", "resample");
         parser.check_incompatible_options("flip-basic", "resample");
         parser.check_incompatible_options("rotate", "resample");
+        parser.check_incompatible_options("add-width-height-metadata", "resample");
         parser.check_incompatible_options("add", "resample");
         parser.check_incompatible_options("shuffle", "tile");
         parser.check_incompatible_options("sort-num-objects", "tile");
@@ -702,6 +816,15 @@ int main(int argc, char** argv)
         parser.check_incompatible_options("rmtrunc", "ignore");
         parser.check_incompatible_options("box-images", "rename");
         parser.check_incompatible_options("box-images", "ignore");
+#ifdef DLIB_JXL_SUPPORT
+        parser.check_incompatible_options("jpg", "jxl");
+#endif
+#ifdef DLIB_WEBP_SUPPORT
+        parser.check_incompatible_options("jpg", "webp");
+#endif
+#if DLIB_JXL_SUPPORT && DLIB_WEBP_SUPPORT
+        parser.check_incompatible_options("jxl", "webp");
+#endif
         const char* convert_args[] = {"pascal-xml","pascal-v1","idl"};
         parser.check_option_arg_range("convert", convert_args);
         parser.check_option_arg_range("cluster", 0, 999);
@@ -711,6 +834,12 @@ int main(int argc, char** argv)
         parser.check_option_arg_range("cropped-object-size", 4, 10000*10000);
         parser.check_option_arg_range("crop-size", 1.0, 100.0);
         parser.check_option_arg_range("split-train-test", 0.0, 1.0);
+#ifdef DLIB_JXL_SUPPORT
+        parser.check_option_arg_range("jxl", 0.f, 100.f);
+#endif
+#ifdef DLIB_WEBP_SUPPORT
+        parser.check_option_arg_range("webp", 0.f, std::numeric_limits<float>::max());
+#endif
 
         if (parser.option("h"))
         {
@@ -735,6 +864,12 @@ int main(int argc, char** argv)
         if (parser.option("rotate"))
         {
             rotate_dataset(parser);
+            return EXIT_SUCCESS;
+        }
+
+        if (parser.option("add-width-height-metadata"))
+        {
+            add_width_and_height_metadata(parser);
             return EXIT_SUCCESS;
         }
 
@@ -1181,7 +1316,7 @@ int main(int argc, char** argv)
 
         if (parser.number_of_arguments() == 1)
         {
-            metadata_editor editor(parser[0]);
+            metadata_editor editor(parser[0], font_path);
             if (parser.option("parts"))
             {
                 std::vector<string> parts = split(parser.option("parts").argument());

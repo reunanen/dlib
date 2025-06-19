@@ -6,6 +6,7 @@
 
 #include "tensor.h"
 #include "../geometry/rectangle.h"
+#include "../dnn/utilities.h"
 #include "../dnn/weighted_label.h"
 
 namespace dlib
@@ -338,6 +339,52 @@ namespace dlib
 
     // -----------------------------------------------------------------------------------
 
+        void layer_normalize (
+            const double eps,
+            resizable_tensor& dest,
+            resizable_tensor& means,
+            resizable_tensor& invstds,
+            const tensor& src,
+            const tensor& gamma,
+            const tensor& beta
+        );
+
+        void layer_normalize_gradient (
+            const double eps,
+            const tensor& gradient_input,
+            const tensor& means,
+            const tensor& invstds,
+            const tensor& src,
+            const tensor& gamma,
+            tensor& src_grad,
+            tensor& gamma_grad,
+            tensor& beta_grad,
+            resizable_tensor& dmeans,
+            resizable_tensor& dvars
+        );
+
+   // -----------------------------------------------------------------------------------
+
+        void rms_normalize(
+            const double eps,
+            resizable_tensor& dest,
+            resizable_tensor& scale,
+            const tensor& src,
+            const tensor& gamma
+        );
+
+        void rms_normalize_gradient(
+            const tensor& gradient_input,
+            const tensor& scale,
+            const tensor& src,
+            const tensor& gamma,
+            tensor& src_grad,
+            tensor& gamma_grad,
+            resizable_tensor& dscale
+        );
+
+    // -----------------------------------------------------------------------------------
+
         void threshold (
             tensor& data,
             float thresh
@@ -398,22 +445,93 @@ namespace dlib
 
     // ----------------------------------------------------------------------------------------
 
+        void clipped_relu (
+            tensor& dest,
+            const tensor& src,
+            const float coef
+        );
+
+        void clipped_relu_gradient (
+            tensor& grad,
+            const tensor& dest,
+            const tensor& gradient_input,
+            const float ceiling
+        );
+
+    // ------------------------------------------------------------------------------------
+
+        void elu (
+            tensor& dest,
+            const tensor& src,
+            const float alpha
+        );
+
+        void elu_gradient (
+            tensor& grad,
+            const tensor& dest,
+            const tensor& gradient_input,
+            const float alpha
+        );
+
+    // ----------------------------------------------------------------------------------------
+
+        void gelu (
+            tensor& dest,
+            const tensor& src
+        );
+
+        void gelu_gradient (
+            tensor& grad,
+            const tensor& src,
+            const tensor& gradient_input
+        );
+
+    // ----------------------------------------------------------------------------------------
+
+        void smelu (
+            tensor& dest,
+            const tensor& src,
+            const float beta
+        );
+
+        void smelu_gradient (
+            tensor& grad,
+            const tensor& dest,
+            const tensor& gradient_input,
+            const float beta
+        );
+
+    // ----------------------------------------------------------------------------------------
+
+        void silu (
+            tensor& dest,
+            const tensor& src
+        );
+
+        void silu_gradient (
+            tensor& grad,
+            const tensor& src,
+            const tensor& gradient_input
+        );
+
+    // ------------------------------------------------------------------------------------
+
         void resize_bilinear (
             tensor& dest,
-            long dest_row_stride,
-            long dest_channel_stride,
+            long long dest_row_stride,
+            long long dest_channel_stride,
             const tensor& src,
-            long src_row_stride,
-            long src_channel_stride
+            long long src_row_stride,
+            long long src_channel_stride
         );
 
         void resize_bilinear_gradient (
             tensor& grad,
-            long grad_row_stride,
-            long grad_channel_stride,
+            long long grad_row_stride,
+            long long grad_channel_stride,
             const tensor& gradient_input,
-            long gradient_input_row_stride,
-            long gradient_input_channel_stride
+            long long gradient_input_row_stride,
+            long long gradient_input_channel_stride
         );
 
         inline void resize_bilinear (
@@ -428,6 +546,41 @@ namespace dlib
 
     // ----------------------------------------------------------------------------------------
 
+        void reorg (
+            bool add_to,
+            tensor& dest,
+            const int row_stride,
+            const int col_stride,
+            const tensor& src
+        );
+
+        void reorg_gradient (
+            bool add_to,
+            tensor& grad,
+            const int row_stride,
+            const int col_stride,
+            const tensor& gradient_input
+        );
+
+    // -----------------------------------------------------------------------------------
+
+        void embeddings(
+            resizable_tensor& dest,
+            const tensor& src,
+            const tensor& embs
+        );
+
+        void embeddings_gradient(
+            const tensor& prev,
+            const tensor& gradient_input,
+            tensor& grads,
+            const tensor& freqs,
+            float learning_rate,
+            bool scale
+        );
+
+    // ----------------------------------------------------------------------------------------
+
         void copy_tensor(
             bool add_to,
             tensor& dest,
@@ -437,6 +590,24 @@ namespace dlib
             size_t count_k
         );
 
+    // ----------------------------------------------------------------------------------------
+
+        void copy_tensor(
+            bool add_to,
+            tensor& dest,
+            size_t dk, size_t dnr, size_t dnc,
+            const tensor& src,
+            size_t sk, size_t snr, size_t snc,
+            size_t k, size_t nr, size_t nc
+        );
+ 
+    // ----------------------------------------------------------------------------------------
+
+        void transpose(
+            bool add_to,
+            tensor& dest,
+            const tensor& src
+        );
 
     // ----------------------------------------------------------------------------------------
 
@@ -495,7 +666,7 @@ namespace dlib
                 tensor& gradient,
                 double& loss
             );
-            
+
             mutable cuda_data_void_ptr buf;
         };
 
@@ -559,6 +730,8 @@ namespace dlib
             
             mutable cuda_data_void_ptr buf;
         };
+
+    // ----------------------------------------------------------------------------------------
 
         class compute_loss_multiclass_log_per_pixel_weighted
         {
@@ -656,7 +829,7 @@ namespace dlib
                 for (long i = 0; i < subnetwork_output.num_samples(); ++i, ++truth)
                 {
                     const auto& t = *truth;
-                    DLIB_ASSERT(t.size() == subnetwork_output.k());
+                    DLIB_ASSERT(static_cast<long>(t.size()) == subnetwork_output.k());
                     for (size_t j = 0; j < t.size(); ++j) {
                         DLIB_ASSERT(t[j].nr() == subnetwork_output.nr());
                         DLIB_ASSERT(t[j].nc() == subnetwork_output.nc());

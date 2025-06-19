@@ -3,17 +3,19 @@
 #ifndef DLIB_DNN_CuDNN_H_
 #define DLIB_DNN_CuDNN_H_
 
-#ifdef DLIB_USE_CUDA
-
-#include "cuda_errors.h"
 #include <memory>
+#include "operation_mode.h"
+#ifdef DLIB_USE_CUDA
+#include "cuda_errors.h"
 #include "cuda_data_ptr.h"
+#endif // DLIB_USE_CUDA
 
 namespace dlib
 {
     class tensor;
     class resizable_tensor;
 
+#ifdef DLIB_USE_CUDA
     namespace cuda 
     {
 
@@ -173,6 +175,13 @@ namespace dlib
 
             void operator() (
                 const bool add_to_output,
+                resizable_tensor& output,
+                const tensor& data,
+                const tensor& filters
+            );
+
+            void operator() (
+                const bool add_to_output,
                 tensor& output,
                 const tensor& data,
                 const tensor& filters
@@ -182,7 +191,18 @@ namespace dlib
                 const bool add_to_output,
                 resizable_tensor& output,
                 const tensor& data,
-                const tensor& filters
+                const tensor& filters,
+                const tensor& biases,
+                bool use_relu
+            );
+
+            void operator() (
+                const bool add_to_output,
+                tensor& output,
+                const tensor& data,
+                const tensor& filters,
+                const tensor& biases,
+                bool use_relu
             );
 
             void get_gradient_for_data (
@@ -202,6 +222,16 @@ namespace dlib
            void setup(
                 const tensor& data,
                 const tensor& filters,
+                int stride_y,
+                int stride_x,
+                int padding_y,
+                int padding_x
+            );
+
+           void setup(
+                const tensor& data,
+                const tensor& filters,
+                const tensor& biases,
                 int stride_y,
                 int stride_x,
                 int padding_y,
@@ -228,15 +258,20 @@ namespace dlib
             int out_nr;
             int out_nc;
 
+            enum class allow_cache_use { no, yes };
+
             // sets the three _algo fields.
-            void select_best_algorithms(const tensor& data, const tensor_descriptor& dest_desc);
+            void select_best_algorithms(const tensor& data, const tensor_descriptor& dest_desc, allow_cache_use allow_cache_use);
             int forward_algo;
             int backward_data_algo;
             int backward_filters_algo;
 
+            // sets the three _workspace_size_in_bytes fields.
+            void update_convolution_data_workspace_sizes(const tensor& data, const tensor_descriptor& dest_desc);
             size_t forward_workspace_size_in_bytes;
             size_t backward_data_workspace_size_in_bytes;
             size_t backward_filters_workspace_size_in_bytes;
+
             cuda_data_void_ptr forward_workspace;
             cuda_data_void_ptr backward_data_workspace;
             cuda_data_void_ptr backward_filters_workspace;
@@ -319,13 +354,15 @@ namespace dlib
 
         void softmax (
             tensor& dest,
-            const tensor& src
+            const tensor& src,
+            operation_mode mode = operation_mode::CHANNEL_WISE
         );
 
         void softmax_gradient (
             tensor& grad,
             const tensor& dest,
-            const tensor& gradient_input
+            const tensor& gradient_input,
+            operation_mode mode = operation_mode::CHANNEL_WISE
         );
 
     // ------------------------------------------------------------------------------------
@@ -382,10 +419,9 @@ namespace dlib
 
     // ------------------------------------------------------------------------------------
 
-    } 
-}
-
+    }
 #endif // DLIB_USE_CUDA
+}
 
 #endif // DLIB_DNN_CuDNN_H_
 

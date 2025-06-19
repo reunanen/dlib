@@ -26,6 +26,8 @@ namespace dlib
         bool is_gray() const;
         bool is_rgb() const;
         bool is_rgba() const;
+        long nr() const;
+        long nc() const;
 
         template<typename T>
         void get_image( T& t_) const
@@ -41,26 +43,17 @@ namespace dlib
 #endif
             image_view<T> t(t_);
             t.set_size( height_, width_ );
-
-            if ( is_gray() )
+            for (size_t n = 0; n < height_;n++ )
             {
-                for (unsigned n = 0; n < height_; n++)
+                const unsigned char* v = get_row( n );
+                for (size_t m = 0; m < width_;m++ )
                 {
-                    const unsigned char* v = get_row(n);
-                    for (unsigned m = 0; m < width_; m++)
+                    if ( is_gray() )
                     {
                         unsigned char p = v[m];
                         assign_pixel( t[n][m], p );
                     }
-                }
-            }
-            else if ( is_rgba() )
-            {
-                for (unsigned n = 0; n < height_; n++)
-                {
-                    const unsigned char* v = get_row(n);
-                    for (unsigned m = 0; m < width_; m++)
-                    {
+                    else if ( is_rgba() ) {
                         rgb_alpha_pixel p;
                         p.red = v[m*4];
                         p.green = v[m*4+1];
@@ -68,14 +61,7 @@ namespace dlib
                         p.alpha = v[m*4+3];
                         assign_pixel( t[n][m], p );
                     }
-                }
-            }
-            else // is_rgb()
-            {
-                for (unsigned n = 0; n < height_; n++)
-                {
-                    const unsigned char* v = get_row(n);
-                    for (unsigned m = 0; m < width_; m++)
+                    else // if ( is_rgb() )
                     {
                         rgb_pixel p;
                         p.red = v[m*3];
@@ -88,16 +74,16 @@ namespace dlib
         }
 
     private:
-        const unsigned char* get_row( unsigned long i ) const
+        const unsigned char* get_row(size_t i) const
         {
             return &data[i*width_*output_components_];
         }
         
         FILE * check_file(const char* filename );
         void read_image( FILE *file, const unsigned char* imgbuffer, size_t imgbuffersize );
-        unsigned long height_; 
-        unsigned long width_;
-        unsigned long output_components_;
+        size_t height_; 
+        size_t width_;
+        size_t output_components_;
         std::vector<unsigned char> data;
     };
 

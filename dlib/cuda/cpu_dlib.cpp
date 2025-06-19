@@ -1290,6 +1290,333 @@ namespace dlib
 
     // -----------------------------------------------------------------------------------
 
+        void layer_normalize (
+            const double eps,
+            resizable_tensor& dest,
+            resizable_tensor& means,
+            resizable_tensor& invstds,
+            const tensor& src,
+            const tensor& gamma,
+            const tensor& beta
+        )
+        {
+            DLIB_CASSERT(
+                have_same_dimensions(gamma, beta) &&
+                gamma.k() == src.k() &&
+                gamma.nr() == 1 &&
+                gamma.nc() == 1 &&
+                eps > 0,
+                "\nsrc.k():    " << src.k() <<
+                "\ngamma.k():  " << gamma.k() <<
+                "\ngamma.nr(): " << gamma.nr() <<
+                "\ngamma.nc(): " << gamma.nc() <<
+                "\nbeta.k():   " << beta.k() <<
+                "\nbeta.nr():  " << beta.nr() <<
+                "\nbeta.nc():  " << beta.nc() <<
+                "\neps:  " << eps
+            );
+
+            dest.copy_size(src);
+            means.set_size(src.num_samples());
+            invstds.set_size(src.num_samples());
+
+            // first compute means and invstds
+            means = 0;
+            invstds = 0;
+            const float* p_src = src.host();
+            float* p_invstds = invstds.host();
+            float* p_means = means.host();
+            const long num = src.nr() * src.nc();
+            // compute means, and sum of squares
+            for (long n = 0; n < src.num_samples(); ++n)
+            {
+                for (long k = 0; k < src.k(); ++k)
+                {
+                    for (long i = 0; i < num; ++i)
+                    {
+                        p_means[n] += *p_src;
+                        p_invstds[n] += (*p_src) * (*p_src);
+                        ++p_src;
+                    }
+                }
+            }
+            means /= src.k() * num;
+            invstds /= src.k () * num;
+            // copy data back to host
+            invstds.host();
+            means.host();
+
+            // compute variances
+            for (long n = 0; n < src.num_samples(); ++n)
+            {
+                p_invstds[n] = 1.0f / std::sqrt(p_invstds[n] - p_means[n] * p_means[n] + eps);
+            }
+
+            p_src = src.host();
+            float* p_dest = dest.host();
+            const float* p_gamma = gamma.host();
+            const float* p_beta = beta.host();
+            for (long n = 0; n < src.num_samples(); ++n)
+            {
+                for (long k = 0; k < src.k(); ++k)
+                {
+                    for (long i = 0; i < num; ++i)
+                    {
+                        *p_dest = (*p_src - p_means[n]) * p_invstds[n];
+                        *p_dest = (*p_dest) * p_gamma[k] + p_beta[k];
+                        ++p_src;
+                        ++p_dest;
+                    }
+                }
+            }
+        }
+
+        void layer_normalize_gradient (
+            const double eps,
+            const tensor& gradient_input,
+            const tensor& means,
+            const tensor& invstds,
+            const tensor& src,
+            const tensor& gamma,
+            tensor& src_grad,
+            tensor& gamma_grad,
+            tensor& beta_grad,
+            resizable_tensor& dmeans,
+            resizable_tensor& dvars
+        )
+        {
+            const long num = src.nr() * src.nc();
+            DLIB_CASSERT(src.num_samples() == means.size());
+            DLIB_CASSERT(src.num_samples() == invstds.size());
+            DLIB_CASSERT(have_same_dimensions(gamma, gamma_grad));
+            DLIB_CASSERT(have_same_dimensions(gamma_grad, beta_grad));
+            DLIB_CASSERT(gamma.k() == src.k());
+            DLIB_CASSERT(gamma.nr() == 1);
+            DLIB_CASSERT(gamma.nc() == 1);
+            DLIB_CASSERT(have_same_dimensions(gradient_input, src));
+            DLIB_CASSERT(have_same_dimensions(gradient_input, src_grad));
+            DLIB_CASSERT(eps > 0);
+
+            beta_grad = 0;
+            gamma_grad = 0;
+
+            auto p_grad = gradient_input.host();
+            auto p_src = src.host();
+            const auto p_gamma = gamma.host();
+            const auto p_gamma_grad = gamma_grad.host();
+            const auto p_beta_grad = beta_grad.host();
+            const auto p_invstds = invstds.host();
+            const auto p_means = means.host();
+
+            dvars.copy_size(invstds);
+            dmeans.copy_size(means);
+            dvars = 0;
+            dmeans = 0;
+            const auto p_dvars = dvars.host();
+            const auto p_dmeans = dmeans.host();
+
+            for (long n = 0; n < src.num_samples(); ++n)
+            {
+                const float invstd_pow = -0.5 * std::pow(p_invstds[n], 3.0f);
+                for (long k = 0; k < src.k(); ++k)
+                {
+                    for (long i = 0; i < num; ++i)
+                    {
+                        const float x_hat = (*p_src - p_means[n]) * p_invstds[n];
+                        p_beta_grad[k] += *p_grad;
+                        p_gamma_grad[k] += (*p_grad) * x_hat;
+
+                        const float dx = *p_grad * p_gamma[k];
+
+                        p_dvars[n] += dx * (*p_src - p_means[n]) * invstd_pow;
+
+                        ++p_grad;
+                        ++p_src;
+                    }
+                }
+            }
+
+            p_grad = gradient_input.host();
+            p_src = src.host();
+            const float invnum = 1.0f / (src.k() * num);
+            for (long n = 0; n < src.num_samples(); ++n)
+            {
+                for (long k = 0; k < src.k(); ++k)
+                {
+                    for (long i = 0; i < num; ++i)
+                    {
+                        const float dx = *p_grad * p_gamma[k];
+
+                        p_dmeans[n] += -dx * p_invstds[n] + p_dvars[n] * -2 * (*p_src - p_means[n]) * invnum;
+
+                        ++p_grad;
+                        ++p_src;
+                    }
+                }
+            }
+            p_grad = gradient_input.host();
+            p_src = src.host();
+            auto p_src_grad = src_grad.host();
+            for (long n = 0; n < src.num_samples(); ++n)
+            {
+                for (long k = 0; k < src.k(); ++k)
+                {
+                    for (long i = 0; i < num; ++i)
+                    {
+                        const float dx = *p_grad * p_gamma[k];
+
+                        *p_src_grad += dx * p_invstds[n] +
+                            p_dvars[n] * 2 * (*p_src - p_means[n]) * invnum +
+                            p_dmeans[n] * invnum;
+
+                        ++p_grad;
+                        ++p_src;
+                        ++p_src_grad;
+                    }
+                }
+            }
+        }
+
+// -----------------------------------------------------------------------------------
+
+        void rms_normalize(
+            const double eps,
+            resizable_tensor& dest,
+            resizable_tensor& scale,
+            const tensor& src,
+            const tensor& gamma
+        )
+        {
+            DLIB_CASSERT(
+                gamma.k() == src.k() &&
+                gamma.nr() == 1 &&
+                gamma.nc() == 1 &&
+                eps > 0,
+                "\nsrc.k():    " << src.k() <<
+                "\ngamma.k():  " << gamma.k() <<
+                "\ngamma.nr(): " << gamma.nr() <<
+                "\ngamma.nc(): " << gamma.nc() <<
+                "\neps:  " << eps
+            );
+
+            const long ns = src.num_samples();
+            const long ks = src.k();
+            const long num = src.nr() * src.nc();
+
+            dest.copy_size(src);
+            scale.set_size(ns);
+
+            // Compute RMS values
+            scale = 0;
+            const float* p_src = src.host();
+            float* p_scale = scale.host();
+            for (long n = 0; n < ns; ++n)
+            {
+                for (long k = 0; k < ks; ++k)
+                {
+                    for (long i = 0; i < num; ++i)
+                    {
+                        p_scale[n] += (*p_src) * (*p_src);
+                        ++p_src;
+                    }
+                }
+                p_scale[n] = 1.0f / std::sqrt(p_scale[n] / (ks * num) + static_cast<float>(eps));
+            }
+            scale.host();
+
+            // Apply RMS normalization
+            p_src = src.host();
+            float* p_dest = dest.host();
+            const float* p_gamma = gamma.host();
+            for (long n = 0; n < ns; ++n)
+            {
+                for (long k = 0; k < ks; ++k)
+                {
+                    for (long i = 0; i < num; ++i)
+                    {
+                        *p_dest = (*p_src) * p_scale[n] * p_gamma[k];
+                        ++p_src;
+                        ++p_dest;
+                    }
+                }
+            }
+        }
+
+        void rms_normalize_gradient(
+            const tensor& gradient_input,
+            const tensor& scale,
+            const tensor& src,
+            const tensor& gamma,
+            tensor& src_grad,
+            tensor& gamma_grad,
+            resizable_tensor& dscale
+        )
+        {
+            DLIB_CASSERT(src.num_samples() == scale.size());
+            DLIB_CASSERT(have_same_dimensions(gamma, gamma_grad));
+            DLIB_CASSERT(gamma.k() == src.k());
+            DLIB_CASSERT(gamma.nr() == 1);
+            DLIB_CASSERT(gamma.nc() == 1);
+            DLIB_CASSERT(have_same_dimensions(gradient_input, src));
+            DLIB_CASSERT(have_same_dimensions(gradient_input, src_grad));
+
+            const long ns = src.num_samples();
+            const long ks = src.k();
+            const long num = src.nr() * src.nc();
+
+            gamma_grad = 0;
+            dscale.copy_size(scale);
+            dscale = 0;
+
+            auto p_grad = gradient_input.host();
+            auto p_src = src.host();
+            const auto p_gamma = gamma.host();
+            const auto p_gamma_grad = gamma_grad.host();
+            const auto p_scale = scale.host();
+            auto p_dscale = dscale.host();
+
+            for (long n = 0; n < ns; ++n)
+            {
+                const float scale_pow = -0.5f * std::pow(p_scale[n], 3.0f);
+                for (long k = 0; k < ks; ++k)
+                {
+                    for (long i = 0; i < num; ++i)
+                    {
+                        const float x_hat = *p_src * p_scale[n];
+                        p_gamma_grad[k] += (*p_grad) * x_hat;
+
+                        const float dx = *p_grad * p_gamma[k];
+                        p_dscale[n] += dx * *p_src * scale_pow;
+
+                        ++p_grad;
+                        ++p_src;
+                    }
+                }
+            }
+
+            p_grad = gradient_input.host();
+            p_src = src.host();
+            auto p_src_grad = src_grad.host();
+            const float invnum = 1.0f / (ks * num);
+            for (long n = 0; n < ns; ++n)
+            {
+                for (long k = 0; k < ks; ++k)
+                {
+                    for (long i = 0; i < num; ++i)
+                    {
+                        const float dx = *p_grad * p_gamma[k];
+                        *p_src_grad += dx * p_scale[n] + p_dscale[n] * 2 * *p_src * invnum;
+
+                        ++p_grad;
+                        ++p_src;
+                        ++p_src_grad;
+                    }
+                }
+            }
+        }
+
+    // -----------------------------------------------------------------------------------
+
         void threshold (
             tensor& data,
             float thresh
@@ -1323,130 +1650,183 @@ namespace dlib
 
         namespace ttimpl
         {
-        void softmax (
-            const long num_locations,
-            const long num_channels,
-            tensor& dest,
-            const tensor& src
-        )
-        {
-            DLIB_ASSERT(num_channels*num_locations == src.nr()*src.nc()*src.k());
-            DLIB_CASSERT(have_same_dimensions(dest,src));
-            const auto d = dest.host();
-            const auto s = src.host();
+            void softmax(
+                const long num_locations,
+                const long num_channels,
+                tensor& dest,
+                const tensor& src,
+                operation_mode mode = operation_mode::CHANNEL_WISE
+            )
+            {
+                DLIB_ASSERT(num_channels * num_locations == src.nr() * src.nc() * src.k());
+                DLIB_CASSERT(have_same_dimensions(dest, src));
+                const auto d = dest.host();
+                const auto s = src.host();
 
-            namespace exp =
+                namespace exp =
 #ifdef DLIB_USE_FMATH
-                fmath
+                    fmath
 #else // DLIB_USE_FMATH
-                std
+                    std
 #endif // DLIB_USE_FMATH
                 ;
 
-            // Note that we subtract out the max values in each channel before applying
-            // exp() to avoid numeric overflow in the subsequent computations.  Doing this
-            // doesn't change the resulting output, it just makes it more numerically
-            // stable.
-            for (long n = 0; n < src.num_samples(); ++n)
-            {
-                auto ss = s + num_locations*num_channels*n;
-                auto dd = d + num_locations*num_channels*n;
-                for (long i = 0; i < num_locations; ++i)
+                for (long n = 0; n < src.num_samples(); ++n)
                 {
-                    float max_val = -std::numeric_limits<float>::infinity();
-                    for (long k = 0; k < num_channels; ++k)
-                        max_val = std::max(max_val, ss[k*num_locations]);
+                    auto ss = s + num_locations * num_channels * n;
+                    auto dd = d + num_locations * num_channels * n;
 
-                    for (long k = 0; k < num_channels; ++k)
-                        dd[k*num_locations] = exp::exp(ss[k*num_locations]-max_val);
-
-                    ++ss;
-                    ++dd;
-                }
-            }
-
-            // Now normalize each channel so they sum to 1.
-            for (long n = 0; n < src.num_samples(); ++n)
-            {
-                const auto dd = d + num_locations*num_channels*n;
-                for (long i = 0; i < num_locations; ++i)
-                {
-                    const auto ddd = dd+i;
-
-                    float temp = 0;
-                    for (long k = 0; k < num_channels; ++k)
-                        temp += ddd[k*num_locations];
-                    for (long k = 0; k < num_channels; ++k)
-                        ddd[k*num_locations] /= temp;
-                }
-            }
-        }
-
-        void softmax_gradient (
-            const long num_locations,
-            const long num_channels,
-            tensor& grad,
-            const tensor& dest,
-            const tensor& gradient_input
-        )
-        {
-            DLIB_ASSERT(num_channels*num_locations == grad.nr()*grad.nc()*grad.k());
-            DLIB_CASSERT(have_same_dimensions(grad,dest));
-            DLIB_CASSERT(have_same_dimensions(grad,gradient_input));
-            const auto d = dest.host();
-            const auto g = grad.host();
-            const auto in = gradient_input.host();
-
-
-            for (long n = 0; n < grad.num_samples(); ++n)
-            {
-                const auto d2 = d + num_locations*num_channels*n;
-                const auto g2 = g + num_locations*num_channels*n;
-                const auto in2 = in + num_locations*num_channels*n;
-                for (long i = 0; i < num_locations; ++i)
-                {
-                    const auto d3 = d2+i;
-                    const auto g3 = g2+i;
-                    const auto in3 = in2+i;
-
-                    float temp = 0;
-                    for (long k = 0; k < num_channels; ++k)
-                        temp += -d3[k*num_locations]*in3[k*num_locations];
-                    if (is_same_object(gradient_input, grad))
+                    if (mode == operation_mode::CHANNEL_WISE)
                     {
-                        for (long k = 0; k < num_channels; ++k)
-                            g3[k*num_locations] = d3[k*num_locations]*(temp+in3[k*num_locations]);
+                        for (long i = 0; i < num_locations; ++i)
+                        {
+                            float max_val = -std::numeric_limits<float>::infinity();
+                            for (long k = 0; k < num_channels; ++k)
+                                max_val = std::max(max_val, ss[k * num_locations]);
+
+                            float sum = 0.0f;
+                            for (long k = 0; k < num_channels; ++k)
+                            {
+                                dd[k * num_locations] = exp::exp(ss[k * num_locations] - max_val);
+                                sum += dd[k * num_locations];
+                            }
+                            for (long k = 0; k < num_channels; ++k)
+                                dd[k * num_locations] /= sum;
+
+                            ++ss;
+                            ++dd;
+                        }
                     }
-                    else
+                    else if (mode == operation_mode::PLANE_WISE)
                     {
                         for (long k = 0; k < num_channels; ++k)
-                            g3[k*num_locations] += d3[k*num_locations]*(temp+in3[k*num_locations]);
+                        {
+                            auto s_channel = ss + k * num_locations;
+                            auto d_channel = dd + k * num_locations;
+                            for (long r = 0; r < src.nr(); ++r)
+                            {
+                                float max_val = -std::numeric_limits<float>::infinity();
+                                for (long c = 0, idx = r * src.nc(); c < src.nc(); ++c, ++idx)
+                                    max_val = std::max(max_val, s_channel[idx]);
+
+                                if (max_val == -std::numeric_limits<float>::infinity())
+                                {
+                                    for (long c = 0, idx = r * src.nc(); c < src.nc(); ++c, ++idx)
+                                        d_channel[idx] = 0.0f;
+                                }
+                                else
+                                {
+                                    float sum = 0.0f;
+                                    for (long c = 0, idx = r * src.nc(); c < src.nc(); ++c, ++idx)
+                                    {
+                                        d_channel[idx] = exp::exp(s_channel[idx] - max_val);
+                                        sum += d_channel[idx];
+                                    }
+                                    for (long c = 0, idx = r * src.nc(); c < src.nc(); ++c, ++idx)
+                                        d_channel[idx] /= sum;
+                                }
+                            }
+                        }
                     }
                 }
             }
-        }
+
+            void softmax_gradient(
+                const long num_locations,
+                const long num_channels,
+                tensor& grad,
+                const tensor& dest,
+                const tensor& gradient_input,
+                operation_mode mode = operation_mode::CHANNEL_WISE
+            )
+            {
+                DLIB_ASSERT(num_channels * num_locations == grad.nr() * grad.nc() * grad.k());
+                DLIB_CASSERT(have_same_dimensions(grad, dest));
+                DLIB_CASSERT(have_same_dimensions(grad, gradient_input));
+
+                const auto d = dest.host();
+                const auto g = grad.host();
+                const auto in = gradient_input.host();
+                for (long n = 0; n < grad.num_samples(); ++n)
+                {
+                    const auto d2 = d + num_locations * num_channels * n;
+                    const auto g2 = g + num_locations * num_channels * n;
+                    const auto in2 = in + num_locations * num_channels * n;
+
+                    if (mode == operation_mode::CHANNEL_WISE)
+                    {
+                        for (long i = 0; i < num_locations; ++i)
+                        {
+                            const auto d3 = d2 + i;
+                            const auto g3 = g2 + i;
+                            const auto in3 = in2 + i;
+                            float sum = 0.0f;
+                            for (long k = 0; k < num_channels; ++k)
+                                sum += -d3[k * num_locations] * in3[k * num_locations];
+                            if (is_same_object(gradient_input, grad))
+                            {
+                                for (long k = 0; k < num_channels; ++k)
+                                    g3[k * num_locations] = d3[k * num_locations] * (sum + in3[k * num_locations]);
+                            }
+                            else
+                            {
+                                for (long k = 0; k < num_channels; ++k)
+                                    g3[k * num_locations] += d3[k * num_locations] * (sum + in3[k * num_locations]);
+                            }
+                        }
+                    }
+                    else if (mode == operation_mode::PLANE_WISE)
+                    {
+                        for (long k = 0; k < num_channels; ++k)
+                        {
+                            const auto d_channel = d2 + k * num_locations;
+                            const auto g_channel = g2 + k * num_locations;
+                            const auto in_channel = in2 + k * num_locations;
+                            for (long r = 0; r < grad.nr(); ++r)
+                            {
+                                float sum = 0.0f;
+                                for (long c = 0, idx = r * grad.nc(); c < grad.nc(); ++c, ++idx)
+                                    sum += -d_channel[idx] * in_channel[idx];
+                                if (is_same_object(gradient_input, grad))
+                                {
+                                    for (long c = 0, idx = r * grad.nc(); c < grad.nc(); ++c, ++idx)
+                                        g_channel[idx] = d_channel[idx] * (sum + in_channel[idx]);
+                                }
+                                else
+                                {
+                                    for (long c = 0, idx = r * grad.nc(); c < grad.nc(); ++c, ++idx)
+                                        g_channel[idx] += d_channel[idx] * (sum + in_channel[idx]);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
     // ----------------------------------------------------------------------------------------
 
-        void softmax (
+        void softmax(
             tensor& dest,
-            const tensor& src
+            const tensor& src,
+            operation_mode mode
         )
         {
-            DLIB_CASSERT(have_same_dimensions(dest,src));
-            ttimpl::softmax(src.nr()*src.nc(), src.k(), dest, src);
+            DLIB_CASSERT(have_same_dimensions(dest, src));
+            DLIB_CASSERT(mode == operation_mode::CHANNEL_WISE || mode == operation_mode::PLANE_WISE, "Invalid softmax mode");
+            ttimpl::softmax(src.nr() * src.nc(), src.k(), dest, src, mode);
         }
 
-        void softmax_gradient (
+        void softmax_gradient(
             tensor& grad,
             const tensor& dest,
-            const tensor& gradient_input
+            const tensor& gradient_input,
+            operation_mode mode
         )
         {
-            DLIB_CASSERT(have_same_dimensions(grad,dest));
-            DLIB_CASSERT(have_same_dimensions(grad,gradient_input));
-            ttimpl::softmax_gradient(grad.nr()*grad.nc(), grad.k(), grad, dest, gradient_input);
+            DLIB_CASSERT(have_same_dimensions(grad, dest));
+            DLIB_CASSERT(have_same_dimensions(grad, gradient_input));
+            ttimpl::softmax_gradient(grad.nr() * grad.nc(), grad.k(), grad, dest, gradient_input, mode);
         }
 
     // ------------------------------------------------------------------------------------
@@ -1732,13 +2112,243 @@ namespace dlib
 
     // ----------------------------------------------------------------------------------------
 
+        void clipped_relu (
+            tensor& dest,
+            const tensor& src,
+            const float ceiling
+        )
+        {
+            dest = upperbound(lowerbound(mat(src), 0), ceiling);
+        }
+
+        void clipped_relu_gradient (
+            tensor& grad,
+            const tensor& dest,
+            const tensor& gradient_input,
+            const float ceiling
+        )
+        {
+            const auto out = grad.host();
+            const auto in = dest.host();
+            const auto gi = gradient_input.host();
+            if (is_same_object(grad, gradient_input))
+            {
+                for (size_t i = 0; i < dest.size(); ++i)
+                {
+                    if (in[i] > 0 && in[i] < ceiling)
+                        out[i] = gi[i];
+                    else
+                        out[i] = 0;
+                }
+            }
+            else
+            {
+                for (size_t i = 0; i < dest.size(); ++i)
+                {
+                    if (in[i] > 0 && in[i] < ceiling)
+                        out[i] += gi[i];
+                }
+            }
+        }
+
+    // ----------------------------------------------------------------------------------------
+
+        void elu (
+            tensor& dest,
+            const tensor& src,
+            const float alpha
+        )
+        {
+            const auto d = dest.host();
+            const auto s = src.host();
+            for (size_t i = 0; i < src.size(); ++i)
+            {
+                if (s[i] > 0)
+                    d[i] = s[i];
+                else
+                    d[i] = alpha * (std::exp(s[i]) - 1.0f);
+            }
+        }
+
+        void elu_gradient (
+            tensor& grad,
+            const tensor& dest,
+            const tensor& gradient_input,
+            const float alpha
+        )
+        {
+            const auto out = grad.host();
+            const auto in = dest.host();
+            const auto gi = gradient_input.host();
+            if (is_same_object(grad, gradient_input))
+            {
+                for (size_t i = 0; i < dest.size(); ++i)
+                {
+                    if (in[i] > 0)
+                        out[i] = gi[i];
+                    else
+                        out[i] = (alpha + in[i]) * gi[i];
+                }
+            }
+            else
+            {
+                for (size_t i = 0; i < dest.size(); ++i)
+                {
+                    if (in[i] > 0)
+                        out[i] += gi[i];
+                    else
+                        out[i] += (alpha + in[i]) * gi[i];
+                }
+            }
+        }
+
+    // ----------------------------------------------------------------------------------------
+
+        void gelu (
+            tensor& dest,
+            const tensor& src
+        )
+        {
+            const auto d = dest.host();
+            const auto s = src.host();
+            for (size_t i = 0; i < src.size(); ++i)
+                d[i] = 0.5f*s[i]*(1.0f + std::erf(s[i]/sqrt_2));
+        }
+
+        void gelu_gradient (
+            tensor& grad,
+            const tensor& src,
+            const tensor& gradient_input
+        )
+        {
+            const float beta = 1.0f / std::sqrt(2.0f * pi);
+            const auto compute_gradient = [beta](float x)
+            {
+                const float cdf = 0.5f*(1.0f + std::erf(x/sqrt_2));
+                const float pdf = beta*std::exp(-0.5f*x*x);
+                return cdf + x * pdf;
+            };
+            const auto g = grad.host();
+            const auto s = src.host();
+            const auto in = gradient_input.host();
+            if (is_same_object(grad, gradient_input))
+            {
+                for (size_t i = 0; i < src.size(); ++i)
+                    g[i] = in[i]*compute_gradient(s[i]);
+            }
+            else
+            {
+                for (size_t i = 0; i < src.size(); ++i)
+                    g[i] += in[i]*compute_gradient(s[i]);
+            }
+        }
+
+    // ----------------------------------------------------------------------------------------
+
+        void smelu (
+            tensor& dest,
+            const tensor& src,
+            const float beta
+        )
+        {
+            const float* s = src.host();
+            float* d = dest.host();
+            for (size_t i = 0; i < dest.size(); ++i)
+            {
+                if (s[i] >= beta)
+                    d[i] = s[i];
+                else if (s[i] <= -beta)
+                    d[i] = 0;
+                else
+                    d[i] = (s[i] + beta) * (s[i] + beta) / (4 * beta);
+            }
+        }
+
+        void smelu_gradient (
+            tensor& grad,
+            const tensor& dest,
+            const tensor& gradient_input,
+            const float beta
+        )
+        {
+            const float* gi = gradient_input.host();
+            const float* in = dest.host();
+            float* out = grad.host();
+            if (is_same_object(grad, gradient_input))
+            {
+                for (size_t i = 0; i < dest.size(); ++i)
+                {
+                    if (in[i] >= beta)
+                        out[i] = gi[i];
+                    else if (in[i] == 0)
+                        out[i] = 0;
+                    else
+                        out[i] = std::sqrt(beta * in[i]) / beta * gi[i];
+                }
+            }
+            else
+            {
+                for (size_t i = 0; i < dest.size(); ++i)
+                {
+                    if (in[i] >= beta)
+                        out[i] += gi[i];
+                    else if (in[i] == 0)
+                        continue;
+                    else
+                        out[i] += std::sqrt(beta * in[i]) / beta * gi[i];
+                }
+            }
+        }
+
+    // ----------------------------------------------------------------------------------------
+
+        void silu (
+            tensor& dest,
+            const tensor& src
+        )
+        {
+            const auto d = dest.host();
+            const auto s = src.host();
+            for (size_t i = 0; i < src.size(); ++i)
+                d[i] = s[i] * impl::sigmoid(s[i]);
+        }
+
+        void silu_gradient (
+            tensor& grad,
+            const tensor& src,
+            const tensor& gradient_input
+        )
+        {
+            const auto g = grad.host();
+            const auto s = src.host();
+            const auto in = gradient_input.host();
+            if (is_same_object(grad, gradient_input))
+            {
+                for (size_t i = 0; i < src.size(); ++i)
+                {
+                    const auto sig_s = impl::sigmoid(s[i]);
+                    g[i] = in[i] * (sig_s * (1.0f + s[i] * (1.0f - sig_s)));
+                }
+            }
+            else
+            {
+                for (size_t i = 0; i < src.size(); ++i)
+                {
+                    const auto sig_s = impl::sigmoid(s[i]);
+                    g[i] += in[i] * (sig_s * (1.0f + s[i] * (1.0f - sig_s)));
+                }
+            }
+        }
+
+    // ----------------------------------------------------------------------------------------
+
         void resize_bilinear (
             tensor& dest,
-            long dest_row_stride,
-            long dest_channel_stride,
+            long long dest_row_stride,
+            long long dest_channel_stride,
             const tensor& src,
-            long src_row_stride,
-            long src_channel_stride
+            long long src_row_stride,
+            long long src_channel_stride
         )
         {
             DLIB_CASSERT(is_same_object(dest, src)==false);
@@ -1762,11 +2372,11 @@ namespace dlib
 
         void resize_bilinear_gradient (
             tensor& grad,
-            long grad_row_stride,
-            long grad_channel_stride,
+            long long grad_row_stride,
+            long long grad_channel_stride,
             const tensor& gradient_input,
-            long gradient_input_row_stride,
-            long gradient_input_channel_stride
+            long long gradient_input_row_stride,
+            long long gradient_input_channel_stride
         )
         {
             DLIB_CASSERT(is_same_object(grad, gradient_input)==false);
@@ -1812,7 +2422,211 @@ namespace dlib
             }
         }
 
+    // ----------------------------------------------------------------------------------------
+
+        void reorg(
+            bool add_to,
+            tensor& dest,
+            const int row_stride,
+            const int col_stride,
+            const tensor& src
+        )
+        {
+            DLIB_CASSERT(!is_same_object(dest, src), "Destination and source must be distinct objects.");
+            DLIB_CASSERT(src.nr() % row_stride == 0, "The number of rows in src must be divisible by row_stride.");
+            DLIB_CASSERT(src.nc() % col_stride == 0, "The number of columns in src must be divisible by col_stride.");
+            DLIB_CASSERT(dest.num_samples() == src.num_samples(), "The number of samples must match.");
+            DLIB_CASSERT(dest.k() == src.k() * row_stride * col_stride, "The number of channels must match.");
+            DLIB_CASSERT(dest.nr() == src.nr() / row_stride, "The number of rows must match.");
+            DLIB_CASSERT(dest.nc() == src.nc() / col_stride, "The number of columns must match.");
+
+            const float* s = src.host();
+            float* d = dest.host();
+
+            const size_t sk = src.k(), snr = src.nr(), snc = src.nc();
+            const size_t dk = dest.k(), dnr = dest.nr(), dnc = dest.nc(), dsize = dest.size();
+
+            dlib::parallel_for(0, dsize, [&](long i)
+            {
+                const size_t out_plane_size = dnr * dnc;
+                const size_t out_sample_size = dk * out_plane_size;
+
+                const size_t n = i / out_sample_size;
+                const size_t out_idx = i % out_sample_size;
+                const size_t out_k = out_idx / out_plane_size;
+                const size_t out_rc = out_idx % out_plane_size;
+                const size_t out_r = out_rc / dnc;
+                const size_t out_c = out_rc % dnc;
+
+                const size_t in_k = out_k % sk;
+                const size_t in_r = out_r * row_stride + (out_k / sk) / col_stride;
+                const size_t in_c = out_c * col_stride + (out_k / sk) % col_stride;
+
+                const size_t in_idx = ((n * sk + in_k) * snr + in_r) * snc + in_c;
+
+                if (add_to) d[i] += s[in_idx];
+                else d[i] = s[in_idx];
+            });
+        }
+
+        void reorg_gradient(
+            bool add_to,
+            tensor& grad,
+            const int row_stride,
+            const int col_stride,
+            const tensor& gradient_input
+        )
+        {
+            DLIB_CASSERT(!is_same_object(grad, gradient_input), "Grad and gradient_input must be distinct objects.");
+            DLIB_CASSERT(grad.nr() % row_stride == 0, "The number of rows in grad must be divisible by row_stride.");
+            DLIB_CASSERT(grad.nc() % col_stride == 0, "The number of columns in grad must be divisible by col_stride.");
+            DLIB_CASSERT(grad.num_samples() == gradient_input.num_samples(), "The number of samples in grad and gradient_input must match.");
+            DLIB_CASSERT(grad.k() == gradient_input.k() / row_stride / col_stride, "The number of channels in grad must be gradient_input.k() divided by row_stride and col_stride.");
+            DLIB_CASSERT(grad.nr() == gradient_input.nr() * row_stride, "The number of rows in grad must be gradient_input.nr() multiplied by row_stride.");
+            DLIB_CASSERT(grad.nc() == gradient_input.nc() * col_stride, "The number of columns in grad must be gradient_input.nc() multiplied by col_stride.");
+
+            const float* gi = gradient_input.host();
+            float* g = grad.host();
+
+            parallel_for(0, gradient_input.num_samples(), [&](long n)
+            {
+                for (long k = 0; k < gradient_input.k(); ++k)
+                {
+                    for (long r = 0; r < gradient_input.nr(); ++r)
+                    {
+                        for (long c = 0; c < gradient_input.nc(); ++c)
+                        {
+                                const auto in_idx = tensor_index(gradient_input, n, k, r, c);
+                                const auto out_idx = tensor_index(grad,
+                                    n,
+                                    k % grad.k(),
+                                    r * row_stride + (k / grad.k()) / col_stride,
+                                    c * col_stride + (k / grad.k()) % col_stride);
+                                
+                                if (add_to) g[out_idx] += gi[in_idx];
+                                else g[out_idx] = gi[in_idx];
+                        }
+                    }
+                }
+            });
+        }
+
     // ------------------------------------------------------------------------------------
+
+        void embeddings(
+            resizable_tensor& dest,
+            const tensor& src,
+            const tensor& embs
+        )
+        {
+            DLIB_CASSERT(
+                src.nr() > 0 &&
+                embs.num_samples() > 0 &&
+                embs.k() > 0 &&
+                embs.nr() == 1 &&
+                embs.nc() == 1,
+                "\nsrc.num_samples(): " << src.num_samples() <<
+                "\nsrc.k(): " << src.k() <<
+                "\nsrc.nr(): " << src.nr() <<
+                "\nsrc.nc(): " << src.nc() <<
+                "\nembs.num_samples(): " << embs.num_samples() <<
+                "\nembs.k(): " << embs.k() <<
+                "\nembs.nr(): " << embs.nr() <<
+                "\nembs.nc(): " << embs.nc()
+            );
+
+            long ns = dest.num_samples(), nk = dest.k(), nr = dest.nr(), nc = dest.nc();
+            const float* src_data = src.host();
+            float* dest_data = dest.host();
+            const float* embs_data = embs.host();
+            for (long s = 0; s < ns; ++s)
+            {
+                for (long k = 0; k < nk; ++k)
+                {
+                    for (long r = 0; r < nr; ++r)
+                    {
+                        const unsigned long token_idx = static_cast<unsigned long>(src_data[tensor_index(src, s, k, r, 0)]);
+                        if (token_idx < embs.num_samples())
+                        {
+                            for (long c = 0; c < nc; ++c)
+                                dest_data[tensor_index(dest, s, k, r, c)] = embs_data[tensor_index(embs, token_idx, c, 0, 0)];
+                        }
+                        else
+                        {
+                            for (long c = 0; c < nc; ++c)
+                                dest_data[tensor_index(dest, s, k, r, c)] = 0;
+                        }
+                    }
+                }
+            }
+        }
+
+        void embeddings_gradient(
+            const tensor& prev,
+            const tensor& gradient_input,
+            tensor& grads,
+            const tensor& freqs,
+            float learning_rate,
+            bool scale
+        )
+        {
+            DLIB_CASSERT(
+                prev.nr() > 0 &&
+                gradient_input.num_samples() == prev.num_samples() &&
+                gradient_input.k() == prev.k() &&
+                gradient_input.nr() == prev.nr() &&
+                gradient_input.nc() == grads.k() &&
+                grads.num_samples() > 0 &&
+                grads.k() > 0 &&
+                grads.nr() == 1 &&
+                grads.nc() == 1,
+                "\ngradient_input.num_samples(): " << gradient_input.num_samples() <<
+                "\ngradient_input.k(): " << gradient_input.k() <<
+                "\ngradient_input.nr(): " << gradient_input.nr() <<
+                "\ngradient_input.nc(): " << gradient_input.nc() <<
+                "\nprev.num_samples(): " << prev.num_samples() <<
+                "\nprev.k(): " << prev.k() <<
+                "\nprev.nr(): " << prev.nr() <<
+                "\nprev.nc(): " << prev.nc() <<
+                "\ngrads.num_samples(): " << grads.num_samples() <<
+                "\ngrads.k(): " << grads.k() <<
+                "\ngrads.nr(): " << grads.nr() <<
+                "\ngrads.nc(): " << grads.nc()
+            );
+
+            const float* prev_data = prev.host();
+            const float* gradient_input_data = gradient_input.host();
+            const float* freqs_data = freqs.host();
+            float* grads_data = grads.host();
+            long ns = gradient_input.num_samples(), nk = gradient_input.k();
+            long nr = gradient_input.nr(), nc = gradient_input.nc();
+
+            std::vector<dlib::mutex> embedding_mutexes(grads.num_samples());
+            parallel_for(0, ns * nk, [&](long i)
+                {
+                    long s = i / nk;
+                    long k = i % nk;
+
+                    for (long r = 0; r < nr; ++r)
+                    {
+                        const unsigned long token_idx = static_cast<unsigned long>(prev_data[tensor_index(prev, s, k, r, 0)]);
+                        if (token_idx < grads.num_samples())
+                        {
+                            const float freg_token = freqs_data[token_idx];
+                            float freq_scale = 1.0f;
+
+                            if (scale && freg_token != 0.0f) freq_scale = std::min(0.15f, std::max(1.0f / freg_token, 1.0f));
+                            auto_mutex locker(embedding_mutexes[token_idx]);
+                            for (long c = 0; c < nc; ++c)
+                            {
+                                const float gradient = gradient_input_data[tensor_index(gradient_input, s, k, r, c)];
+                                grads_data[tensor_index(grads, token_idx, c, 0, 0)] -= (gradient * learning_rate * freq_scale);
+                            }
+                        }
+                    }
+                });
+        }
+
     // ------------------------------------------------------------------------------------
     // ------------------------------------------------------------------------------------
 
@@ -2078,6 +2892,7 @@ namespace dlib
             float* const t = &output(0,0);
 
             // now fill in the Toeplitz output matrix for the n-th sample in data.  
+            long cnt = 0;
             const long max_r = data.nr() + padding_y-(filter_nr-1);
             const long max_c = data.nc() + padding_x-(filter_nc-1);
             const long data_nr = data.nr();
@@ -2296,6 +3111,37 @@ namespace dlib
             }
         }
 
+        void tensor_conv::operator() (
+            const bool add_to_output,
+            resizable_tensor& output,
+            const tensor& data,
+            const tensor& filters,
+            const tensor& biases,
+            bool use_relu
+        )
+        {
+            DLIB_CASSERT(filters.num_samples() == biases.k());
+            (*this)(add_to_output, output,data,filters);
+            tt::add(1, output, 1, biases);
+            if (use_relu) tt::relu(output, output);
+        }
+
+        void tensor_conv::operator() (
+            const bool add_to_output,
+            tensor& output,
+            const tensor& data,
+            const tensor& filters,
+            const tensor& biases,
+            bool use_relu
+        )
+        {
+            DLIB_CASSERT(filters.num_samples() == biases.k());
+            (*this)(add_to_output, output, data, filters);
+            tt::add(1, output, 1, biases);
+            if (use_relu) tt::relu(output, output);
+        }
+
+
     // ------------------------------------------------------------------------------------
 
         void tensor_conv::
@@ -2396,7 +3242,117 @@ namespace dlib
         }
 
     // ------------------------------------------------------------------------------------
+
+        void copy_tensor(
+            bool add_to,
+            tensor& dest,
+            size_t dk, size_t dnr, size_t dnc,
+            const tensor& src,
+            size_t sk, size_t snr, size_t snc,
+            size_t k, size_t nr, size_t nc
+        )
+        {
+            size_t dest_stride_sample = static_cast<size_t>(dest.nc() * dest.nr() * dest.k());
+            size_t dest_stride_k      = static_cast<size_t>(dest.nc() * dest.nr());
+            size_t dest_stride_nr     = static_cast<size_t>(dest.nc());
+
+            size_t src_stride_sample = static_cast<size_t>(src.nc() * src.nr() * src.k());
+            size_t src_stride_k      = static_cast<size_t>(src.nc() * src.nr());
+            size_t src_stride_nr     = static_cast<size_t>(src.nc());
+
+            DLIB_CASSERT(dest.num_samples() == src.num_samples(), "All sources should fit into dest tensor size");
+            DLIB_CASSERT(dest.k() - dk >= k &&
+                dest.nr() - dnr >= nr &&
+                dest.nc() - dnc >= nc, "Not enough space in dest tensor");
+            DLIB_CASSERT(src.k() - sk >= k &&
+                src.nr() - snr >= nr &&
+                src.nc() - snc >= nc, "Not enough space in src tensor");
+
+            float* dest_p = dest.host() + dk * dest_stride_k \
+                                        + dnr * dest_stride_nr \
+                                        + dnc;
+
+            const float* src_p = src.host() + sk * src_stride_k \
+                                            + snr * src_stride_nr \
+                                            + snc;
+
+            for (long i = 0; i < src.num_samples(); ++i)
+            {
+                float* dest_channel_p = dest_p;
+                const float* src_channel_p = src_p;
+
+                for (long j = 0; j < k; ++j)
+                {
+                    float* dest_row_p = dest_channel_p;
+                    const float* src_row_p = src_channel_p;
+
+                    for (long r = 0; r < nr; ++r)
+                    {
+                        if (add_to)
+                        {
+                            for (size_t c = 0; c < nc; ++c)
+                                dest_row_p[c] += src_row_p[c];
+                        }
+                        else
+                        {
+                            ::memcpy(dest_row_p, src_row_p, nc * sizeof(float));
+                        }
+
+                        dest_row_p += dest_stride_nr;
+                        src_row_p += src_stride_nr;
+                    }
+
+                    dest_channel_p += dest_stride_k;
+                    src_channel_p += src_stride_k;
+                }
+
+                dest_p += dest_stride_sample;
+                src_p  += src_stride_sample;
+            }
+        }
+
     // ------------------------------------------------------------------------------------
+
+        void transpose(
+            bool add,
+            tensor& dest,
+            const tensor& src            
+        )
+        {
+            DLIB_CASSERT(dest.num_samples() == src.num_samples() &&
+                dest.k() == src.k() &&
+                dest.nr() == src.nc() &&
+                dest.nc() == src.nr(),
+                "Incompatible tensor dimensions.");
+
+            const float* src_data = src.host();
+            float* dest_data = dest.host();
+
+            const long num_samples = src.num_samples();
+            const long k_dim = src.k();
+            const long src_nr = src.nr();
+            const long src_nc = src.nc();
+            const long dest_nr = dest.nr();
+            const long dest_nc = dest.nc();
+
+            parallel_for(0, num_samples * k_dim, [&](long i) {
+                const long n = i / k_dim;
+                const long k = i % k_dim;
+                const long src_nk_offset = (n * src.k() + k) * src_nr;
+                const long dest_nk_offset = (n * dest.k() + k) * dest_nr;
+
+                for (long r = 0; r < src_nr; ++r) {
+                    for (long c = 0; c < src_nc; ++c) {
+                        const long src_idx = (src_nk_offset + r) * src_nc + c;
+                        const long dest_idx = (dest_nk_offset + c) * dest_nc + r;
+
+                        if (add) dest_data[dest_idx] += src_data[src_idx];
+                        else dest_data[dest_idx] = src_data[src_idx];
+                    }
+                }
+            });
+        }
+
     // ------------------------------------------------------------------------------------
 
     } 

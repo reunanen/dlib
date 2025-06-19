@@ -29,15 +29,14 @@ int main (int argc, char** argv)
         parser.add_option("d","log debugging statements to file debug.txt.");
         parser.add_option("l","Set the logging level (all, trace, debug, info, warn, error, or fatal), the default is all.",1);
         parser.add_option("a","Append debugging messages to debug.txt rather than clearing the file at program startup.");
-        parser.add_option("q","Be quiet.  Don't print the testing progress or results to standard out.");
+        parser.add_option("q","Be quiet.  Don't print the testing progress or non-failure results to standard out.");
 
         unsigned long num = 1;
 
         // add the options for all the different tests
-        testers().reset();
-        while (testers().move_next())
+        for (auto& kv : testers())
         {
-            tester& test = *testers().element().value();
+            tester& test = *kv.second;
             parser.add_option(test.cmd_line_switch(), test.description(), test.num_of_args());
             if (test.num_of_args()==0) 
                 parser.add_option("no_"+test.cmd_line_switch(), "Don't run this option when using --runall.");
@@ -111,10 +110,9 @@ int main (int argc, char** argv)
             dlog << LINFO << "************ Starting Test Run " << i+1 << " of " << num << ". ************";
 
             // loop over all the testers and see if they are supposed to run
-            testers().reset();
-            while (testers().move_next())
+            for(auto& kv : testers())
             {
-                tester& test= *testers().element().value();
+                tester& test= *kv.second;
                 const clp::option_type& opt = parser.option(test.cmd_line_switch());
                 // run the test for this option as many times as the user has requested.
                 for (unsigned long j = 0; j < parser.option("runall").count() + opt.count(); ++j)
@@ -159,14 +157,11 @@ int main (int argc, char** argv)
                     }
                     catch (std::exception& e)
                     {
-                        if (be_verbose)
-                        {
-                            cout << "\n\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n";
-                            cout << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TEST FAILED: " << test.cmd_line_switch() 
-                                << " !!!!!!!!!!!!!!!!!!!!!!!!!!!!!";
-                            cout << "\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\n";
-                            cout << "Failure message from test: " << e.what() << endl;
-                        }
+                        cout << "\n\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n";
+                        cout << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TEST FAILED: " << test.cmd_line_switch() 
+                            << " !!!!!!!!!!!!!!!!!!!!!!!!!!!!!";
+                        cout << "\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\n";
+                        cout << "Failure message from test: " << e.what() << endl;
 
 
                         dlog << LERROR << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!";
@@ -198,13 +193,10 @@ int main (int argc, char** argv)
         }
         else
         {
-            if (be_verbose)
-            {
-                cout << "\n\nTesting Finished\n";
-                cout << "Total number of individual testing statements executed: "<< number_of_testing_statements_executed() << endl;
-                cout << "Number of failed tests: " << num_of_failed_tests << "\n";
-                cout << "Number of passed tests: " << num_of_passed_tests << "\n\n";
-            }
+            cout << "\n\nTesting Finished\n";
+            cout << "Total number of individual testing statements executed: "<< number_of_testing_statements_executed() << endl;
+            cout << "Number of failed tests: " << num_of_failed_tests << "\n";
+            cout << "Number of passed tests: " << num_of_passed_tests << "\n\n";
             dlog << LINFO << "Total number of individual testing statements executed: "<< number_of_testing_statements_executed();
             dlog << LWARN << "Number of failed tests: " << num_of_failed_tests;
             dlog << LWARN << "Number of passed tests: " << num_of_passed_tests;
