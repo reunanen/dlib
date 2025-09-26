@@ -58,6 +58,11 @@ namespace dlib
         iterator       end()         { return host()+size(); }
         const_iterator end() const   { return host()+size(); }
 
+        void copy_to_device() const
+        {
+            data().copy_to_device();
+        }
+
         void async_copy_to_device() const
         {
             data().async_copy_to_device();

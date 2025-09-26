@@ -55,9 +55,12 @@ namespace dlib
         int device_id() const { return the_device_id; }
 
 #ifdef DLIB_USE_CUDA
+        void copy_to_device() const;
         void async_copy_to_device() const; 
         void set_size(size_t new_size);
 #else
+        void copy_to_device() const{}
+
         // Note that calls to host() or device() will block until any async transfers are complete.
         void async_copy_to_device() const{}
 
@@ -160,11 +163,9 @@ namespace dlib
     private:
 
 #ifdef DLIB_USE_CUDA
-        void copy_to_device() const;
         void copy_to_host() const;
         void wait_for_transfer_to_finish() const;
 #else
-        void copy_to_device() const{}
         void copy_to_host() const{}
         void wait_for_transfer_to_finish() const{}
 #endif

@@ -1293,7 +1293,7 @@ namespace dlib
             "The number of tensors produced by the input layer must be an integer multiple of the number of input objects.");
 
             _sample_expansion_factor = data.num_samples()/std::distance(ibegin,iend);
-            data.async_copy_to_device();
+            data.copy_to_device();
         }
 
 
@@ -2154,7 +2154,7 @@ namespace dlib
             "The number of tensors produced by the input layer must be an integer multiple of the number of input objects.");
 
             _sample_expansion_factor = data.num_samples()/std::distance(ibegin,iend);
-            data.async_copy_to_device();
+            data.copy_to_device();
         }
 
         unsigned int sample_expansion_factor() const { return _sample_expansion_factor; }
