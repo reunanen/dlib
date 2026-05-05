@@ -162,6 +162,147 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
+    template <size_t NR, size_t NC=NR, typename mem_manager = default_memory_manager>
+    class input_rgb_alpha_image_sized;
+
+    template <typename mem_manager = default_memory_manager>
+    class input_rgb_alpha_image
+    {
+    public:
+        typedef matrix<rgb_alpha_pixel,0,0,mem_manager> input_type;
+
+        input_rgb_alpha_image (
+        ) : 
+            avg_red(122.782), 
+            avg_green(117.001),
+            avg_blue(104.298),
+            avg_alpha(127.500)
+        {
+        }
+
+        input_rgb_alpha_image (
+            float avg_red_,
+            float avg_green_,
+            float avg_blue_,
+            float avg_alpha_
+        ) : avg_red(avg_red_), avg_green(avg_green_), avg_blue(avg_blue_), avg_alpha(avg_alpha_)
+        {}
+
+        template <size_t NR, size_t NC>
+        inline input_rgb_alpha_image (
+            const input_rgb_alpha_image_sized<NR,NC>& item
+        ); 
+
+        float get_avg_red()   const { return avg_red; }
+        float get_avg_green() const { return avg_green; }
+        float get_avg_blue()  const { return avg_blue; }
+        float get_avg_alpha() const { return avg_alpha; }
+
+        bool image_contained_point ( const tensor& data, const point& p) const { return get_rect(data).contains(p); }
+        drectangle tensor_space_to_image_space ( const tensor& /*data*/, drectangle r) const { return r; }
+        drectangle image_space_to_tensor_space ( const tensor& /*data*/, double /*scale*/, drectangle r ) const { return r; }
+
+        template <typename forward_iterator>
+        void to_tensor (
+            forward_iterator ibegin,
+            forward_iterator iend,
+            resizable_tensor& data
+        ) const
+        {
+            DLIB_CASSERT(std::distance(ibegin,iend) > 0);
+            const auto nr = ibegin->nr();
+            const auto nc = ibegin->nc();
+            // make sure all the input matrices have the same dimensions
+            for (auto i = ibegin; i != iend; ++i)
+            {
+                DLIB_CASSERT(i->nr()==nr && i->nc()==nc,
+                    "\t input_rgb_alpha_image::to_tensor()"
+                    << "\n\t All matrices given to to_tensor() must have the same dimensions."
+                    << "\n\t nr: " << nr
+                    << "\n\t nc: " << nc
+                    << "\n\t i->nr(): " << i->nr()
+                    << "\n\t i->nc(): " << i->nc()
+                );
+            }
+
+            
+            // initialize data to the right size to contain the stuff in the iterator range.
+            data.set_size(std::distance(ibegin,iend), 4, nr, nc);
+
+
+            const size_t offset = nr*nc;
+            auto ptr = data.host();
+            for (auto i = ibegin; i != iend; ++i)
+            {
+                for (long r = 0; r < nr; ++r)
+                {
+                    for (long c = 0; c < nc; ++c)
+                    {
+                        rgb_alpha_pixel temp = (*i)(r,c);
+                        auto p = ptr++;
+                        *p = (temp.red-avg_red)/256.0; 
+                        p += offset;
+                        *p = (temp.green-avg_green)/256.0; 
+                        p += offset;
+                        *p = (temp.blue-avg_blue)/256.0; 
+                        p += offset;
+                        *p = (temp.alpha-avg_alpha)/256.0; 
+                        p += offset;
+                    }
+                }
+                ptr += offset*(data.k()-1);
+            }
+
+        }
+
+        friend void serialize(const input_rgb_alpha_image& item, std::ostream& out)
+        {
+            serialize("input_rgb_alpha_image", out);
+            serialize(item.avg_red, out);
+            serialize(item.avg_green, out);
+            serialize(item.avg_blue, out);
+            serialize(item.avg_alpha, out);
+        }
+
+        friend void deserialize(input_rgb_alpha_image& item, std::istream& in)
+        {
+            std::string version;
+            deserialize(version, in);
+            if (version != "input_rgb_alpha_image" && version != "input_rgb_alpha_image_sized")
+                throw serialization_error("Unexpected version found while deserializing dlib::input_rgb_alpha_image.");
+            deserialize(item.avg_red, in);
+            deserialize(item.avg_green, in);
+            deserialize(item.avg_blue, in);
+            deserialize(item.avg_alpha, in);
+            // read and discard the sizes if this was really a sized input layer.
+            if (version == "input_rgb_alpha_image_sized")
+            {
+                size_t nr, nc;
+                deserialize(nr, in);
+                deserialize(nc, in);
+            }
+        }
+
+        friend std::ostream& operator<<(std::ostream& out, const input_rgb_alpha_image& item)
+        {
+            out << "input_rgb_alpha_image("<<item.avg_red<<","<<item.avg_green<<","<<item.avg_blue<<","<<item.avg_alpha<<")";
+            return out;
+        }
+
+        friend void to_xml(const input_rgb_alpha_image& item, std::ostream& out)
+        {
+            out << "<input_rgb_alpha_image r='"<<item.avg_red<<"' g='"<<item.avg_green<<"' b='"<<item.avg_blue<<"' a='"<<item.avg_alpha<<"'/>";
+        }
+
+    private:
+        float avg_red;
+        float avg_green;
+        float avg_blue;
+        float avg_alpha;
+    };
+
+// ----------------------------------------------------------------------------------------
+
     template <size_t NR, size_t NC, typename mem_manager>
     class input_rgb_image_sized
     {
