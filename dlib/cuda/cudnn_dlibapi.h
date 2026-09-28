@@ -7,6 +7,7 @@
 
 #include "cuda_errors.h"
 #include <memory>
+#include <tuple>
 #include "cuda_data_ptr.h"
 
 namespace dlib
@@ -256,16 +257,18 @@ namespace dlib
             int out_nr;
             int out_nc;
 
-            enum class allow_cache_use { no, yes };
-
-            // sets the three _algo fields.
-            void select_best_algorithms(const tensor& data, const tensor_descriptor& dest_desc, allow_cache_use allow_cache_use);
+            // Each algorithm is chosen the first time it's needed, so that none is benchmarked in
+            // vain, like the backward ones of a network that only makes predictions.  These set
+            // the matching _algo and _workspace_size_in_bytes fields.  An _algo field is -1 until
+            // its algorithm is chosen.
+            void choose_forward_algorithm(const tensor& data, const tensor& output);
+            void choose_backward_data_algorithm(const tensor& gradient_input, const tensor& data_gradient);
+            void choose_backward_filters_algorithm(const tensor& data, const tensor& gradient_input);
+            std::tuple<int,int,int,int,long,long,long,long,long,long,long> algorithm_cache_key() const;
             int forward_algo;
             int backward_data_algo;
             int backward_filters_algo;
 
-            // sets the three _workspace_size_in_bytes fields.
-            void update_convolution_data_workspace_sizes(const tensor& data, const tensor_descriptor& dest_desc);
             size_t forward_workspace_size_in_bytes;
             size_t backward_data_workspace_size_in_bytes;
             size_t backward_filters_workspace_size_in_bytes;
